@@ -40,7 +40,7 @@ quary=quary.reduce((a,x,i)=>{
                 }
                 return a
             },[])
-console.log(quary)
+//console.log(quary)
 quary.map( q =>{
 	if(Array.isArray(check)){
   	return eva(q)

@@ -1,0 +1,31 @@
+{
+  "name": "api-ape",
+  "version": "0.1.0",
+  "description": "Remote procedure events",
+  "main": "index.js",
+  "scripts": {   
+    "test": "jest --no-cache ",
+    "test:go": "npm test -- --watch --coverage",
+    "test:update": "npm test -- --updateSnapshot",
+    "test:cover": "npm test -- --coverage --no-cache --detectOpenHandles",
+    "test:watch": "npm test -- --watch --runInBand"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codemeasandwich/api-ape.git"
+  },
+  "keywords": [
+    "rpc",
+    "api",
+    "ape"
+  ],
+  "author": "brian shannon",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/codemeasandwich/api-ape/issues"
+  },
+  "homepage": "https://github.com/codemeasandwich/api-ape#readme",
+  "dependencies": {
+    "jest": "^29.3.1"
+  }
+}
