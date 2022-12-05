@@ -1,6 +1,6 @@
 const filter = require('../utls/filter')
 /*
-const petsReq = api.pets( ...data... )
+const petsReq = api.pets( ...data... ,true/false(default)/(resItem)=>{should listen for on this one y/n} ~ listen for changes)
 
 			      // filter: filter's the items that will be in the result Array
 			petsReq.filter`name ! ${undefined} AND lastName ? AND bio.checkin > ${10}DaysAgo OR bio.type = ${"admin"}`
