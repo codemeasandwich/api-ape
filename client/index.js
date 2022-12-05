@@ -6,11 +6,6 @@ const petsReq = api.pets( ...data... ,true/false(default)/(resItem)=>{should lis
 			petsReq.filter`name ! ${undefined} AND lastName ? AND bio.checkin > ${10}DaysAgo OR bio.type = ${"admin"}`
 			petsReq.fields("*",{bio:["email"]})// defaults to * ~ Max Dept availe <= 4
       // petsReq.dont([12345,22345]) // api should keep track of an Live Refs and add them to skip of only ask for missing feilds
-
-      petsReq.then(tom=>{
-      	api(tom) // tom will now to updated if there is an change on the server
-      	api(tom.bio)// tom's bio will now to updated if there is an change on the server
-      })
 */
 function apiApe(){
 
