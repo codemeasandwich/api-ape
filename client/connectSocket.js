@@ -8,7 +8,7 @@ const hostname = window.location.hostname
 const localServers = ["localhost","127.0.0.1","[::1]"]
 const isLocal = localServers.includes(hostname)
 const isHttps = "https" === window.location.href.split(':')[0]
-const socketUrl = `ws${isHttps ? "s" : ""}://${isLocal? hostname+":9010" : "my.domain.me"}/api/websocket`
+const socketUrl = `ws${isHttps ? "s" : ""}://${isLocal? hostname+":9010" : "my.domain.me"}/api/ape`
 let reconnect = false
 const      connentTimeout = 5000
 const totalRequestTimeout = 10000
@@ -38,16 +38,16 @@ function wrap(api) {
   let __socket = false, ready = false, wsSend = false;
   const waitingOn = {};
   const reciverOn = [];
-  
+
   let aWaitingSend = []
 const reciverOnAr = [];
 const ofTypesOb = {};
-  
+
   function connectSocket() {
-    
+
     if ( ! __socket) {
       __socket = new WebSocket(socketUrl)
-      
+
       __socket.onopen = event => {
         //console.log('socket connected()');
         ready = true;
@@ -68,7 +68,7 @@ const ofTypesOb = {};
       __socket.onmessage = function(event) {
         //console.log('WebSocket message:', event);
         const { err, type, queryId, data } = JSON.parse(event.data)
-        
+
         if (queryId
         && waitingOn[queryId]) {
           waitingOn[queryId](err,data)
@@ -79,25 +79,25 @@ const ofTypesOb = {};
           ofTypesOb[type].forEach(worker => worker({ err, type, data }))
         } // if ofTypesOb[type]
         reciverOnAr.forEach(worker => worker({ err, type, data }))
-        
+
       } // END onmessage
-      
+
       __socket.onerror = function(err) {
         console.error('socket ERROR:', err);
       } // END onerror
-      
+
       __socket.onclose = function(event) {
         console.warn('socket disconnect:', event);
         __socket = false
         ready = false;
         setTimeout(()=>reconnect && connectSocket(), 500);
       } // END onclose
-       
+
     } // END if ! __socket
       wsSend = function (type, data, createdAt, dirctCall) {
         let rej, promiseIsLive = false;
         const timeLetForReqToBeMade = (createdAt+totalRequestTimeout) - Date.now()
-        
+
         const timer = setTimeout(()=> {
           if (promiseIsLive) {
             rej(new Error("Request Timedout for :"+type))
@@ -113,7 +113,7 @@ const ofTypesOb = {};
         }
         const message = JSON.stringify(payload)
         const queryId = messageHash(message);
-        
+
         const replyPromise = new Promise((resolve, reject) => {
           rej = reject
           waitingOn[queryId] = (err,result) => {
@@ -143,21 +143,21 @@ const ofTypesOb = {};
         }
         return replyPromise
       } // END wsSend
-    
-    
+
+
     const sender = (type, data) => {
           if("string" !== typeof type){
                throw new Error("Missing Path vaule")
            }
-           
+
           const createdAt = Date.now()
 
           if (ready) {
             return wsSend(type, data, createdAt, true)
           }
-          
+
           const timeLetForReqToBeMade = (createdAt+connentTimeout) - Date.now() // 5sec for reconnent
-        
+
           const timer = setTimeout(()=> {
               const errMessage = "Request not sent for :"+type
               if (payload.waiting) {
@@ -166,10 +166,10 @@ const ofTypesOb = {};
                 throw new Error(errMessage)
               }
           }, timeLetForReqToBeMade);
-          
+
           const payload = {type, data, next:undefined, err:undefined, waiting:false, createdAt, timer};
           const waitingOnOpen = new Promise((res,er) => { payload.next = res; payload.err  = er; })
-         
+
           const waitingOnOpenThen  = waitingOnOpen.then;
           const waitingOnOpenCatch = waitingOnOpen.catch;
           waitingOnOpen.then = worker => {
@@ -184,15 +184,15 @@ const ofTypesOb = {};
             waitingOnOpen.then  = waitingOnOpenThen.bind(waitingOnOpen)
             return waitingOnOpenCatch.call(waitingOnOpen,worker)
           }
-          
+
           aWaitingSend.push(payload)
           if( ! __socket){
             connectSocket()
           }
-  
+
         return waitingOnOpen
       } // END sender
-    
+
     return {
       sender : wrap(sender),
     setOnReciver: (onTypeStFn,handlerFn) => {

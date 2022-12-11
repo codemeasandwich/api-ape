@@ -1,4 +1,5 @@
 const filter = require('../utls/filter')
+const connectSocket = require('connectSocket')
 /*
 const petsReq = api.pets( ...data... ,true/false(default)/(resItem)=>{should listen for on this one y/n} ~ listen for changes)
 
@@ -7,6 +8,21 @@ const petsReq = api.pets( ...data... ,true/false(default)/(resItem)=>{should lis
 			petsReq.fields("*",{bio:["email"]})// defaults to * ~ Max Dept availe <= 4
       // petsReq.dont([12345,22345]) // api should keep track of an Live Refs and add them to skip of only ask for missing feilds
 */
+function checkOpts({domain}){
+    if(!domain){
+      throw new Error(`Missing domain. Try something like 'apiApe({domain:"my.domain.me"})'`)
+    }
+    if("string" !== typeof domain
+    || ! domain.includes(".")
+    ||   domain.includes("/")){
+      throw new Error(`Domain is not valuid. You passed:${domain}`)
+    }
+} // END  checkOpts
+
+function config(opts){
+    const { domain } = opts
+}
+
 function apiApe(){
 
   let fieldsToRetun, filterToRetun;
@@ -41,3 +57,6 @@ function apiApe(){
 
 	return prom
 } // END apiApe
+
+export default apiApe
+export { config }
