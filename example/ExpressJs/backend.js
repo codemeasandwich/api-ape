@@ -1,5 +1,5 @@
 const express = require('express');
-const ape = require('api-ape');
+const ape = require('../../index');//require('api-ape');
 const scribbles = require('scribbles');
 const path = require('path');
 const app = express()
@@ -32,7 +32,7 @@ function onConnent(req, socket, send){
     }
 } // END ape onConnent
 
-ape(app,{where:"api",onConnent})})
+ape(app,{where:"api",onConnent})
 
 app.get('/', (req, res) => {
   res.sendFile(path.resolve(__dirname, 'public/index.html'));
