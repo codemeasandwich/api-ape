@@ -1,4 +1,4 @@
-const flattenObject = require('../utls/flattenObject')
+const flattenObject = require('./utils/flatten')
 
 var eva = ([key,opt,val])=>{
 	 switch(opt) {

@@ -1,14 +1,10 @@
 import messageHash from '../utls/messageHash'
-
+import { serialize, deserialize } from 'bson';
 
 let connect;
 
-
-const hostname = window.location.hostname
-const localServers = ["localhost","127.0.0.1","[::1]"]
-const isLocal = localServers.includes(hostname)
-const isHttps = "https" === window.location.href.split(':')[0]
-const socketUrl = `ws${isHttps ? "s" : ""}://${isLocal? hostname+":9010" : "my.domain.me"}/api/ape`
+const isHttps = "https:" === window.location.protocol
+const socketUrl = `ws${isHttps ? "s" : ""}://${window.location.host}/api/ape`
 let reconnect = false
 const      connentTimeout = 5000
 const totalRequestTimeout = 10000
@@ -47,7 +43,7 @@ const ofTypesOb = {};
 
     if ( ! __socket) {
       __socket = new WebSocket(socketUrl)
-
+      __socket.binaryType = "blob"//"arraybuffer";
       __socket.onopen = event => {
         //console.log('socket connected()');
         ready = true;
@@ -65,9 +61,10 @@ const ofTypesOb = {};
         aWaitingSend = []
       } // END onopen
 
-      __socket.onmessage = function(event) {
+      __socket.onmessage = event => {
         //console.log('WebSocket message:', event);
-        const { err, type, queryId, data } = JSON.parse(event.data)
+      //const { err, type, queryId, data } = JSON.parse(event.data)
+        const { err, type, queryId, data } = serialize(event)
 
         if (queryId
         && waitingOn[queryId]) {
@@ -82,11 +79,11 @@ const ofTypesOb = {};
 
       } // END onmessage
 
-      __socket.onerror = function(err) {
+      __socket.onerror = err => {
         console.error('socket ERROR:', err);
       } // END onerror
 
-      __socket.onclose = function(event) {
+      __socket.onclose = event => {
         console.warn('socket disconnect:', event);
         __socket = false
         ready = false;
@@ -94,7 +91,7 @@ const ofTypesOb = {};
       } // END onclose
 
     } // END if ! __socket
-      wsSend = function (type, data, createdAt, dirctCall) {
+      wsSend = (type, data, createdAt, dirctCall) => {
         let rej, promiseIsLive = false;
         const timeLetForReqToBeMade = (createdAt+totalRequestTimeout) - Date.now()
 
@@ -111,8 +108,10 @@ const ofTypesOb = {};
           requestedAt:dirctCall ? undefined
                                 : Date.now()
         }
-        const message = JSON.stringify(payload)
-        const queryId = messageHash(message);
+        //const message = JSON.stringify(payload)
+        const bson = serialize(payload)
+        //const queryId = messageHash(message);
+        const queryId = messageHash(bson.toString('base64'))
 
         const replyPromise = new Promise((resolve, reject) => {
           rej = reject
@@ -125,7 +124,8 @@ const ofTypesOb = {};
                                     resolve(result)
                                   }
                                }
-          __socket.send(message);
+          __socket.send(bson);
+          //__socket.send(message);
         });
         const next = replyPromise.then;
         replyPromise.then = worker => {
