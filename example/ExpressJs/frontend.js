@@ -42,3 +42,19 @@ fileInput.addEventListener('change', (event) => {
 	selectName.innerText = filePointer.name;
 }, false)
 */
+
+/*
+var bson = require("bson")
+
+    const payload = {
+        small:1,
+        file: Buffer.from(new ArrayBuffer(8))
+    }
+    console.log(payload.file);
+    const data = bson.serialize(payload);
+    console.log( data, data.toString('base64'));
+
+    // De serialize it again
+    const doc_2 = bson.deserialize(data);
+    console.log('doc_2:', doc_2.file.buffer);
+*/
