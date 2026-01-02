@@ -144,7 +144,7 @@ function connectSocket() {
       type,
       data,
       //referer:window.location.href,
-      createdAt,
+      createdAt: new Date(createdAt),
       requestedAt: dirctCall ? undefined
         : new Date()
     }
