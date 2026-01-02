@@ -1,4 +1,5 @@
 import messageHash from '../utils/messageHash'
+import jjs from '../utils/jjs'
 
 
 let connect;
@@ -96,7 +97,7 @@ function connectSocket() {
 
     __socket.onmessage = function (event) {
       //console.log('WebSocket message:', event);
-      const { err, type, queryId, data } = JSON.parse(event.data)
+      const { err, type, queryId, data } = jjs.parse(event.data)
 
       // Messages with queryId must fulfill matching promise
       if (queryId) {
@@ -145,9 +146,9 @@ function connectSocket() {
       //referer:window.location.href,
       createdAt,
       requestedAt: dirctCall ? undefined
-        : Date.now()
+        : new Date()
     }
-    const message = JSON.stringify(payload)
+    const message = jjs.stringify(payload)
     const queryId = messageHash(message);
 
     const replyPromise = new Promise((resolve, reject) => {
