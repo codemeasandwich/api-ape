@@ -30,5 +30,8 @@
     "jest": "^29.3.1",
     "ua-parser-js": "^1.0.37",
     "ws": "^8.14.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.2"
   }
 }
