@@ -1,0 +1,27 @@
+# Development Dockerfile with hot reload support
+# Context: api-ape root (not example/NextJs)
+FROM node:18-alpine
+
+WORKDIR /api-ape
+
+# First install api-ape root dependencies (ws, ua-parser-js, etc.)
+COPY package.json package-lock.json* ./
+RUN npm install
+
+# Then install NextJs example dependencies
+WORKDIR /api-ape/example/NextJs
+COPY example/NextJs/package.json example/NextJs/package-lock.json* ./
+RUN npm install
+
+# Copy all source files
+WORKDIR /api-ape
+COPY . .
+
+# Back to NextJs example
+WORKDIR /api-ape/example/NextJs
+
+# Expose port
+EXPOSE 3000
+
+# Run in development mode
+CMD ["npm", "run", "dev"]

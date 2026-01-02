@@ -1,13 +1,10 @@
 const deeprequire = require('../utils/deepRequire')
-
-const fs = require('fs')
 const path = require('path')
 
-let currentDir = __dirname
-while(!fs.existsSync(path.join(currentDir, 'package.json'))) {
-  currentDir = path.join(currentDir, '..')
-}
+// Use the current working directory (where node was started)
+// This ensures 'where' folder is relative to the calling application
+const currentDir = process.cwd()
 
-module.exports = function(dirname,selector){
-   return deeprequire(path.join(currentDir, dirname),selector)
+module.exports = function (dirname, selector) {
+  return deeprequire(path.join(currentDir, dirname), selector)
 }

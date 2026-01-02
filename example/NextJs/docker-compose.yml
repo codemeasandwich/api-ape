@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  # Development mode with hot reload
+  nextjs-app:
+    build:
+      context: ../..  # Build from api-ape root
+      dockerfile: example/NextJs/Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount full api-ape project
+      - ../..:/api-ape
+      - /api-ape/node_modules
+      - /api-ape/example/NextJs/node_modules
+      - /api-ape/example/NextJs/.next
+    working_dir: /api-ape/example/NextJs
+    environment:
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=true
+      - NODE_PATH=/api-ape/node_modules
+    restart: unless-stopped
