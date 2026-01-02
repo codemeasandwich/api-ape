@@ -2,28 +2,9 @@
 <html>
 
 <head>
-  <title>Chat</title>
-  <style>
-    body {
-      font: 14px sans-serif;
-      max-width: 400px;
-      margin: 40px auto;
-    }
-
-    #log {
-      height: 300px;
-      overflow-y: auto;
-      border: 1px solid #ccc;
-      padding: 8px;
-      margin-bottom: 8px;
-    }
-
-    input {
-      width: 100%;
-      padding: 8px;
-      box-sizing: border-box;
-    }
-  </style>
+  <title>Chat - api-ape</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/styles.css">
 </head>
 
 <body>
@@ -65,10 +46,31 @@
       render(Html, messages) {
         messages = messages || []
         Html`
-          <div id="log">
-            ${messages.map(m => Html.wire(m, ':msg')`<div><b>${m.user}:</b> ${m.text}</div>`)}
+          <div class="chat-container">
+            <div class="header">
+              <span class="title">💬 Chat</span>
+              <span class="user-badge">● ${this.user}</span>
+            </div>
+            <div class="messages">
+              ${messages.length === 0
+            ? Html.wire()`<div class="empty-state">No messages yet...</div>`
+            : messages.map(m => Html.wire(m, ':msg')`
+                    <div class="${'message' + (m.user === this.user ? ' mine' : '')}">
+                      <span class="username">${m.user}</span>
+                      <span class="text">${m.text}</span>
+                    </div>
+                  `)
+          }
+            </div>
+            <div class="input-area">
+              <input 
+                class="message-input" 
+                placeholder="Type a message..." 
+                onkeydown=${e => this.send(e)} 
+                autofocus
+              >
+            </div>
           </div>
-          <input placeholder="Type message, press Enter" onkeydown=${e => this.send(e)} autofocus>
         `
       }
     })
