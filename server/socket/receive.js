@@ -19,9 +19,11 @@ module.exports = function receiveHandler(ape) {
     }
 
     return function onReceive(msg) {
-        const queryId = messageHash(msg);
+        // Convert Buffer to string - WebSocket messages may arrive as binary
+        const msgString = typeof msg === 'string' ? msg : msg.toString('utf8');
+        const queryId = messageHash(msgString);
         try {
-            const { type: rawType, data, referer, createdAt, requestedAt } = jjs.parse(msg);
+            const { type: rawType, data, referer, createdAt, requestedAt } = jjs.parse(msgString);
 
             // Normalize type: strip leading slash, lowercase
             const type = rawType.replace(/^\//, '').toLowerCase()
