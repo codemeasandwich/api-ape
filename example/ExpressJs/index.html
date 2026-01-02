@@ -28,28 +28,45 @@
 
 <body>
   <chat-app></chat-app>
+  <script src="https://unpkg.com/hyperhtml"></script>
   <script src="https://unpkg.com/hyper-element"></script>
   <script src="/api/ape.js"></script>
   <script>
-    document.registerElement('chat-app', class extends HyperElement {
-      created() {
+    customElements.define('chat-app', class extends hyperElement {
+      setup(attachStore) {
         this.user = 'User' + Math.random().toString(36).slice(2, 6)
         this.messages = []
-        ape.history().then(msgs => { this.messages = msgs; this.render() })
-        ape.on('message', m => { this.messages.push(m); this.render() })
+
+        this.onStoreChange = attachStore(() => this.messages)
+
+        // Load history
+        ape.history().then(msgs => {
+          this.messages = msgs
+          this.onStoreChange()
+        })
+
+        // Listen for new messages from others
+        ape.on('message', ({ data }) => {
+          this.messages.push(data)
+          this.onStoreChange()
+        })
       }
 
       send(e) {
         if (e.key !== 'Enter' || !e.target.value) return
-        ape.message({ user: this.user, text: e.target.value })
-          .then(m => { this.messages.push(m); this.render() })
+        const msg = { user: this.user, text: e.target.value }
+        ape.message(msg).then(() => {
+          this.messages.push(msg)
+          this.onStoreChange()
+        })
         e.target.value = ''
       }
 
-      render(Html) {
+      render(Html, messages) {
+        messages = messages || []
         Html`
           <div id="log">
-            ${this.messages.map(m => Html`<div><b>${m.user}:</b> ${m.text}</div>`)}
+            ${messages.map(m => Html.wire(m, ':msg')`<div><b>${m.user}:</b> ${m.text}</div>`)}
           </div>
           <input placeholder="Type message, press Enter" onkeydown=${e => this.send(e)} autofocus>
         `

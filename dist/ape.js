@@ -262,8 +262,12 @@
   var connentTimeout = 5e3;
   var totalRequestTimeout = 1e4;
   var joinKey = "/";
+  var reservedKeys = /* @__PURE__ */ new Set(["on"]);
   var handler = {
     get(fn, key) {
+      if (reservedKeys.has(key)) {
+        return fn[key];
+      }
       const wrapperFn = function(a, b) {
         let path = joinKey + key, body;
         if (2 === arguments.length) {
@@ -441,5 +445,10 @@
   var { sender, setOnReciver } = connectSocket_default();
   connectSocket_default.autoReconnect();
   window.ape = sender;
-  window.ape.on = setOnReciver;
+  Object.defineProperty(window.ape, "on", {
+    value: setOnReciver,
+    writable: false,
+    enumerable: false,
+    configurable: false
+  });
 })();

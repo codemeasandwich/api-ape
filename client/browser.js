@@ -7,6 +7,11 @@ connectSocket.configure({ port: parseInt(port, 10) })
 const { sender, setOnReciver } = connectSocket()
 connectSocket.autoReconnect()
 
-// Global API
+// Global API - use defineProperty to bypass Proxy interception
 window.ape = sender
-window.ape.on = setOnReciver
+Object.defineProperty(window.ape, 'on', {
+    value: setOnReciver,
+    writable: false,
+    enumerable: false,
+    configurable: false
+})

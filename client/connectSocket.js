@@ -45,8 +45,14 @@ const totalRequestTimeout = 10000
 //const location = window.location
 
 const joinKey = "/"
+// Properties accessed directly on `ape` that should NOT be intercepted
+const reservedKeys = new Set(['on'])
 const handler = {
   get(fn, key) {
+    // Skip proxy interception for reserved keys - return actual property
+    if (reservedKeys.has(key)) {
+      return fn[key]
+    }
     const wrapperFn = function (a, b) {
       let path = joinKey + key, body;
       if (2 === arguments.length) {
