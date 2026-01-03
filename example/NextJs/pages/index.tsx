@@ -32,8 +32,8 @@ export default function Home() {
   const [joined, setJoined] = useState(false)
   const [userCount, setUserCount] = useState(0)
   const [sending, setSending] = useState(false)
-  const [connected, setConnected] = useState(false)
-  
+  const [connectionState, setConnectionState] = useState('connecting')
+
   // Refs
   const apiRef = useRef(null) // Stores the api-ape sender Proxy
 
@@ -64,8 +64,15 @@ export default function Home() {
        * - All calls return Promises that resolve with the server's response
        */
       apiRef.current = client.sender
-      setConnected(true)
       console.log('🦍 api-ape client connected')
+
+      /**
+       * Subscribe to connection state changes
+       * 
+       * `onConnectionChange` gets called with the current state immediately,
+       * then on each state transition. States: 'disconnected' | 'connecting' | 'connected'
+       */
+      const unsubscribe = client.onConnectionChange(setConnectionState)
 
       /**
        * Set up event listeners for server broadcasts
@@ -96,6 +103,8 @@ export default function Home() {
         // Server broadcasted updated user count
         setUserCount(data.count)
       })
+
+      return () => unsubscribe()
     })
   }, [])
 
@@ -190,13 +199,15 @@ export default function Home() {
           🦍 <span className={styles.gradient}>api-ape</span> Chat
         </h1>
         <p className={styles.subtitle}>
-          {connected ? (
-            userCount === 1 
+          {connectionState === 'connected' ? (
+            userCount === 1
               ? '✅ Connected • Only You are online'
               : userCount > 1
-              ? `✅ Connected • You + ${userCount - 1} are online`
-              : '✅ Connected'
-          ) : '⏳ Connecting...'}
+                ? `✅ Connected • You + ${userCount - 1} are online`
+                : '✅ Connected'
+          ) : connectionState === 'connecting'
+            ? '⏳ Connecting...'
+            : '❌ Disconnected'}
         </p>
 
         {!joined ? (
@@ -209,8 +220,8 @@ export default function Home() {
               className={styles.input}
               autoFocus
             />
-            <button type="submit" className={styles.button} disabled={!connected}>
-              {connected ? 'Join Chat →' : 'Connecting...'}
+            <button type="submit" className={styles.button} disabled={connectionState !== 'connected'}>
+              {connectionState === 'connected' ? 'Join Chat →' : 'Connecting...'}
             </button>
           </form>
         ) : (

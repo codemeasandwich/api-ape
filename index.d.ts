@@ -105,6 +105,21 @@ export default ape
 // =============================================================================
 
 /**
+ * Connection state enum values
+ */
+export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'closing'
+
+/**
+ * Connection state enum object
+ */
+export declare const ConnectionState: {
+    Disconnected: 'disconnected'
+    Connecting: 'connecting'
+    Connected: 'connected'
+    Closing: 'closing'
+}
+
+/**
  * Message received from server
  */
 export interface ReceivedMessage<T = any> {
@@ -140,6 +155,10 @@ export type SetOnReceiver = {
 export interface ApeClient {
     sender: ApeSender
     setOnReciver: SetOnReceiver
+    /** Subscribe to connection state changes. Returns unsubscribe function. */
+    onConnectionChange: (handler: (state: ConnectionState) => void) => () => void
+    /** Get current connection state synchronously */
+    getConnectionState: () => ConnectionState
 }
 
 /**
@@ -161,6 +180,8 @@ export interface ConnectSocket {
     configure(options: ApeClientConfig): void
     /** Enable auto-reconnection on disconnect */
     autoReconnect(): void
+    /** Connection state enum */
+    ConnectionState: typeof ConnectionState
 }
 
 /**

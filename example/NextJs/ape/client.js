@@ -45,15 +45,15 @@ async function initClient() {
     const port = window.location.port || (window.location.protocol === 'https:' ? 443 : 80)
     connectSocket.configure({ port: parseInt(port, 10) })
 
-    // Connect and get sender/receiver
-    const { sender, setOnReciver } = connectSocket()
+    // Connect and get sender/receiver/connection state
+    const { sender, setOnReciver, onConnectionChange, getConnectionState } = connectSocket()
 
     // Enable auto-reconnect
     connectSocket.autoReconnect()
 
     console.log('🦍 api-ape client initialized')
 
-    return { sender, setOnReciver, connectSocket }
+    return { sender, setOnReciver, onConnectionChange, getConnectionState, connectSocket }
 }
 
 /**

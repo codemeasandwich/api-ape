@@ -1,8 +1,26 @@
 import messageHash from '../utils/messageHash'
 import jss from '../utils/jss'
 
-
 let connect;
+
+// Connection state enum
+const ConnectionState = {
+  Disconnected: 'disconnected',
+  Connecting: 'connecting',
+  Connected: 'connected',
+  Closing: 'closing'
+}
+
+// Connection state tracking
+let connectionState = ConnectionState.Disconnected
+const connectionChangeListeners = []
+
+function notifyConnectionChange(newState) {
+  if (connectionState !== newState) {
+    connectionState = newState
+    connectionChangeListeners.forEach(fn => fn(newState))
+  }
+}
 
 // Configuration
 let configuredPort = null
@@ -82,11 +100,13 @@ const ofTypesOb = {};
 function connectSocket() {
 
   if (!__socket) {
+    notifyConnectionChange(ConnectionState.Connecting)
     __socket = new WebSocket(getSocketUrl())
 
     __socket.onopen = event => {
       //console.log('socket connected()');
       ready = true;
+      notifyConnectionChange(ConnectionState.Connected)
       aWaitingSend.forEach(({ type, data, next, err, waiting, createdAt, timer }) => {
         clearTimeout(timer)
         //TODO: clear throw of wait for server
@@ -277,6 +297,7 @@ function connectSocket() {
       console.warn('socket disconnect:', event);
       __socket = false
       ready = false;
+      notifyConnectionChange(ConnectionState.Disconnected)
       setTimeout(() => reconnect && connectSocket(), 500);
     } // END onclose
 
@@ -531,13 +552,25 @@ function connectSocket() {
           reciverOnAr.push(onTypeStFn)
         }
       }
-    } // END setOnReciver
+    }, // END setOnReciver
+    onConnectionChange: (handler) => {
+      connectionChangeListeners.push(handler)
+      // Immediately call with current state
+      handler(connectionState)
+      // Return unsubscribe function
+      return () => {
+        const idx = connectionChangeListeners.indexOf(handler)
+        if (idx > -1) connectionChangeListeners.splice(idx, 1)
+      }
+    },
+    getConnectionState: () => connectionState
   } // END return
 } // END connectSocket
 
 connectSocket.autoReconnect = () => reconnect = true
 connectSocket.configure = configure
+connectSocket.ConnectionState = ConnectionState
 connect = connectSocket
 
 export default connect;
-export { configure };
+export { configure, ConnectionState };

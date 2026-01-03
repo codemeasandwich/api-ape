@@ -10,6 +10,7 @@ __snapshots__
 # production
 /build
 /servers/dist
+.next
 
 .DS_Store
 npm-debug.log*
