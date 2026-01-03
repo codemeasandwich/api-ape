@@ -12,9 +12,19 @@ const pets = await ape.pets.list()
 ape.on('newPet', ({ data }) => console.log('New pet:', data))
 ```
 
+file: api/pets/list.js
 ```js
 // Server: define function, broadcast to others
-module.exports = function createPet(data) {
+module.exports = function list() {
+  return getPetList()
+}
+```
+
+file: api/pets/newPet.js
+```js
+// Server: define function, broadcast to others
+module.exports = function newPet(data) {
+    // broadcast to all other clients
   this.broadcastOthers('newPet', data)
   return savePet(data)
 }
