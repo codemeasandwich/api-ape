@@ -343,12 +343,46 @@ The client automatically reconnects with exponential backoff. If connections dro
 * Verify network stability
 * Check server logs for errors
 
-### Binary Data / File Uploads
+### Binary Data / File Transfers
 
-JJS encoding supports complex types, but for large binary data, consider:
-* Sending file URLs instead of raw data
-* Using a separate file upload endpoint
-* Chunking large payloads
+api-ape supports transparent binary file transfers. Simply return `Buffer` data from controllers:
+
+```js
+// api/files/download.js
+module.exports = function(filename) {
+  return {
+    name: filename,
+    data: fs.readFileSync(`./uploads/${filename}`)  // Buffer
+  }
+}
+```
+
+The client receives `ArrayBuffer` automatically:
+
+```js
+const result = await ape.files.download('image.png')
+console.log(result.data)  // ArrayBuffer
+
+// Display as image
+const blob = new Blob([result.data])
+img.src = URL.createObjectURL(blob)
+```
+
+**Uploads work the same way:**
+
+```js
+// Client
+const arrayBuffer = await file.arrayBuffer()
+await ape.files.upload({ name: file.name, data: arrayBuffer })
+
+// Server (api/files/upload.js)
+module.exports = function({ name, data }) {
+  fs.writeFileSync(`./uploads/${name}`, data)  // data is Buffer
+  return { success: true }
+}
+```
+
+Binary data is transferred via temporary HTTP endpoints (`/api/ape/data/:hash`) with session verification and auto-cleanup.
 
 ### TypeScript Support
 

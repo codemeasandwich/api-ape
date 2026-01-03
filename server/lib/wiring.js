@@ -26,7 +26,7 @@ function defaultEvents(events = {}) {
 //============================================== wiring
 //=====================================================
 
-module.exports = function wiring(controllers, onConnent) {
+module.exports = function wiring(controllers, onConnent, fileTransfer) {
     onConnent = onConnent || (() => { });
     return function webSocketHandler(socket, req) {
 
@@ -70,7 +70,8 @@ module.exports = function wiring(controllers, onConnent) {
                     events: { onReceive, onSend, onError, onDisconnent },
                     controllers,
                     sharedValues,
-                    embedValues: embed
+                    embedValues: embed,
+                    fileTransfer  // Pass file transfer manager
                 }// END ape
                 send = socketSend(ape)
                 ape.send = send
@@ -92,3 +93,4 @@ module.exports = function wiring(controllers, onConnent) {
 
     } // END webSocketHandler
 } // END wiring
+

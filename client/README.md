@@ -67,3 +67,35 @@ ape.configure({
 Default port detection:
 - Local (`localhost`, `127.0.0.1`): `9010`
 - Remote: Uses current page port or `443`/`80`
+
+## File Transfers
+
+Binary data is automatically handled. The client fetches binary resources and uploads binary data transparently.
+
+### Receiving Binary Data
+
+```js
+// Server returns Buffer, client receives ArrayBuffer
+const result = await ape.files.download('image.png')
+console.log(result.data)  // ArrayBuffer
+
+// Display as image
+const blob = new Blob([result.data])
+img.src = URL.createObjectURL(blob)
+```
+
+### Uploading Binary Data
+
+```js
+const file = input.files[0]
+const arrayBuffer = await file.arrayBuffer()
+
+// Binary data is uploaded automatically
+await ape.files.upload({
+  name: file.name,
+  data: arrayBuffer  // Sent via HTTP PUT
+})
+```
+
+Binary transfers use `/api/ape/data/:hash` endpoints with session verification.
+

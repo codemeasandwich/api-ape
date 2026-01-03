@@ -11,6 +11,7 @@ server/
 │   ├── main.js       # Express integration & setup
 │   ├── loader.js     # Auto-loads controller files from folder
 │   ├── broadcast.js  # Client tracking & broadcast utilities
+│   ├── fileTransfer.js # Binary file transfer manager
 │   └── wiring.js     # WebSocket handler setup
 ├── socket/
 │   ├── receive.js    # Incoming message handler
@@ -52,6 +53,19 @@ app.listen(3000)
 |--------|------|-------------|
 | `where` | `string` | Directory containing controller files |
 | `onConnent` | `function` | Connection lifecycle hook |
+| `fileTransferOptions` | `object` | Binary transfer settings (see below) |
+
+### File Transfer Options
+
+```js
+ape(app, {
+  where: 'api',
+  fileTransferOptions: {
+    startTimeout: 60000,    // Time to wait for transfer start (ms)
+    completeTimeout: 60000  // Time after start before cleanup (ms)
+  }
+})
+```
 
 ### Controller Context (`this`)
 
@@ -91,3 +105,33 @@ api/
 │   ├── list.js   → ape.users.list(data)
 │   └── create.js → ape.users.create(data)
 ```
+
+## File Transfers
+
+Controllers can return `Buffer` data directly. The framework handles conversion:
+
+```js
+// api/files/download.js
+const fs = require('fs')
+
+module.exports = function(filename) {
+  return {
+    name: filename,
+    data: fs.readFileSync(`./uploads/${filename}`)
+  }
+}
+```
+
+For uploads, the controller receives `Buffer` data:
+
+```js
+// api/files/upload.js
+module.exports = function({ name, data }) {
+  // data is a Buffer
+  fs.writeFileSync(`./uploads/${name}`, data)
+  return { success: true }
+}
+```
+
+Binary data is transferred via `/api/ape/data/:hash` with session verification and HTTPS enforcement (localhost exempt).
+

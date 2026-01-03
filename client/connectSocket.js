@@ -101,14 +101,148 @@ function connectSocket() {
       aWaitingSend = []
     } // END onopen
 
-    __socket.onmessage = function (event) {
+    /**
+     * Find all L-tagged (binary link) properties in data
+     * Returns array of { path, hash }
+     */
+    function findLinkedResources(obj, path = '') {
+      const resources = []
+
+      if (obj === null || obj === undefined || typeof obj !== 'object') {
+        return resources
+      }
+
+      if (Array.isArray(obj)) {
+        for (let i = 0; i < obj.length; i++) {
+          resources.push(...findLinkedResources(obj[i], path ? `${path}.${i}` : String(i)))
+        }
+        return resources
+      }
+
+      for (const key of Object.keys(obj)) {
+        // Check for L-tag in key (from JJS encoding: key<!L>)
+        if (key.endsWith('<!L>')) {
+          const cleanKey = key.slice(0, -4)
+          const hash = obj[key]
+          resources.push({
+            path: path ? `${path}.${cleanKey}` : cleanKey,
+            hash,
+            originalKey: key
+          })
+        } else {
+          resources.push(...findLinkedResources(obj[key], path ? `${path}.${key}` : key))
+        }
+      }
+
+      return resources
+    }
+
+    /**
+     * Set a value at a nested path in an object
+     */
+    function setValueAtPath(obj, path, value) {
+      const parts = path.split('.')
+      let current = obj
+
+      for (let i = 0; i < parts.length - 1; i++) {
+        current = current[parts[i]]
+      }
+
+      current[parts[parts.length - 1]] = value
+    }
+
+    /**
+     * Clean up L-tagged keys (rename key<!L> to key)
+     */
+    function cleanLinkedKeys(obj) {
+      if (obj === null || obj === undefined || typeof obj !== 'object') {
+        return obj
+      }
+
+      if (Array.isArray(obj)) {
+        return obj.map(cleanLinkedKeys)
+      }
+
+      const cleaned = {}
+      for (const key of Object.keys(obj)) {
+        if (key.endsWith('<!L>')) {
+          const cleanKey = key.slice(0, -4)
+          cleaned[cleanKey] = obj[key] // Value will be replaced after fetch
+        } else {
+          cleaned[key] = cleanLinkedKeys(obj[key])
+        }
+      }
+      return cleaned
+    }
+
+    /**
+     * Fetch binary resources and hydrate data object
+     */
+    async function fetchLinkedResources(data, hostId) {
+      const resources = findLinkedResources(data)
+
+      if (resources.length === 0) {
+        return data
+      }
+
+      console.log(`🦍 Fetching ${resources.length} binary resource(s)`)
+
+      // Clean the data first (remove <!L> suffixes from keys)
+      const cleanedData = cleanLinkedKeys(data)
+
+      // Build base URL for fetches
+      const hostname = configuredHost || window.location.hostname
+      const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
+      const isHttps = window.location.protocol === "https:"
+      const defaultPort = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
+      const port = configuredPort || defaultPort
+      const protocol = isHttps ? "https" : "http"
+      const portSuffix = (isLocal || (port !== 80 && port !== 443)) ? `:${port}` : ""
+      const baseUrl = `${protocol}://${hostname}${portSuffix}`
+
+      // Fetch all resources in parallel
+      await Promise.all(resources.map(async ({ path, hash }) => {
+        try {
+          const response = await fetch(`${baseUrl}/api/ape/data/${hash}`, {
+            credentials: 'include',
+            headers: {
+              'X-Ape-Host-Id': hostId || ''
+            }
+          })
+
+          if (!response.ok) {
+            throw new Error(`Failed to fetch binary resource: ${response.status}`)
+          }
+
+          const arrayBuffer = await response.arrayBuffer()
+          setValueAtPath(cleanedData, path, arrayBuffer)
+        } catch (err) {
+          console.error(`🦍 Failed to fetch binary resource at ${path}:`, err)
+          setValueAtPath(cleanedData, path, null)
+        }
+      }))
+
+      return cleanedData
+    }
+
+    __socket.onmessage = async function (event) {
       //console.log('WebSocket message:', event);
       const { err, type, queryId, data } = jss.parse(event.data)
 
       // Messages with queryId must fulfill matching promise
       if (queryId) {
         if (waitingOn[queryId]) {
-          waitingOn[queryId](err, data)
+          // Check for linked resources and fetch them before resolving
+          if (data && !err) {
+            try {
+              const hydratedData = await fetchLinkedResources(data)
+              waitingOn[queryId](err, hydratedData)
+            } catch (fetchErr) {
+              waitingOn[queryId](fetchErr, null)
+            }
+          } else {
+            waitingOn[queryId](err, data)
+          }
           delete waitingOn[queryId]
         } else {
           // No matching promise - error and ignore
@@ -118,10 +252,20 @@ function connectSocket() {
       }
 
       // Only messages WITHOUT queryId go to setOnReciver
+      // Also hydrate broadcast messages
+      let processedData = data
+      if (data && !err) {
+        try {
+          processedData = await fetchLinkedResources(data)
+        } catch (fetchErr) {
+          console.error(`🦍 Failed to hydrate broadcast data:`, fetchErr)
+        }
+      }
+
       if (ofTypesOb[type]) {
-        ofTypesOb[type].forEach(worker => worker({ err, type, data }))
+        ofTypesOb[type].forEach(worker => worker({ err, type, data: processedData }))
       } // if ofTypesOb[type]
-      reciverOnAr.forEach(worker => worker({ err, type, data }))
+      reciverOnAr.forEach(worker => worker({ err, type, data: processedData }))
 
     } // END onmessage
 
@@ -137,6 +281,133 @@ function connectSocket() {
     } // END onclose
 
   } // END if ! __socket
+
+  /**
+   * Check if value is binary data (ArrayBuffer, typed array, or Blob)
+   */
+  function isBinaryData(value) {
+    if (value === null || value === undefined) return false
+    return value instanceof ArrayBuffer ||
+      ArrayBuffer.isView(value) ||
+      (typeof Blob !== 'undefined' && value instanceof Blob)
+  }
+
+  /**
+   * Get binary type tag (A for ArrayBuffer, B for Blob)
+   */
+  function getBinaryTag(value) {
+    if (typeof Blob !== 'undefined' && value instanceof Blob) return 'B'
+    return 'A'
+  }
+
+  /**
+   * Generate a simple hash for binary upload
+   */
+  function generateUploadHash(path) {
+    let hash = 0
+    for (let i = 0; i < path.length; i++) {
+      const char = path.charCodeAt(i)
+      hash = ((hash << 5) - hash) + char
+      hash = hash & hash
+    }
+    return Math.abs(hash).toString(36)
+  }
+
+  /**
+   * Find and extract binary data from payload
+   * Returns { processedData, uploads: [{ path, hash, data, tag }] }
+   */
+  function processBinaryForUpload(data, path = '') {
+    if (data === null || data === undefined) {
+      return { processedData: data, uploads: [] }
+    }
+
+    if (isBinaryData(data)) {
+      const tag = getBinaryTag(data)
+      const hash = generateUploadHash(path || 'root')
+      return {
+        processedData: { [`__ape_upload__`]: hash },
+        uploads: [{ path, hash, data, tag }]
+      }
+    }
+
+    if (Array.isArray(data)) {
+      const processedArray = []
+      const allUploads = []
+
+      for (let i = 0; i < data.length; i++) {
+        const itemPath = path ? `${path}.${i}` : String(i)
+        const { processedData, uploads } = processBinaryForUpload(data[i], itemPath)
+        processedArray.push(processedData)
+        allUploads.push(...uploads)
+      }
+
+      return { processedData: processedArray, uploads: allUploads }
+    }
+
+    if (typeof data === 'object') {
+      const processedObj = {}
+      const allUploads = []
+
+      for (const key of Object.keys(data)) {
+        const itemPath = path ? `${path}.${key}` : key
+        const { processedData, uploads } = processBinaryForUpload(data[key], itemPath)
+
+        // If this was binary data, mark the key with <!B> or <!A> tag
+        if (uploads.length > 0 && processedData?.__ape_upload__) {
+          const tag = uploads[uploads.length - 1].tag
+          processedObj[`${key}<!${tag}>`] = processedData.__ape_upload__
+        } else {
+          processedObj[key] = processedData
+        }
+        allUploads.push(...uploads)
+      }
+
+      return { processedData: processedObj, uploads: allUploads }
+    }
+
+    return { processedData: data, uploads: [] }
+  }
+
+  /**
+   * Upload binary data via HTTP PUT
+   */
+  async function uploadBinaryData(queryId, uploads) {
+    if (uploads.length === 0) return
+
+    // Build base URL
+    const hostname = configuredHost || window.location.hostname
+    const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
+    const isHttps = window.location.protocol === "https:"
+    const defaultPort = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
+    const port = configuredPort || defaultPort
+    const protocol = isHttps ? "https" : "http"
+    const portSuffix = (isLocal || (port !== 80 && port !== 443)) ? `:${port}` : ""
+    const baseUrl = `${protocol}://${hostname}${portSuffix}`
+
+    console.log(`🦍 Uploading ${uploads.length} binary file(s)`)
+
+    await Promise.all(uploads.map(async ({ hash, data }) => {
+      try {
+        const response = await fetch(`${baseUrl}/api/ape/data/${queryId}/${hash}`, {
+          method: 'PUT',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/octet-stream'
+          },
+          body: data
+        })
+
+        if (!response.ok) {
+          throw new Error(`Upload failed: ${response.status}`)
+        }
+      } catch (err) {
+        console.error(`🦍 Failed to upload binary at ${hash}:`, err)
+        throw err
+      }
+    }))
+  }
+
   wsSend = function (type, data, createdAt, dirctCall) {
     let rej, promiseIsLive = false;
     const timeLetForReqToBeMade = (createdAt + totalRequestTimeout) - Date.now()
@@ -146,9 +417,13 @@ function connectSocket() {
         rej(new Error("Request Timedout for :" + type))
       }
     }, timeLetForReqToBeMade);
+
+    // Process binary data for upload
+    const { processedData, uploads } = processBinaryForUpload(data)
+
     const payload = {
       type,
-      data,
+      data: processedData,
       //referer:window.location.href,
       createdAt: new Date(createdAt),
       requestedAt: dirctCall ? undefined
@@ -169,6 +444,14 @@ function connectSocket() {
         }
       }
       __socket.send(message);
+
+      // Upload binary data after sending WS message
+      if (uploads.length > 0) {
+        uploadBinaryData(queryId, uploads).catch(err => {
+          console.error('🦍 Binary upload failed:', err)
+          // The server will timeout waiting for the upload
+        })
+      }
     });
     const next = replyPromise.then;
     replyPromise.then = worker => {
