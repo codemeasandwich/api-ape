@@ -8,6 +8,8 @@ Complete working examples demonstrating api-ape usage.
 |---------|-------------|------------|
 | [ExpressJs/](./ExpressJs/) | Basic real-time chat | Minimal setup |
 | [NextJs/](./NextJs/) | Full-featured chat app | Production-ready |
+| [Bun/](./Bun/) | Bun + Vue (CDN) | Minimal setup |
+| [Vite/](./Vite/) | Vite + Vue + TypeScript | Modern tooling |
 
 ---
 
@@ -64,3 +66,52 @@ docker-compose up --build
 - `ape/client.js` — React client wrapper
 - `ape/onConnect.js` — Connection lifecycle hooks
 - `pages/index.tsx` — Chat UI with React hooks
+
+---
+
+## Bun — Vue CDN Example
+
+A lightweight Bun server with Vue 3 via CDN — no build step required.
+
+**Features:**
+- Bun runtime (TypeScript native)
+- Vue 3 Composition API
+- Single HTML file frontend
+
+**Quick Start:**
+```bash
+cd Bun
+bun install
+bun run server.ts
+```
+
+**Key Files:**
+- `server.ts` — Bun HTTP server with api-ape
+- `index.html` — Vue 3 app via CDN
+- `api/message.js` — Message handler
+
+---
+
+## Vite — Vue + TypeScript Example
+
+A modern Vite + Vue 3 frontend with Bun backend.
+
+**Features:**
+- Vue 3 with TypeScript
+- Vite dev server with HMR
+- Component-based architecture
+- Production build support
+
+**Quick Start:**
+```bash
+cd Vite
+npm install
+npm run dev        # Backend on :3000
+npm run dev:vue    # Frontend on :5173
+```
+
+**Key Files:**
+- `server.ts` — Bun backend server
+- `src/App.vue` — Main Vue component
+- `vite.config.ts` — Vite config with API proxy
+

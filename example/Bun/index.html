@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Chat - api-ape</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+  <div id="app">
+    <div class="chat-container">
+      <div class="header">
+        <span class="title">💬 Chat</span>
+        <span class="online-count">🟢 {{ users }} online</span>
+        <span class="user-badge">● {{ user }}</span>
+      </div>
+      <div class="messages">
+        <div v-if="messages.length === 0" class="empty-state">No messages yet...</div>
+        <div v-for="(m, i) in messages" :key="i" :class="['message', m.user === user ? 'mine' : '']">
+          <span class="username">{{ m.user }}</span>
+          <span class="text">{{ m.text }}</span>
+        </div>
+      </div>
+      <div class="input-area">
+        <input class="message-input" placeholder="Type a message..." v-model="input" @keydown.enter="send" autofocus>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/vue@3"></script>
+  <script src="/api/ape.js"></script>
+  <script>
+    const { createApp, ref, onMounted } = Vue
+
+    createApp({
+      setup() {
+        const user = ref('User' + Math.random().toString(36).slice(2, 6))
+        const users = ref(0)
+        const messages = ref([])
+        const input = ref('')
+
+        onMounted(() => {
+          // Receive init with history + user count on connect
+          ape.on('init', ({ data }) => {
+            messages.value = data.history || []
+            users.value = data.users || 0
+          })
+
+          // Listen for user count updates
+          ape.on('users', ({ data }) => {
+            users.value = data.count
+          })
+
+          // Listen for new messages from others
+          ape.on('message', ({ data }) => {
+            messages.value.push(data)
+          })
+        })
+
+        function send() {
+          if (!input.value) return
+          const msg = { user: user.value, text: input.value }
+          ape.message(msg).then(() => {
+            messages.value.push(msg)
+          })
+          input.value = ''
+        }
+
+        return { user, users, messages, input, send }
+      }
+    }).mount('#app')
+  </script>
+</body>
+
+</html>

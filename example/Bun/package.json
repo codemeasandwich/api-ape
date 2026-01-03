@@ -1,0 +1,9 @@
+{
+    "name": "bun-chat-example",
+    "scripts": {
+        "start": "bun run server.ts"
+    },
+    "dependencies": {
+        "api-ape": "file:../.."
+    }
+}
