@@ -258,4 +258,4 @@ api-ape/
 
 ## License
 
-ISC © [Brian Shannon](https://github.com/codemeasandwich)
+MIT © [Brian Shannon](https://github.com/codemeasandwich)
