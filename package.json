@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Remote procedure events",
   "main": "index.js",
+  "types": "index.d.ts",
   "scripts": {
     "test": "jest --no-cache ",
     "test:go": "npm test -- --watch --coverage",
