@@ -157,8 +157,6 @@ export interface ApeClient {
     setOnReciver: SetOnReceiver
     /** Subscribe to connection state changes. Returns unsubscribe function. */
     onConnectionChange: (handler: (state: ConnectionState) => void) => () => void
-    /** Get current connection state synchronously */
-    getConnectionState: () => ConnectionState
 }
 
 /**

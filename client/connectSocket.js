@@ -562,8 +562,7 @@ function connectSocket() {
         const idx = connectionChangeListeners.indexOf(handler)
         if (idx > -1) connectionChangeListeners.splice(idx, 1)
       }
-    },
-    getConnectionState: () => connectionState
+    }
   } // END return
 } // END connectSocket
 
