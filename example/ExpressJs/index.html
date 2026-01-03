@@ -20,9 +20,16 @@
 
         this.onStoreChange = attachStore(() => this.messages)
 
-        // Load history
-        ape.history().then(msgs => {
-          this.messages = msgs
+        // Receive init with history + user count on connect
+        ape.on('init', ({ data }) => {
+          this.messages = data.history || []
+          this.users = data.users || 0
+          this.onStoreChange()
+        })
+
+        // Listen for user count updates
+        ape.on('users', ({ data }) => {
+          this.users = data.count
           this.onStoreChange()
         })
 
@@ -49,6 +56,7 @@
           <div class="chat-container">
             <div class="header">
               <span class="title">💬 Chat</span>
+              <span class="online-count">🟢 ${this.users || 0} online</span>
               <span class="user-badge">● ${this.user}</span>
             </div>
             <div class="messages">

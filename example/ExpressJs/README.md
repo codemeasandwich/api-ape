@@ -15,10 +15,9 @@ Open http://localhost:3000 in multiple browser windows.
 
 ```
 ExpressJs/
-├── backend.js        # Express server with api-ape
+├── backend.js        # Express server with api-ape + onConnect hook
 ├── api/
-│   ├── message.js    # Broadcast to other clients
-│   └── history.js    # Get message history
+│   └── message.js    # Broadcast to other clients
 ├── index.html        # Chat UI
 └── styles.css        # Styling
 ```
@@ -34,11 +33,24 @@ npm i api-ape
 ```js
 const express = require('express')
 const ape = require('api-ape')
+const { online, broadcast } = require('api-ape/server/lib/broadcast')
 
 const app = express()
-ape(app, { where: 'api' })  // Load controllers from ./api
 
-app.get('/', (req, res) => res.sendFile('index.html'))
+ape(app, {
+  where: 'api',
+  onConnent: (socket, req, send) => {
+    // Push history + user count on connect
+    const { _messages } = require('./api/message')
+    send('init', { history: _messages, users: online() })
+    broadcast('users', { count: online() })
+
+    return {
+      onDisconnent: () => broadcast('users', { count: online() })
+    }
+  }
+})
+
 app.listen(3000)
 ```
 
@@ -56,11 +68,20 @@ module.exports = function (data) {
 ```html
 <script src="/api/ape.js"></script>
 <script>
+  // Receive init on connect (pushed by server)
+  ape.on('init', ({ data }) => {
+    console.log('History:', data.history)
+    console.log('Users online:', data.users)
+  })
+  
+  // Listen for user count updates
+  ape.on('users', ({ data }) => console.log('Online:', data.count))
+  
+  // Listen for messages
+  ape.on('message', ({ data }) => console.log(data))
+  
   // Send message
   ape.message({ text: 'Hello!' })
-  
-  // Receive broadcasts
-  ape.on('message', ({ data }) => console.log(data))
 </script>
 ```
 
@@ -69,6 +90,8 @@ module.exports = function (data) {
 | Concept | Example |
 |---------|---------|
 | Auto-wiring | `ape(app, { where: 'api' })` loads `api/*.js` |
-| Server call | `ape.message(data)` → calls `api/message.js` |
-| Broadcast | `this.broadcastOthers('message', data)` |
-| Listen | `ape.on('message', handler)` |
+| onConnect hook | `onConnent: (socket, req, send) => { ... }` |
+| Push on connect | `send('init', { history, users })` |
+| Broadcast all | `broadcast('users', { count })` |
+| Broadcast others | `this.broadcastOthers('message', data)` |
+| Listen | `ape.on('init', handler)` |

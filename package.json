@@ -1,6 +1,6 @@
 {
   "name": "api-ape",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Remote procedure events",
   "main": "index.js",
   "scripts": {
