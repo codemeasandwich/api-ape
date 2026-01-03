@@ -124,6 +124,8 @@ const users = await ape.users.list()
 const user = await ape.users.create({ name: 'Alice' })
 
 // Nested paths work too
+// ape.admin.users -> api/admin/users.js
+// ape.admin.users.delete -> api/admin/users/delete.js
 await ape.admin.users.delete(userId)
 ```
 

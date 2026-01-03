@@ -6,9 +6,10 @@
 }
 
 .main {
-  max-width: 600px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
+  width: 100%;
 }
 
 .title {
@@ -191,4 +192,257 @@
   background: rgba(0, 0, 0, 0.3);
   padding: 0.2rem 0.5rem;
   border-radius: 4px;
+}
+
+.gridContainer {
+  max-width: 1200px;
+  margin: 1.5rem auto 0;
+  padding: 0 1rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.gridLayout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .gridLayout {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  .gridContainer {
+    padding: 0 0.5rem;
+  }
+  
+  .main {
+    padding: 1rem;
+  }
+}
+
+/* Info component styles */
+.sectionHeading {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.sectionHeadingLarge {
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.dataFlowGrid {
+  display: grid;
+  grid-template-columns: 200px 1fr 200px;
+  grid-template-rows: auto auto auto auto auto;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.columnHeaderClient {
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-align: center;
+  grid-row: 1;
+  grid-column: 1;
+  color: #00d2ff;
+}
+
+.columnHeaderServer {
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-align: center;
+  grid-row: 1;
+  grid-column: 3;
+  color: #00e676;
+}
+
+.gridCell {
+  grid-row: 1;
+  grid-column: 2;
+}
+
+.clientBoxSpan3 {
+  background: linear-gradient(135deg, #3a7bd5, #00d2ff);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: bold;
+  box-shadow: 0 4px 12px rgba(58, 123, 213, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  grid-column: 1;
+  grid-row: 2 / 5;
+}
+
+.clientBoxSingle {
+  background: linear-gradient(135deg, #3a7bd5, #00d2ff);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: bold;
+  box-shadow: 0 4px 12px rgba(58, 123, 213, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  grid-column: 1;
+  grid-row: 5;
+}
+
+.serverBoxSpan2 {
+  background: linear-gradient(135deg, #00c851, #00e676);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: bold;
+  box-shadow: 0 4px 12px rgba(0, 200, 81, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  grid-column: 3;
+  grid-row: 2 / 4;
+}
+
+.serverBoxSpan3 {
+  background: linear-gradient(135deg, #00c851, #00e676);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: bold;
+  box-shadow: 0 4px 12px rgba(0, 200, 81, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  grid-column: 3;
+  grid-row: 4 / 6;
+}
+
+.arrowContainerRow2 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.arrowContainerRow3 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.arrowContainerRow4 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  grid-column: 2;
+  grid-row: 4;
+}
+
+.arrowContainerRow5 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  grid-column: 2;
+  grid-row: 5;
+}
+
+.arrowLineSend {
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(90deg, #00d2ff, #00e676);
+}
+
+.arrowLineReturn {
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(90deg, #00e676, transparent);
+}
+
+.arrowLineBroadcast {
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #00e676);
+}
+
+.arrowLineBroadcastReturn {
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(90deg, #00d2ff, transparent);
+}
+
+.arrowLabelBlue {
+  font-size: 0.7rem;
+  white-space: nowrap;
+  padding: 0 0.5rem;
+  color: #00d2ff;
+}
+
+.arrowLabelGreen {
+  font-size: 0.7rem;
+  white-space: nowrap;
+  padding: 0 0.5rem;
+  color: #00e676;
+}
+
+.arrowHeadRight {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 8px solid #00e676;
+}
+
+.arrowHeadLeft {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-right: 8px solid #00e676;
+}
+
+.arrowHeadLeftBlue {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-right: 8px solid #00d2ff;
+}
+
+.emptyGridCell {
+  grid-row: 2;
+  grid-column: 3;
+}
+
+.emptyGridCellRow3 {
+  grid-row: 3;
+  grid-column: 1;
+}
+
+.emptyGridCellRow4 {
+  grid-row: 4;
+  grid-column: 1;
+}
+
+.emptyGridCellRow5 {
+  grid-row: 5;
+  grid-column: 3;
 }
