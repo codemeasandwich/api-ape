@@ -247,7 +247,7 @@ api-ape/
 │   └── security/
 │       └── reply.js     # Duplicate request protection
 ├── utils/
-│   ├── jjs.js           # JSON SuperSet encoder/decoder
+│   ├── jss.js           # JSON SuperSet encoder/decoder
 │   └── messageHash.js   # Request deduplication
 └── example/
     ├── ExpressJs/       # Chat app example

@@ -1,6 +1,6 @@
 const messageHash = require('../../utils/messageHash')
 const { broadcast, online, getClients } = require('../lib/broadcast')
-const jjs = require('../../utils/jjs')
+const jss = require('../../utils/jss')
 
 module.exports = function receiveHandler(ape) {
     const { send, checkReply, events, controllers, sharedValues, hostId, embedValues } = ape
@@ -23,7 +23,7 @@ module.exports = function receiveHandler(ape) {
         const msgString = typeof msg === 'string' ? msg : msg.toString('utf8');
         const queryId = messageHash(msgString);
         try {
-            const { type: rawType, data, referer, createdAt, requestedAt } = jjs.parse(msgString);
+            const { type: rawType, data, referer, createdAt, requestedAt } = jss.parse(msgString);
 
             // Normalize type: strip leading slash, lowercase
             const type = rawType.replace(/^\//, '').toLowerCase()

@@ -144,8 +144,9 @@ function decode(data) {
         R: (s) => new RegExp(s),
         D: (n) => new Date(n),
         P: function (sourceToPointAt, replaceAtThisPlace) {
-            pointers2Res.push([sourceToPointAt, replaceAtThisPlace + '']);
-            return sourceToPointAt;
+            // Both paths are now arrays
+            pointers2Res.push([sourceToPointAt, replaceAtThisPlace]);
+            return null;  // Placeholder, will be replaced by changeAttributeReference
         },
         E: ([name, message, stack]) => {
             let err;
@@ -164,93 +165,103 @@ function decode(data) {
         S: (a) => new Set(a),
         M: (o) => new Map(Object.entries(o))
     };
-    // TODO: remove visited, as this is handled by pointers2Res
     const visited = new Map();
 
     function decodeValue(name, tag, val) {
+        // this is now an array path
+        const currentPath = Array.isArray(this) ? this : [];
+
         if (tag in tagLookup) {
-            return tagLookup[tag](val, this);
+            return tagLookup[tag](val, currentPath);
         } else if (Array.isArray(val)) {
             if (tag && tag.startsWith('[')) {
                 const typeTags = tag.slice(1, -1).split(',');
-                const result = [];
-                // this already contains the path to this array (e.g., 'items')
-                const arrayPath = String(this);
+                const res = [];
                 for (let i = 0; i < val.length; i++) {
-                    // Pass array index as path context for P tag resolution
-                    const itemPath = `${arrayPath}/${i}`;
+                    // Pass path with array index appended
+                    const itemPath = [...currentPath, i];
                     const decodedValue = decodeValue.call(
                         itemPath,
                         i.toString(),
                         typeTags[i],
                         val[i]
                     );
-                    result.push(decodedValue);
+                    res.push(decodedValue);
                 }
-                return result;
+                return res;
             } else {
-                const result = [];
+                const res = [];
                 for (let i = 0; i < val.length; i++) {
-                    const decodedValue = decodeValue.call(`${this}${this ? '/' : ''}${name}`, '', '', val[i]);
-                    result.push(decodedValue);
+                    const decodedValue = decodeValue.call([...currentPath, i], '', '', val[i]);
+                    res.push(decodedValue);
                 }
-                return result;
+                return res;
             }
         } else if ('object' === typeof val && val !== null) {
             if (visited.has(val)) {
                 return visited.get(val);
             }
             visited.set(val, {});
-            const result = {};
+            const res = {};
             for (const key in val) {
-                const [nam, tag] = parseKeyWithTags(key);
+                const [nam, t] = parseKeyWithTags(key);
                 const decodedValue = decodeValue.call(
-                    `${name}${name ? '/' : ''}${nam}`,
+                    [...currentPath, nam],
                     nam,
-                    tag,
+                    t,
                     val[key]
                 );
-                result[nam] = decodedValue;
+                res[nam] = decodedValue;
             }
-            visited.set(val, result);
-            return result;
+            visited.set(val, res);
+            return res;
         } else {
             return val;
         }
     } // END decodeValue
 
     function parseKeyWithTags(key) {
-        const match = key.match(/(.+)(<!(.+)>)/);
+        const match = key.match(/(.+)(<!(.)>)/);
         if (match) {
             return [match[1], match[3]];
-        } else {
-            return [key, undefined];
         }
+        // Try multi-character tags like array types [,D,]
+        const multiMatch = key.match(/(.+)(<!!(.+)>)/);
+        if (multiMatch) {
+            return [multiMatch[1], multiMatch[3]];
+        }
+        // Also handle array type tags that start with [
+        const arrayMatch = key.match(/(.+)(<!\[(.*)>)/);
+        if (arrayMatch) {
+            return [arrayMatch[1], '[' + arrayMatch[3]];
+        }
+        return [key, undefined];
     } // END parseKeyWithTags
 
     for (const key in data) {
         const [name, tag] = parseKeyWithTags(key);
-
-        result[name] = decodeValue.call(name, name, tag, data[key]);
+        // Start with path containing just the key name
+        result[name] = decodeValue.call([name], name, tag, data[key]);
     }
     pointers2Res.forEach(changeAttributeReference.bind(null, result));
     return result;
 } // END decode
 
 function changeAttributeReference(obj, [refPath, attrPath]) {
-    const refKeys = refPath ? refPath.split('/') : [];
-    const attrKeys = attrPath.split('/');
+    // refPath and attrPath are now arrays, no splitting needed
+    const refKeys = refPath || [];
+    const attrKeys = attrPath || [];
 
-    // Get the reference target
+    // Get the reference target by traversing refPath
     let ref = obj;
     for (let i = 0; i < refKeys.length; i++) {
-        if (refKeys[i]) ref = ref[refKeys[i]];
+        ref = ref[refKeys[i]];
     }
 
     // Get the parent of the attribute to set
     let attr = obj;
     for (let i = 0; i < attrKeys.length - 1; i++) {
-        if (attrKeys[i]) attr = attr[attrKeys[i]];
+        attr = attr[attrKeys[i]];
     }
 
     // Set the attribute to point to the reference

@@ -1,4 +1,4 @@
-const jjs = require('../../utils/jjs')
+const jss = require('../../utils/jss')
 
 function checkSocketState(socket) {
   if (socket.readyState !== socket.OPEN) {
@@ -44,10 +44,10 @@ module.exports = function sendHandler({ socket, events, hostId }) {
       return;
     }
     if (err) {
-      socket.send(jjs.stringify({ err: err.message || err, type, queryId }))
+      socket.send(jss.stringify({ err: err.message || err, type, queryId }))
       if (typeof onFinish === 'function') onFinish(err, true)
     } else {
-      socket.send(jjs.stringify({ data, type, queryId }))
+      socket.send(jss.stringify({ data, type, queryId }))
       if (typeof onFinish === 'function') onFinish(false, data)
     }
 

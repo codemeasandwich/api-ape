@@ -1,17 +1,17 @@
-const jjs = require('./jjs')
+const jss = require('./jss')
 
 describe('JJS - JSON SuperSet', () => {
 
     describe('Primitives', () => {
         test('handles strings', () => {
             const input = { str: 'hello world' }
-            const result = jjs.parse(jjs.stringify(input))
+            const result = jss.parse(jss.stringify(input))
             expect(result.str).toBe('hello world')
         })
 
         test('handles numbers', () => {
             const input = { int: 42, float: 3.14, neg: -100 }
-            const result = jjs.parse(jjs.stringify(input))
+            const result = jss.parse(jss.stringify(input))
             expect(result.int).toBe(42)
             expect(result.float).toBe(3.14)
             expect(result.neg).toBe(-100)
@@ -19,14 +19,14 @@ describe('JJS - JSON SuperSet', () => {
 
         test('handles booleans', () => {
             const input = { t: true, f: false }
-            const result = jjs.parse(jjs.stringify(input))
+            const result = jss.parse(jss.stringify(input))
             expect(result.t).toBe(true)
             expect(result.f).toBe(false)
         })
 
         test('handles null', () => {
             const input = { n: null }
-            const result = jjs.parse(jjs.stringify(input))
+            const result = jss.parse(jss.stringify(input))
             expect(result.n).toBe(null)
         })
     })
@@ -35,7 +35,7 @@ describe('JJS - JSON SuperSet', () => {
         test('preserves Date objects', () => {
             const date = new Date('2025-01-01T12:00:00Z')
             const input = { created: date }
-            const result = jjs.parse(jjs.stringify(input))
+            const result = jss.parse(jss.stringify(input))
             expect(result.created).toBeInstanceOf(Date)
             expect(result.created.getTime()).toBe(date.getTime())
         })
@@ -43,7 +43,7 @@ describe('JJS - JSON SuperSet', () => {
         test('encodes RegExp objects', () => {
             const regex = /hello/
             const input = { pattern: regex }
-            const result = jjs.parse(jjs.stringify(input))
+            const result = jss.parse(jss.stringify(input))
             // RegExp is encoded/decoded - verify it's a RegExp
             expect(result.pattern).toBeInstanceOf(RegExp)
         })
@@ -52,7 +52,7 @@ describe('JJS - JSON SuperSet', () => {
             const error = new Error('Something went wrong')
             error.name = 'CustomError'
             const input = { err: error }
-            const result = jjs.parse(jjs.stringify(input))
+            const result = jss.parse(jss.stringify(input))
             expect(result.err).toBeInstanceOf(Error)
             expect(result.err.message).toBe('Something went wrong')
             expect(result.err.name).toBe('CustomError')
@@ -60,7 +60,7 @@ describe('JJS - JSON SuperSet', () => {
 
         test('handles undefined in objects', () => {
             const input = { defined: 'yes', notDefined: undefined }
-            const result = jjs.parse(jjs.stringify(input))
+            const result = jss.parse(jss.stringify(input))
             // undefined properties should round-trip
             expect(result.notDefined).toBe(undefined)
         })
@@ -68,7 +68,7 @@ describe('JJS - JSON SuperSet', () => {
         test('preserves Set objects', () => {
             const set = new Set([1, 2, 3, 'a', 'b'])
             const input = { items: set }
-            const result = jjs.parse(jjs.stringify(input))
+            const result = jss.parse(jss.stringify(input))
             expect(result.items).toBeInstanceOf(Set)
             expect(result.items.has(1)).toBe(true)
             expect(result.items.has('a')).toBe(true)
@@ -78,7 +78,7 @@ describe('JJS - JSON SuperSet', () => {
         test('preserves Map objects', () => {
             const map = new Map([['key1', 'value1'], ['key2', 42]])
             const input = { data: map }
-            const result = jjs.parse(jjs.stringify(input))
+            const result = jss.parse(jss.stringify(input))
             expect(result.data).toBeInstanceOf(Map)
             expect(result.data.get('key1')).toBe('value1')
             expect(result.data.get('key2')).toBe(42)
@@ -95,21 +95,21 @@ describe('JJS - JSON SuperSet', () => {
                     }
                 }
             }
-            const result = jjs.parse(jjs.stringify(input))
+            const result = jss.parse(jss.stringify(input))
             expect(result.user.name).toBe('Alice')
             expect(result.user.profile.age).toBe(30)
         })
 
         test('handles arrays', () => {
             const input = { items: [1, 2, 3, 'four', 'five'] }
-            const result = jjs.parse(jjs.stringify(input))
+            const result = jss.parse(jss.stringify(input))
             expect(result.items).toEqual([1, 2, 3, 'four', 'five'])
         })
 
         test('handles arrays with Dates', () => {
             const date = new Date('2025-06-15')
             const input = { mixed: ['text', 42, date, null] }
-            const result = jjs.parse(jjs.stringify(input))
+            const result = jss.parse(jss.stringify(input))
             expect(result.mixed[0]).toBe('text')
             expect(result.mixed[1]).toBe(42)
             expect(result.mixed[2]).toBeInstanceOf(Date)
@@ -120,31 +120,31 @@ describe('JJS - JSON SuperSet', () => {
     describe('encode/decode', () => {
         test('encode returns tagged object for Date', () => {
             const input = { d: new Date('2025-01-01') }
-            const encoded = jjs.encode(input)
+            const encoded = jss.encode(input)
             expect(encoded['d<!D>']).toBeDefined()
         })
 
         test('decode restores Date from tagged object', () => {
             const encoded = { 'd<!D>': 1735689600000 }
-            const decoded = jjs.decode(encoded)
+            const decoded = jss.decode(encoded)
             expect(decoded.d).toBeInstanceOf(Date)
         })
 
         test('encode handles Error type', () => {
             const input = { e: new Error('test') }
-            const encoded = jjs.encode(input)
+            const encoded = jss.encode(input)
             expect(encoded['e<!E>']).toBeDefined()
         })
 
         test('encode handles Set type', () => {
             const input = { s: new Set([1, 2]) }
-            const encoded = jjs.encode(input)
+            const encoded = jss.encode(input)
             expect(encoded['s<!S>']).toBeDefined()
         })
 
         test('encode handles Map type', () => {
             const input = { m: new Map([['a', 1]]) }
-            const encoded = jjs.encode(input)
+            const encoded = jss.encode(input)
             expect(encoded['m<!M>']).toBeDefined()
         })
     })
@@ -157,8 +157,8 @@ describe('JJS - JSON SuperSet', () => {
             }
             original.foo = original
 
-            const encoded = jjs.encode(original)
-            const result = jjs.decode(encoded)
+            const encoded = jss.encode(original)
+            const result = jss.decode(encoded)
 
             expect(result.id).toBe(123)
             expect(result.name).toBe('Test')
@@ -177,8 +177,8 @@ describe('JJS - JSON SuperSet', () => {
             }
             original.cat.foo = original.bar.baz
 
-            const encoded = jjs.encode(original)
-            const result = jjs.decode(encoded)
+            const encoded = jss.encode(original)
+            const result = jss.decode(encoded)
 
             expect(result.cat.foo).toBe(result.bar.baz)
         })
@@ -188,7 +188,7 @@ describe('JJS - JSON SuperSet', () => {
             original.refA = original
             original.refB = original
 
-            const result = jjs.decode(jjs.encode(original))
+            const result = jss.decode(jss.encode(original))
 
             expect(result.refA).toBe(result)
             expect(result.refB).toBe(result)
@@ -203,7 +203,7 @@ describe('JJS - JSON SuperSet', () => {
                 second: shared
             }
 
-            const result = jjs.decode(jjs.encode(original))
+            const result = jss.decode(jss.encode(original))
 
             expect(result.first.value).toBe(42)
             expect(result.second.value).toBe(42)
@@ -216,7 +216,7 @@ describe('JJS - JSON SuperSet', () => {
                 items: [shared, shared, shared]
             }
 
-            const result = jjs.decode(jjs.encode(original))
+            const result = jss.decode(jss.encode(original))
 
             expect(result.items[0]).toBe(result.items[1])
             expect(result.items[1]).toBe(result.items[2])
@@ -233,7 +233,7 @@ describe('JJS - JSON SuperSet', () => {
                 otherRef: shared
             }
 
-            const result = jjs.decode(jjs.encode(original))
+            const result = jss.decode(jss.encode(original))
 
             expect(result.level1.level2.ref.data).toBe('test')
             expect(result.level1.level2.ref).toBe(result.otherRef)
@@ -249,7 +249,7 @@ describe('JJS - JSON SuperSet', () => {
                 tags: new Set(['a', 'b']),
                 meta: new Map([['x', 1]])
             }
-            const result = jjs.parse(jjs.stringify(original))
+            const result = jss.parse(jss.stringify(original))
 
             expect(result.id).toBe(original.id)
             expect(result.name).toBe(original.name)
