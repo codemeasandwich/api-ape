@@ -7,7 +7,7 @@ const { createEmbed } = require('./embed')
 const { onReceive } = require('./onReceive')
 const { onSend } = require('./onSend')
 const { onError } = require('./onError')
-const { broadcast, online } = require('api-ape/server/lib/broadcast')
+const ape = require('api-ape')
 
 // Get message history from the message controller
 function getHistory() {
@@ -28,11 +28,11 @@ function onConnect(socket, req, send) {
     // Send init message with history and user count after a tiny delay
     // (to ensure client is ready to receive)
     setTimeout(() => {
-        console.log(`📤 Sending init to ${clientID}, users: ${online()}`)
+        console.log(`📤 Sending init to ${clientID}, users: ${ape.online()}`)
         try {
             send('init', {
                 history: getHistory(),
-                users: online()
+                users: ape.online()
             })
             console.log(`✅ Init sent to ${clientID}`)
         } catch (e) {
@@ -40,7 +40,7 @@ function onConnect(socket, req, send) {
         }
 
         // Broadcast updated user count to all clients
-        broadcast('users', { count: online() })
+        ape.broadcast('users', { count: ape.online() })
     }, 100)
 
     return {
@@ -60,7 +60,7 @@ function onConnect(socket, req, send) {
             // Broadcast updated user count after disconnect
             // Use setTimeout to ensure client is removed first
             setTimeout(() => {
-                broadcast('users', { count: online() })
+                ape.broadcast('users', { count: ape.online() })
             }, 50)
         }
     }

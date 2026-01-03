@@ -1,7 +1,7 @@
 // Type definitions for api-ape
 // Project: https://github.com/codemeasandwich/api-ape
 
-import { Application } from 'express'
+import { Server as HttpServer } from 'http'
 import { WebSocket } from 'ws'
 import { IncomingMessage } from 'http'
 
@@ -94,9 +94,18 @@ export interface ApeServerOptions {
 }
 
 /**
- * Initialize api-ape on an Express app
+ * Initialize api-ape on a Node.js HTTP/HTTPS server
  */
-declare function ape(app: Application, options: ApeServerOptions): void
+declare function ape(server: HttpServer, options: ApeServerOptions): void
+
+declare namespace ape {
+    /** Broadcast to all connected clients */
+    export function broadcast(type: string, data: any, excludeHostId?: string): void
+    /** Get count of connected clients */
+    export function online(): number
+    /** Get all connected client hostIds */
+    export function getClients(): string[]
+}
 
 export default ape
 

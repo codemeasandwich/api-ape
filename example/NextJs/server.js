@@ -1,8 +1,8 @@
 /**
- * Custom Next.js server using actual api-ape library with Express
+ * Custom Next.js server using api-ape library without Express
  */
 
-const express = require('express')
+const { createServer } = require('http')
 const next = require('next')
 const ape = require('api-ape')
 const { onConnect } = require('./ape/onConnect')
@@ -15,16 +15,12 @@ const app = next({ dev, hostname, port })
 const handle = app.getRequestHandler()
 
 app.prepare().then(() => {
-    const server = express()
-
-    // Initialize api-ape - it handles EVERYTHING
-    // Developer never touches WebSocket!
-    ape(server, { where: 'api', onConnent: onConnect })
-
-    // Let Next.js handle all other routes
-    server.all('*', (req, res) => {
+    const server = createServer((req, res) => {
         return handle(req, res)
     })
+
+    // Initialize api-ape with the raw http server
+    ape(server, { where: 'api', onConnent: onConnect })
 
     server.listen(port, () => {
         console.log(`
@@ -33,7 +29,7 @@ app.prepare().then(() => {
 ╠═══════════════════════════════════════════════════════╣
 ║  HTTP:      http://localhost:${port}/                  ║
 ║  WebSocket: ws://localhost:${port}/api/ape             ║
-║  ape(app, { where: "api", onConnent })                ║
+║  ape(server, { where: "api", onConnent })             ║
 ╚═══════════════════════════════════════════════════════╝
     `)
     })

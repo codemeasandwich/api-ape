@@ -33,25 +33,23 @@ npm i api-ape
 ```js
 const express = require('express')
 const ape = require('api-ape')
-const { online, broadcast } = require('api-ape/server/lib/broadcast')
 
 const app = express()
+const server = app.listen(3000)
 
-ape(app, {
+ape(server, {
   where: 'api',
   onConnent: (socket, req, send) => {
     // Push history + user count on connect
     const { _messages } = require('./api/message')
-    send('init', { history: _messages, users: online() })
-    broadcast('users', { count: online() })
+    send('init', { history: _messages, users: ape.online() })
+    ape.broadcast('users', { count: ape.online() })
 
     return {
-      onDisconnent: () => broadcast('users', { count: online() })
+      onDisconnent: () => ape.broadcast('users', { count: ape.online() })
     }
   }
 })
-
-app.listen(3000)
 ```
 
 ### Controller (api/message.js)

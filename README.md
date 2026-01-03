@@ -24,18 +24,30 @@ yarn add api-ape
 
 ## Quick Start
 
-### Server (Express.js)
+### Server (Node.js)
 
+```js
+const { createServer } = require('http')
+const ape = require('api-ape')
+
+const server = createServer()
+
+// Wire up api-ape - loads controllers from ./api folder
+ape(server, { where: 'api' })
+
+server.listen(3000)
+```
+
+**With Express:**
 ```js
 const express = require('express')
 const ape = require('api-ape')
 
 const app = express()
+const server = app.listen(3000)  // Get the HTTP server
 
-// Wire up api-ape - loads controllers from ./api folder
-ape(app, { where: 'api' })
-
-app.listen(3000)
+// Pass the HTTP server (not the Express app)
+ape(server, { where: 'api' })
 ```
 
 ### Create a Controller
@@ -86,12 +98,13 @@ Include the bundled client and start calling:
 
 ### Server
 
-#### `ape(app, options)`
+#### `ape(server, options)`
 
-Initialize api-ape on an Express app.
+Initialize api-ape on a Node.js HTTP/HTTPS server.
 
 | Option | Type | Description |
 |--------|------|-------------|
+| `server` | `http.Server` | Node.js HTTP or HTTPS server instance |
 | `where` | `string` | Directory containing controller files (default: `'api'`) |
 | `onConnent` | `function` | Connection lifecycle hook (see [Connection Lifecycle](#connection-lifecycle)) |
 
@@ -146,7 +159,7 @@ ape.on('notification', ({ data, err, type }) => {
 ### Default Options
 
 ```js
-ape(app, {
+ape(server, {
   where: 'api',           // Controller directory
   onConnent: undefined    // Lifecycle hook (optional)
 })
@@ -157,7 +170,7 @@ ape(app, {
 Customize behavior per connection:
 
 ```js
-ape(app, {
+ape(server, {
   where: 'api',
   onConnent(socket, req, hostId) {
     return {
@@ -328,7 +341,7 @@ docker-compose up --build
 
 ### CORS Errors in Browser
 
-Ensure your Express server allows WebSocket connections from your origin. api-ape uses `express-ws` which handles CORS automatically, but verify your Express CORS middleware allows WebSocket upgrade requests.
+Ensure your server allows WebSocket connections from your origin. api-ape uses the `ws` library which handles WebSocket upgrades on the HTTP server level.
 
 ### Controller Not Found
 
@@ -460,7 +473,7 @@ api-ape/
 │   └── connectSocket.js # WebSocket client with auto-reconnect
 ├── server/
 │   ├── lib/
-│   │   ├── main.js      # Express integration
+│   │   ├── main.js      # HTTP server integration
 │   │   ├── loader.js    # Auto-loads controller files
 │   │   ├── broadcast.js # Client tracking & broadcast
 │   │   └── wiring.js    # WebSocket handler setup
