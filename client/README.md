@@ -99,3 +99,14 @@ await ape.files.upload({
 
 Binary transfers use `/api/ape/data/:hash` endpoints with session verification.
 
+## Security
+
+### CSRF Protection
+
+api-ape includes built-in **Cross-Site Request Forgery (CSRF)** protection:
+
+- **Origin Validation** — WebSocket connections validate Origin header against Host
+- **Automatic Rejection** — Mismatched origins are rejected immediately
+- **Session Verification** — Binary transfers verify session cookies
+
+No configuration needed — protection is enabled by default.

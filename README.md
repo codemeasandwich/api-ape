@@ -545,7 +545,18 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 **Reporting vulnerabilities:** Please report security issues via [GitHub Security Advisories](https://github.com/codemeasandwich/api-ape/security/advisories) or email the maintainer.
 
-**Security considerations:**
+### CSRF Protection
+
+api-ape includes built-in **Cross-Site Request Forgery (CSRF)** protection via Origin validation:
+
+- **Origin Header Check** — Every WebSocket connection validates the `Origin` header against the `Host` header
+- **Automatic Rejection** — Connections from mismatched origins are destroyed immediately
+- **No Configuration Needed** — Protection is enabled by default
+
+This prevents malicious sites from making requests to your api-ape server while impersonating logged-in users.
+
+### Security Considerations
+
 * Validate all input in controllers
 * Use authentication/authorization in `onConnent` hooks
 * Sanitize data before broadcasting

@@ -20,7 +20,7 @@
   "keywords": [
     "websocket",
     "realtime",
-    "rpc",
+    "CSRF",
     "api",
     "remote-procedure-call",
     "real-time",
@@ -34,7 +34,7 @@
     "jjs",
     "rpe",
     "nodejs",
-    "framework"
+    "library"
   ],
   "author": "brian shannon",
   "license": "MIT",
