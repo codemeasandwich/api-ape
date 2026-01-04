@@ -6,14 +6,18 @@ let connect;
 
 // Connection state enum
 const ConnectionState = {
+  Offline: 'offline',         // navigator.onLine = false
+  Walled: 'walled',           // Captive portal detected (ping failed)
   Disconnected: 'disconnected',
   Connecting: 'connecting',
   Connected: 'connected',
   Closing: 'closing'
 }
 
-// Connection state tracking
-let connectionState = ConnectionState.Disconnected
+// Connection state tracking - start with offline check
+let connectionState = (typeof navigator !== 'undefined' && !navigator.onLine)
+  ? ConnectionState.Offline
+  : ConnectionState.Disconnected
 const connectionChangeListeners = []
 
 function notifyConnectionChange(newState) {
@@ -32,8 +36,111 @@ let configuredTransport = 'auto' // 'auto' | 'websocket' | 'polling'
 let currentTransport = null // 'websocket' | 'polling'
 let streamingTransport = null
 let wsRetryTimer = null
+let networkCheckTimer = null
 const WS_FALLBACK_TIMEOUT = 4000 // Time to wait for WS before fallback
 const WS_RETRY_INTERVAL = 30000  // Retry WebSocket while in polling mode
+const PING_TIMEOUT = 3000        // Timeout for ping check
+const MAX_PING_CLOCK_SKEW = 60000 // Max allowed time difference (60s)
+
+/**
+ * Check if running in dev/local mode
+ */
+function isDevMode() {
+  if (typeof window === 'undefined') return false
+  const hostname = configuredHost || window.location.hostname
+  return ['localhost', '127.0.0.1', '[::1]'].includes(hostname)
+}
+
+/**
+ * Build ping URL for captive portal detection
+ */
+function getPingUrl() {
+  const hostname = configuredHost || window.location.hostname
+  const localServers = ['localhost', '127.0.0.1', '[::1]']
+  const isLocal = localServers.includes(hostname)
+  const isHttps = window.location.protocol === 'https:'
+  const defaultPort = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
+  const port = configuredPort || defaultPort
+  const protocol = isHttps ? 'https' : 'http'
+  const portSuffix = (isLocal || (port !== 80 && port !== 443)) ? `:${port}` : ''
+  return `${protocol}://${hostname}${portSuffix}/api/ape/ping`
+}
+
+/**
+ * Check for captive portal by pinging /api/ape/ping
+ * Returns 'ok' if real internet, 'walled' if captive portal detected
+ */
+async function checkCaptivePortal() {
+  try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT)
+
+    const response = await fetch(getPingUrl(), {
+      cache: 'no-store',
+      signal: controller.signal
+    })
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      if (isDevMode()) {
+        console.error('🦍 [DEV] Ping failed: HTTP', response.status)
+      }
+      return 'walled'
+    }
+
+    const data = await response.json()
+
+    // Verify response is genuine (not a captive portal redirect page)
+    if (data?.ok !== true) {
+      if (isDevMode()) {
+        console.error('🦍 [DEV] Ping failed: invalid response', data)
+      }
+      return 'walled'
+    }
+
+    // Validate timestamp to detect proxy replay attacks
+    if (typeof data.ts === 'number') {
+      const now = Date.now()
+      const skew = Math.abs(now - data.ts)
+      if (skew > MAX_PING_CLOCK_SKEW) {
+        if (isDevMode()) {
+          console.error('🦍 [DEV] Ping failed: timestamp too old/stale (skew:', skew, 'ms)')
+        }
+        return 'walled'
+      }
+    }
+
+    return 'ok'
+  } catch (err) {
+    if (isDevMode()) {
+      console.error('🦍 [DEV] Ping failed:', err.message || err)
+    }
+    return 'walled'
+  }
+}
+
+/**
+ * Setup navigator.onLine event listeners
+ */
+function setupOnlineListeners() {
+  if (typeof window === 'undefined') return
+
+  window.addEventListener('online', () => {
+    console.log('🦍 Browser went online, checking network...')
+    // Trigger reconnection attempt
+    attemptConnection()
+  })
+
+  window.addEventListener('offline', () => {
+    console.log('🦍 Browser went offline')
+    notifyConnectionChange(ConnectionState.Offline)
+  })
+}
+
+// Setup listeners on module load (browser only)
+if (typeof window !== 'undefined') {
+  setupOnlineListeners()
+}
 
 /**
  * Configure api-ape client connection
@@ -431,6 +538,55 @@ async function fetchLinkedResources(data, hostId) {
   return cleanedData
 }
 
+/**
+ * Attempt to establish connection with network pre-checks
+ */
+async function attemptConnection() {
+  // Check if browser is online
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    notifyConnectionChange(ConnectionState.Offline)
+    return
+  }
+
+  // Perform captive portal check
+  notifyConnectionChange(ConnectionState.Connecting)
+  const pingResult = await checkCaptivePortal()
+
+  if (pingResult === 'walled') {
+    notifyConnectionChange(ConnectionState.Walled)
+    // Retry network check periodically
+    scheduleNetworkRetry()
+    return
+  }
+
+  // Network is good, proceed with socket connection
+  proceedWithConnection()
+}
+
+/**
+ * Schedule a retry of network check (for walled/offline states)
+ */
+function scheduleNetworkRetry() {
+  if (networkCheckTimer) return
+  networkCheckTimer = setTimeout(() => {
+    networkCheckTimer = null
+    attemptConnection()
+  }, WS_RETRY_INTERVAL)
+}
+
+/**
+ * Proceed with WebSocket/polling connection after network checks pass
+ */
+function proceedWithConnection() {
+  // Determine which transport to use
+  if (configuredTransport === 'polling') {
+    switchToStreaming()
+  } else {
+    // 'auto' or 'websocket' - try WebSocket first
+    tryWebSocket(false)
+  }
+}
+
 function connectSocket() {
   // Skip if already connected or connecting
   if (__socket && __socket.readyState !== WebSocket.CLOSED) {
@@ -439,16 +595,12 @@ function connectSocket() {
   if (currentTransport === 'polling' && streamingTransport?.isConnected()) {
     return buildClientInterface()
   }
-
-  notifyConnectionChange(ConnectionState.Connecting)
-
-  // Determine which transport to use
-  if (configuredTransport === 'polling') {
-    switchToStreaming()
-  } else {
-    // 'auto' or 'websocket' - try WebSocket first
-    tryWebSocket(false)
+  if (connectionState === ConnectionState.Connecting) {
+    return buildClientInterface()
   }
+
+  // Start connection with network pre-checks
+  attemptConnection()
 
   return buildClientInterface()
 }

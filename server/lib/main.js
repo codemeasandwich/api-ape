@@ -81,6 +81,7 @@ function createApeCore({ where, onConnent, fileTransferOptions }) {
 
     const wsPath = `/${where}/ape`
     const pollPath = `/${where}/ape/poll`
+    const pingPath = `/${where}/ape/ping`
     const clientPath = `/${where}/ape.js`
     const downloadPattern = `/${where}/ape/data/:hash`
     const uploadPattern = `/${where}/ape/data/:queryId/:pathHash`
@@ -93,6 +94,7 @@ function createApeCore({ where, onConnent, fileTransferOptions }) {
         handleStreamPost,
         wsPath,
         pollPath,
+        pingPath,
         clientPath,
         downloadPattern,
         uploadPattern
@@ -144,6 +146,11 @@ function initNodeServer(server, options) {
                 res.end(data)
             })
             return
+        }
+
+        // Ping endpoint for captive portal detection
+        if (pathname === core.pingPath && req.method === 'GET') {
+            return sendJson(res, 200, { ok: true, ts: Date.now() })
         }
 
         // Long polling - GET
@@ -267,6 +274,13 @@ function initBunServer(options) {
             }
         }
 
+        // Ping endpoint for captive portal detection
+        if (pathname === core.pingPath && req.method === 'GET') {
+            return new Response(JSON.stringify({ ok: true, ts: Date.now() }), {
+                headers: { 'Content-Type': 'application/json' }
+            })
+        }
+
         // Not an api-ape route
         return null
     }
@@ -378,6 +392,13 @@ If you only want HTTP long-polling (no WebSocket), pass:
             } catch {
                 return new Response('Client bundle not found', { status: 500 })
             }
+        }
+
+        // Ping endpoint for captive portal detection
+        if (pathname === core.pingPath && req.method === 'GET') {
+            return new Response(JSON.stringify({ ok: true, ts: Date.now() }), {
+                headers: { 'Content-Type': 'application/json' }
+            })
         }
 
         // Pass to original fetch handler

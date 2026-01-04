@@ -39,7 +39,7 @@ function getClient() {
     }
 
     clientPromise = (async () => {
-        const connectSocket = (await import('./client/connectSocket.js')).default
+        const connectSocket = (await import('./connectSocket.js')).default
 
         // Configure for current port
         const port = window.location.port || (window.location.protocol === 'https:' ? 443 : 80)
@@ -129,7 +129,7 @@ function on(type, handler) {
 
 /**
  * Subscribe to connection state changes
- * @param {Function} handler - Called with state: 'disconnected' | 'connecting' | 'connected'
+ * @param {Function} handler - Called with state: 'offline' | 'walled' | 'disconnected' | 'connecting' | 'connected'
  * @returns {Function} Unsubscribe function
  */
 function onConnectionChange(handler) {

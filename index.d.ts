@@ -125,7 +125,7 @@ declare namespace ape {
     /** Subscribe to broadcasts from the server */
     export function on<T = any>(type: string, handler: (message: { err?: Error; type: string; data: T }) => void): void
     /** Subscribe to connection state changes. Returns unsubscribe function. */
-    export function onConnectionChange(handler: (state: 'disconnected' | 'connecting' | 'connected') => void): () => void
+    export function onConnectionChange(handler: (state: 'offline' | 'walled' | 'disconnected' | 'connecting' | 'connected') => void): () => void
     /** Get current transport type */
     export function getTransport(): 'websocket' | 'polling' | null
 
@@ -170,12 +170,14 @@ export interface ApeBrowserClient extends ApeSender {
 /**
  * Connection state enum values
  */
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'closing'
+export type ConnectionState = 'offline' | 'walled' | 'disconnected' | 'connecting' | 'connected' | 'closing'
 
 /**
  * Connection state enum object
  */
 export declare const ConnectionState: {
+    Offline: 'offline'
+    Walled: 'walled'
     Disconnected: 'disconnected'
     Connecting: 'connecting'
     Connected: 'connected'
