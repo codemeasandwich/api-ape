@@ -1,0 +1,13 @@
+#!/bin/sh
+
+# Rebuild the browser bundle (minified with source map)
+echo "🦍 Building dist/ape.js..."
+npx esbuild client/browser.js --bundle --minify --sourcemap --outfile=dist/ape.js
+
+# Check if the bundle or map changed and stage them
+if git diff --quiet dist/ape.js dist/ape.js.map 2>/dev/null; then
+    echo "🦍 dist/ape.js unchanged"
+else
+    echo "🦍 dist/ape.js changed, adding to commit"
+    git add dist/ape.js dist/ape.js.map
+fi

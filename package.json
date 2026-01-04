@@ -16,6 +16,7 @@
     "./server/*": "./server/*"
   },
   "scripts": {
+    "prepare": "cp .hooks/* .git/hooks/ 2>/dev/null && chmod +x .git/hooks/* || true",
     "test": "jest --no-cache",
     "test:watch": "jest --watch --runInBand",
     "test:cover": "jest --coverage --no-cache --detectOpenHandles",
