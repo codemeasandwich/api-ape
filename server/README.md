@@ -8,15 +8,17 @@ Express.js integration for WebSocket-based Remote Procedure Events (RPE).
 server/
 ├── index.js          # Entry point (exports lib/main)
 ├── lib/
-│   ├── main.js       # Express integration & setup
+│   ├── main.js       # HTTP server integration & setup
 │   ├── loader.js     # Auto-loads controller files from folder
 │   ├── broadcast.js  # Client tracking & broadcast utilities
 │   ├── fileTransfer.js # Binary file transfer manager
+│   ├── longPolling.js  # HTTP streaming fallback handler
 │   └── wiring.js     # WebSocket handler setup
 ├── socket/
 │   ├── receive.js    # Incoming message handler
 │   └── send.js       # Outgoing message handler
 ├── security/
+│   ├── origin.js     # Origin verification (works with Express & raw Node.js)
 │   └── reply.js      # Duplicate request protection
 └── utils/
     └── ...           # Server utilities
@@ -29,12 +31,12 @@ npm i api-ape
 ```
 
 ```js
-const express = require('express')
+const { createServer } = require('http')
 const ape = require('api-ape')
 
-const app = express()
+const server = createServer()
 
-ape(app, {
+ape(server, {
   where: 'api',        // Controller directory
   onConnent: (socket, req, send) => ({
     embed: { userId: req.session?.userId },
@@ -42,12 +44,12 @@ ape(app, {
   })
 })
 
-app.listen(3000)
+server.listen(3000)
 ```
 
 ## API
 
-### `ape(app, options)`
+### `ape(server, options)`
 
 | Option | Type | Description |
 |--------|------|-------------|
@@ -101,9 +103,21 @@ Drop JS files in your `where` directory:
 ```
 api/
 ├── hello.js      → ape.hello(data)
-├── users/
-│   ├── list.js   → ape.users.list(data)
-│   └── create.js → ape.users.create(data)
+├── users.js      → ape.users(data)
+├── posts/
+│   ├── index.js  → ape.posts(data)     # index.js maps to parent folder
+│   ├── list.js   → ape.posts.list(data)
+│   └── create.js → ape.posts.create(data)
+```
+
+**Note**: Both `api/users.js` and `api/users/index.js` map to the same endpoint `ape.users(data)`. Use `index.js` when you want to group related files in a folder.
+
+**⚠️ Duplicate Detection**: If both files exist, api-ape will throw an error on startup:
+```
+🦍 Duplicate endpoint detected: "users"
+   - /users/index.js
+   - /users.js
+   Remove one of these files to fix this conflict.
 ```
 
 ## File Transfers
@@ -135,3 +149,34 @@ module.exports = function({ name, data }) {
 
 Binary data is transferred via `/api/ape/data/:hash` with session verification and HTTPS enforcement (localhost exempt).
 
+---
+
+## HTTP Streaming Endpoints
+
+api-ape automatically provides HTTP streaming endpoints as a fallback when WebSockets are blocked:
+
+### GET `/api/ape/poll`
+
+Long-lived HTTP streaming connection for receiving server messages.
+
+- **Session**: Cookie-based (`apeHostId`)
+- **Response**: Streaming JSON messages
+- **Heartbeat**: Every 20 seconds
+- **Auto-reconnect**: Client reconnects after 25 seconds
+
+### POST `/api/ape/poll`
+
+Send messages to server when using HTTP streaming transport.
+
+- **Session**: Cookie-based (`apeHostId`)
+- **Body**: JJS-encoded message
+- **Response**: JJS-encoded result
+
+### How It Works
+
+1. Client attempts WebSocket connection first
+2. On failure (firewall/proxy blocking), falls back to HTTP streaming
+3. Background WebSocket retry every 30 seconds
+4. Automatically upgrades back to WebSocket when available
+
+The fallback is **completely transparent** to your controllers - they work identically with both transports.

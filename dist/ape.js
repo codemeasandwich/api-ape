@@ -1,4 +1,4 @@
-var ape = (() => {
+(() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -288,21 +288,241 @@ var ape = (() => {
 
   // client/connectSocket.js
   var import_messageHash = __toESM(require_messageHash());
+  var import_jss2 = __toESM(require_jss());
+
+  // client/transports/streaming.js
   var import_jss = __toESM(require_jss());
-  var connect;
   var configuredPort = null;
   var configuredHost = null;
   function configure(opts = {}) {
     if (opts.port) configuredPort = opts.port;
     if (opts.host) configuredHost = opts.host;
   }
-  function getSocketUrl() {
+  function getPollUrl() {
     const hostname = configuredHost || window.location.hostname;
     const localServers = ["localhost", "127.0.0.1", "[::1]"];
     const isLocal = localServers.includes(hostname);
     const isHttps = window.location.protocol === "https:";
     const defaultPort = isLocal ? 9010 : window.location.port || (isHttps ? 443 : 80);
     const port2 = configuredPort || defaultPort;
+    const protocol = isHttps ? "https" : "http";
+    const portSuffix = isLocal || port2 !== 80 && port2 !== 443 ? `:${port2}` : "";
+    return `${protocol}://${hostname}${portSuffix}/api/ape/poll`;
+  }
+  function parseStreamBuffer(buffer) {
+    const messages = [];
+    let start = -1;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = 0; i < buffer.length; i++) {
+      const char = buffer[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\" && inString) {
+        escaped = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (char === "{") {
+        if (depth === 0) {
+          start = i;
+        }
+        depth++;
+      } else if (char === "}") {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          const jsonStr = buffer.slice(start, i + 1);
+          try {
+            messages.push(import_jss.default.parse(jsonStr));
+          } catch (e) {
+            console.error("\u{1F98D} Failed to parse stream message:", e);
+          }
+          start = -1;
+        }
+      }
+    }
+    const remaining = start !== -1 ? buffer.slice(start) : "";
+    return { messages, remaining };
+  }
+  function createStreamingTransport() {
+    let isActive = false;
+    let abortController = null;
+    let streamBuffer = "";
+    let reconnectTimer = null;
+    let onMessage = () => {
+    };
+    let onOpen = () => {
+    };
+    let onClose = () => {
+    };
+    let onError = () => {
+    };
+    async function connect2() {
+      if (isActive) return;
+      isActive = true;
+      abortController = new AbortController();
+      try {
+        const response = await fetch(getPollUrl(), {
+          method: "GET",
+          credentials: "include",
+          signal: abortController.signal,
+          headers: {
+            "Accept": "application/json"
+          }
+        });
+        if (!response.ok) {
+          throw new Error(`Stream connect failed: ${response.status}`);
+        }
+        onOpen();
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        async function read() {
+          while (isActive) {
+            try {
+              const { done, value } = await reader.read();
+              if (done) {
+                scheduleReconnect();
+                return;
+              }
+              streamBuffer += decoder.decode(value, { stream: true });
+              const { messages, remaining } = parseStreamBuffer(streamBuffer);
+              streamBuffer = remaining;
+              for (const msg of messages) {
+                if (msg.type === "__heartbeat__") continue;
+                onMessage(msg);
+              }
+            } catch (readErr) {
+              if (readErr.name === "AbortError") return;
+              console.error("\u{1F98D} Stream read error:", readErr);
+              scheduleReconnect();
+              return;
+            }
+          }
+        }
+        read();
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        console.error("\u{1F98D} Stream connection error:", err);
+        onError(err);
+        scheduleReconnect();
+      }
+    }
+    function scheduleReconnect() {
+      if (!isActive) return;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+      }
+      reconnectTimer = setTimeout(() => {
+        if (isActive) {
+          connect2();
+        }
+      }, 500);
+    }
+    async function send(type, data, createdAt) {
+      const payload = {
+        type,
+        data,
+        createdAt: new Date(createdAt)
+      };
+      const response = await fetch(getPollUrl(), {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: import_jss.default.stringify(payload)
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(error.error || `Request failed: ${response.status}`);
+      }
+      const result = import_jss.default.parse(await response.text());
+      return result.data;
+    }
+    function close() {
+      isActive = false;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      if (abortController) {
+        abortController.abort();
+        abortController = null;
+      }
+      streamBuffer = "";
+      onClose();
+    }
+    return {
+      connect: connect2,
+      send,
+      close,
+      isConnected: () => isActive,
+      set onMessage(fn) {
+        onMessage = fn;
+      },
+      set onOpen(fn) {
+        onOpen = fn;
+      },
+      set onClose(fn) {
+        onClose = fn;
+      },
+      set onError(fn) {
+        onError = fn;
+      }
+    };
+  }
+
+  // client/connectSocket.js
+  var connect;
+  var ConnectionState = {
+    Disconnected: "disconnected",
+    Connecting: "connecting",
+    Connected: "connected",
+    Closing: "closing"
+  };
+  var connectionState = ConnectionState.Disconnected;
+  var connectionChangeListeners = [];
+  function notifyConnectionChange(newState) {
+    if (connectionState !== newState) {
+      connectionState = newState;
+      connectionChangeListeners.forEach((fn) => fn(newState));
+    }
+  }
+  var configuredPort2 = null;
+  var configuredHost2 = null;
+  var configuredTransport = "auto";
+  var currentTransport = null;
+  var streamingTransport = null;
+  var wsRetryTimer = null;
+  var WS_FALLBACK_TIMEOUT = 4e3;
+  var WS_RETRY_INTERVAL = 3e4;
+  function configure2(opts = {}) {
+    if (opts.port) {
+      configuredPort2 = opts.port;
+      configure({ port: opts.port });
+    }
+    if (opts.host) {
+      configuredHost2 = opts.host;
+      configure({ host: opts.host });
+    }
+    if (opts.transport) {
+      configuredTransport = opts.transport;
+    }
+  }
+  function getSocketUrl() {
+    const hostname = configuredHost2 || window.location.hostname;
+    const localServers = ["localhost", "127.0.0.1", "[::1]"];
+    const isLocal = localServers.includes(hostname);
+    const isHttps = window.location.protocol === "https:";
+    const defaultPort = isLocal ? 9010 : window.location.port || (isHttps ? 443 : 80);
+    const port2 = configuredPort2 || defaultPort;
     const protocol = isHttps ? "wss" : "ws";
     const portSuffix = isLocal || port2 !== 80 && port2 !== 443 ? `:${port2}` : "";
     return `${protocol}://${hostname}${portSuffix}/api/ape`;
@@ -311,7 +531,7 @@ var ape = (() => {
   var connentTimeout = 5e3;
   var totalRequestTimeout = 1e4;
   var joinKey = "/";
-  var reservedKeys = /* @__PURE__ */ new Set(["on"]);
+  var reservedKeys = /* @__PURE__ */ new Set(["on", "onConnectionChange", "configure", "getTransport"]);
   var handler = {
     get(fn, key) {
       if (reservedKeys.has(key)) {
@@ -341,332 +561,434 @@ var ape = (() => {
   var aWaitingSend = [];
   var reciverOnAr = [];
   var ofTypesOb = {};
-  function connectSocket() {
-    if (!__socket) {
-      let findLinkedResources = function(obj, path = "") {
-        const resources = [];
-        if (obj === null || obj === void 0 || typeof obj !== "object") {
-          return resources;
+  function switchToStreaming() {
+    console.log("\u{1F98D} Switching to HTTP streaming transport");
+    currentTransport = "polling";
+    if (!streamingTransport) {
+      streamingTransport = createStreamingTransport();
+      streamingTransport.onMessage = async (msg) => {
+        const { err, type, data } = msg;
+        if (ofTypesOb[type]) {
+          ofTypesOb[type].forEach((worker) => worker({ err, type, data }));
         }
-        if (Array.isArray(obj)) {
-          for (let i = 0; i < obj.length; i++) {
-            resources.push(...findLinkedResources(obj[i], path ? `${path}.${i}` : String(i)));
-          }
-          return resources;
-        }
-        for (const key of Object.keys(obj)) {
-          if (key.endsWith("<!L>")) {
-            const cleanKey = key.slice(0, -4);
-            const hash = obj[key];
-            resources.push({
-              path: path ? `${path}.${cleanKey}` : cleanKey,
-              hash,
-              originalKey: key
-            });
-          } else {
-            resources.push(...findLinkedResources(obj[key], path ? `${path}.${key}` : key));
-          }
-        }
-        return resources;
-      }, setValueAtPath = function(obj, path, value) {
-        const parts = path.split(".");
-        let current = obj;
-        for (let i = 0; i < parts.length - 1; i++) {
-          current = current[parts[i]];
-        }
-        current[parts[parts.length - 1]] = value;
-      }, cleanLinkedKeys = function(obj) {
-        if (obj === null || obj === void 0 || typeof obj !== "object") {
-          return obj;
-        }
-        if (Array.isArray(obj)) {
-          return obj.map(cleanLinkedKeys);
-        }
-        const cleaned = {};
-        for (const key of Object.keys(obj)) {
-          if (key.endsWith("<!L>")) {
-            const cleanKey = key.slice(0, -4);
-            cleaned[cleanKey] = obj[key];
-          } else {
-            cleaned[key] = cleanLinkedKeys(obj[key]);
-          }
-        }
-        return cleaned;
+        reciverOnAr.forEach((worker) => worker({ err, type, data }));
       };
-      __socket = new WebSocket(getSocketUrl());
-      __socket.onopen = (event) => {
+      streamingTransport.onOpen = () => {
         ready = true;
+        notifyConnectionChange(ConnectionState.Connected);
+        console.log("\u{1F98D} HTTP streaming connected");
         aWaitingSend.forEach(({ type, data, next, err, waiting, createdAt, timer }) => {
           clearTimeout(timer);
-          const resultPromise = wsSend(type, data, createdAt);
+          const resultPromise = streamingSend(type, data, createdAt);
           if (waiting) {
             resultPromise.then(next).catch(err);
           }
         });
         aWaitingSend = [];
+        startWsRetry();
       };
-      async function fetchLinkedResources(data, hostId) {
-        const resources = findLinkedResources(data);
-        if (resources.length === 0) {
-          return data;
-        }
-        console.log(`\u{1F98D} Fetching ${resources.length} binary resource(s)`);
-        const cleanedData = cleanLinkedKeys(data);
-        const hostname = configuredHost || window.location.hostname;
-        const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
-        const isHttps = window.location.protocol === "https:";
-        const defaultPort = isLocal ? 9010 : window.location.port || (isHttps ? 443 : 80);
-        const port2 = configuredPort || defaultPort;
-        const protocol = isHttps ? "https" : "http";
-        const portSuffix = isLocal || port2 !== 80 && port2 !== 443 ? `:${port2}` : "";
-        const baseUrl = `${protocol}://${hostname}${portSuffix}`;
-        await Promise.all(resources.map(async ({ path, hash }) => {
-          try {
-            const response = await fetch(`${baseUrl}/api/ape/data/${hash}`, {
-              credentials: "include",
-              headers: {
-                "X-Ape-Host-Id": hostId || ""
-              }
-            });
-            if (!response.ok) {
-              throw new Error(`Failed to fetch binary resource: ${response.status}`);
-            }
-            const arrayBuffer = await response.arrayBuffer();
-            setValueAtPath(cleanedData, path, arrayBuffer);
-          } catch (err) {
-            console.error(`\u{1F98D} Failed to fetch binary resource at ${path}:`, err);
-            setValueAtPath(cleanedData, path, null);
-          }
-        }));
-        return cleanedData;
-      }
-      __socket.onmessage = async function(event) {
-        const { err, type, queryId, data } = import_jss.default.parse(event.data);
-        if (queryId) {
-          if (waitingOn[queryId]) {
-            if (data && !err) {
-              try {
-                const hydratedData = await fetchLinkedResources(data);
-                waitingOn[queryId](err, hydratedData);
-              } catch (fetchErr) {
-                waitingOn[queryId](fetchErr, null);
-              }
-            } else {
-              waitingOn[queryId](err, data);
-            }
-            delete waitingOn[queryId];
-          } else {
-            console.error(`\u{1F98D} No matching queryId: ${queryId}`);
-          }
-          return;
-        }
-        let processedData = data;
-        if (data && !err) {
-          try {
-            processedData = await fetchLinkedResources(data);
-          } catch (fetchErr) {
-            console.error(`\u{1F98D} Failed to hydrate broadcast data:`, fetchErr);
-          }
-        }
-        if (ofTypesOb[type]) {
-          ofTypesOb[type].forEach((worker) => worker({ err, type, data: processedData }));
-        }
-        reciverOnAr.forEach((worker) => worker({ err, type, data: processedData }));
-      };
-      __socket.onerror = function(err) {
-        console.error("socket ERROR:", err);
-      };
-      __socket.onclose = function(event) {
-        console.warn("socket disconnect:", event);
-        __socket = false;
+      streamingTransport.onClose = () => {
         ready = false;
-        setTimeout(() => reconnect && connectSocket(), 500);
+        notifyConnectionChange(ConnectionState.Disconnected);
+      };
+      streamingTransport.onError = (err) => {
+        console.error("\u{1F98D} Streaming error:", err);
       };
     }
-    function isBinaryData(value) {
-      if (value === null || value === void 0) return false;
-      return value instanceof ArrayBuffer || ArrayBuffer.isView(value) || typeof Blob !== "undefined" && value instanceof Blob;
-    }
-    function getBinaryTag(value) {
-      if (typeof Blob !== "undefined" && value instanceof Blob) return "B";
-      return "A";
-    }
-    function generateUploadHash(path) {
-      let hash = 0;
-      for (let i = 0; i < path.length; i++) {
-        const char = path.charCodeAt(i);
-        hash = (hash << 5) - hash + char;
-        hash = hash & hash;
+    streamingTransport.connect();
+  }
+  function streamingSend(type, data, createdAt) {
+    return streamingTransport.send(type, data, createdAt);
+  }
+  function startWsRetry() {
+    if (wsRetryTimer) return;
+    if (currentTransport !== "polling") return;
+    if (configuredTransport === "polling") return;
+    wsRetryTimer = setInterval(() => {
+      if (currentTransport !== "polling") {
+        clearInterval(wsRetryTimer);
+        wsRetryTimer = null;
+        return;
       }
-      return Math.abs(hash).toString(36);
-    }
-    function processBinaryForUpload(data, path = "") {
-      if (data === null || data === void 0) {
-        return { processedData: data, uploads: [] };
-      }
-      if (isBinaryData(data)) {
-        const tag = getBinaryTag(data);
-        const hash = generateUploadHash(path || "root");
-        return {
-          processedData: { [`__ape_upload__`]: hash },
-          uploads: [{ path, hash, data, tag }]
-        };
-      }
-      if (Array.isArray(data)) {
-        const processedArray = [];
-        const allUploads = [];
-        for (let i = 0; i < data.length; i++) {
-          const itemPath = path ? `${path}.${i}` : String(i);
-          const { processedData, uploads } = processBinaryForUpload(data[i], itemPath);
-          processedArray.push(processedData);
-          allUploads.push(...uploads);
+      console.log("\u{1F98D} Attempting WebSocket reconnection...");
+      tryWebSocket(true);
+    }, WS_RETRY_INTERVAL);
+  }
+  function tryWebSocket(isRetry = false) {
+    const ws = new WebSocket(getSocketUrl());
+    let fallbackTimer = null;
+    if (!isRetry && configuredTransport === "auto") {
+      fallbackTimer = setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          console.log("\u{1F98D} WebSocket timeout, falling back to HTTP streaming");
+          ws.close();
+          switchToStreaming();
         }
-        return { processedData: processedArray, uploads: allUploads };
+      }, WS_FALLBACK_TIMEOUT);
+    }
+    ws.onopen = () => {
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      if (isRetry && currentTransport === "polling") {
+        console.log("\u{1F98D} WebSocket reconnected, switching from HTTP streaming");
+        if (streamingTransport) {
+          streamingTransport.close();
+        }
+        if (wsRetryTimer) {
+          clearInterval(wsRetryTimer);
+          wsRetryTimer = null;
+        }
       }
-      if (typeof data === "object") {
-        const processedObj = {};
-        const allUploads = [];
-        for (const key of Object.keys(data)) {
-          const itemPath = path ? `${path}.${key}` : key;
-          const { processedData, uploads } = processBinaryForUpload(data[key], itemPath);
-          if (uploads.length > 0 && processedData?.__ape_upload__) {
-            const tag = uploads[uploads.length - 1].tag;
-            processedObj[`${key}<!${tag}>`] = processedData.__ape_upload__;
+      currentTransport = "websocket";
+      __socket = ws;
+      ready = true;
+      notifyConnectionChange(ConnectionState.Connected);
+      aWaitingSend.forEach(({ type, data, next, err, waiting, createdAt, timer }) => {
+        clearTimeout(timer);
+        const resultPromise = wsSend(type, data, createdAt);
+        if (waiting) {
+          resultPromise.then(next).catch(err);
+        }
+      });
+      aWaitingSend = [];
+    };
+    ws.onmessage = async function(event) {
+      const { err, type, queryId, data } = import_jss2.default.parse(event.data);
+      if (queryId) {
+        if (waitingOn[queryId]) {
+          if (data && !err) {
+            try {
+              const hydratedData = await fetchLinkedResources(data);
+              waitingOn[queryId](err, hydratedData);
+            } catch (fetchErr) {
+              waitingOn[queryId](fetchErr, null);
+            }
           } else {
-            processedObj[key] = processedData;
+            waitingOn[queryId](err, data);
           }
-          allUploads.push(...uploads);
+          delete waitingOn[queryId];
+        } else {
+          console.error(`\u{1F98D} No matching queryId: ${queryId}`);
         }
-        return { processedData: processedObj, uploads: allUploads };
+        return;
       }
+      let processedData = data;
+      if (data && !err) {
+        try {
+          processedData = await fetchLinkedResources(data);
+        } catch (fetchErr) {
+          console.error(`\u{1F98D} Failed to hydrate broadcast data:`, fetchErr);
+        }
+      }
+      if (ofTypesOb[type]) {
+        ofTypesOb[type].forEach((worker) => worker({ err, type, data: processedData }));
+      }
+      reciverOnAr.forEach((worker) => worker({ err, type, data: processedData }));
+    };
+    ws.onerror = function(err) {
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      console.error("socket ERROR:", err);
+      if (!isRetry && configuredTransport === "auto" && !ready) {
+        switchToStreaming();
+      }
+    };
+    ws.onclose = function(event) {
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      console.warn("socket disconnect:", event);
+      __socket = false;
+      ready = false;
+      if (currentTransport === "websocket") {
+        notifyConnectionChange(ConnectionState.Disconnected);
+        setTimeout(() => reconnect && connectSocket(), 500);
+      }
+    };
+  }
+  function findLinkedResources(obj, path = "") {
+    const resources = [];
+    if (obj === null || obj === void 0 || typeof obj !== "object") {
+      return resources;
+    }
+    if (Array.isArray(obj)) {
+      for (let i = 0; i < obj.length; i++) {
+        resources.push(...findLinkedResources(obj[i], path ? `${path}.${i}` : String(i)));
+      }
+      return resources;
+    }
+    for (const key of Object.keys(obj)) {
+      if (key.endsWith("<!L>")) {
+        const cleanKey = key.slice(0, -4);
+        const hash = obj[key];
+        resources.push({
+          path: path ? `${path}.${cleanKey}` : cleanKey,
+          hash,
+          originalKey: key
+        });
+      } else {
+        resources.push(...findLinkedResources(obj[key], path ? `${path}.${key}` : key));
+      }
+    }
+    return resources;
+  }
+  function setValueAtPath(obj, path, value) {
+    const parts = path.split(".");
+    let current = obj;
+    for (let i = 0; i < parts.length - 1; i++) {
+      current = current[parts[i]];
+    }
+    current[parts[parts.length - 1]] = value;
+  }
+  function cleanLinkedKeys(obj) {
+    if (obj === null || obj === void 0 || typeof obj !== "object") {
+      return obj;
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(cleanLinkedKeys);
+    }
+    const cleaned = {};
+    for (const key of Object.keys(obj)) {
+      if (key.endsWith("<!L>")) {
+        const cleanKey = key.slice(0, -4);
+        cleaned[cleanKey] = obj[key];
+      } else {
+        cleaned[key] = cleanLinkedKeys(obj[key]);
+      }
+    }
+    return cleaned;
+  }
+  async function fetchLinkedResources(data, hostId) {
+    const resources = findLinkedResources(data);
+    if (resources.length === 0) {
+      return data;
+    }
+    console.log(`\u{1F98D} Fetching ${resources.length} binary resource(s)`);
+    const cleanedData = cleanLinkedKeys(data);
+    const hostname = configuredHost2 || window.location.hostname;
+    const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
+    const isHttps = window.location.protocol === "https:";
+    const defaultPort = isLocal ? 9010 : window.location.port || (isHttps ? 443 : 80);
+    const port2 = configuredPort2 || defaultPort;
+    const protocol = isHttps ? "https" : "http";
+    const portSuffix = isLocal || port2 !== 80 && port2 !== 443 ? `:${port2}` : "";
+    const baseUrl = `${protocol}://${hostname}${portSuffix}`;
+    await Promise.all(resources.map(async ({ path, hash }) => {
+      try {
+        const response = await fetch(`${baseUrl}/api/ape/data/${hash}`, {
+          credentials: "include",
+          headers: {
+            "X-Ape-Host-Id": hostId || ""
+          }
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch binary resource: ${response.status}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        setValueAtPath(cleanedData, path, arrayBuffer);
+      } catch (err) {
+        console.error(`\u{1F98D} Failed to fetch binary resource at ${path}:`, err);
+        setValueAtPath(cleanedData, path, null);
+      }
+    }));
+    return cleanedData;
+  }
+  function connectSocket() {
+    if (__socket && __socket.readyState !== WebSocket.CLOSED) {
+      return buildClientInterface();
+    }
+    if (currentTransport === "polling" && streamingTransport?.isConnected()) {
+      return buildClientInterface();
+    }
+    notifyConnectionChange(ConnectionState.Connecting);
+    if (configuredTransport === "polling") {
+      switchToStreaming();
+    } else {
+      tryWebSocket(false);
+    }
+    return buildClientInterface();
+  }
+  function isBinaryData(value) {
+    if (value === null || value === void 0) return false;
+    return value instanceof ArrayBuffer || ArrayBuffer.isView(value) || typeof Blob !== "undefined" && value instanceof Blob;
+  }
+  function getBinaryTag(value) {
+    if (typeof Blob !== "undefined" && value instanceof Blob) return "B";
+    return "A";
+  }
+  function generateUploadHash(path) {
+    let hash = 0;
+    for (let i = 0; i < path.length; i++) {
+      const char = path.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash;
+    }
+    return Math.abs(hash).toString(36);
+  }
+  function processBinaryForUpload(data, path = "") {
+    if (data === null || data === void 0) {
       return { processedData: data, uploads: [] };
     }
-    async function uploadBinaryData(queryId, uploads) {
-      if (uploads.length === 0) return;
-      const hostname = configuredHost || window.location.hostname;
-      const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
-      const isHttps = window.location.protocol === "https:";
-      const defaultPort = isLocal ? 9010 : window.location.port || (isHttps ? 443 : 80);
-      const port2 = configuredPort || defaultPort;
-      const protocol = isHttps ? "https" : "http";
-      const portSuffix = isLocal || port2 !== 80 && port2 !== 443 ? `:${port2}` : "";
-      const baseUrl = `${protocol}://${hostname}${portSuffix}`;
-      console.log(`\u{1F98D} Uploading ${uploads.length} binary file(s)`);
-      await Promise.all(uploads.map(async ({ hash, data }) => {
-        try {
-          const response = await fetch(`${baseUrl}/api/ape/data/${queryId}/${hash}`, {
-            method: "PUT",
-            credentials: "include",
-            headers: {
-              "Content-Type": "application/octet-stream"
-            },
-            body: data
-          });
-          if (!response.ok) {
-            throw new Error(`Upload failed: ${response.status}`);
-          }
-        } catch (err) {
-          console.error(`\u{1F98D} Failed to upload binary at ${hash}:`, err);
-          throw err;
-        }
-      }));
+    if (isBinaryData(data)) {
+      const tag = getBinaryTag(data);
+      const hash = generateUploadHash(path || "root");
+      return {
+        processedData: { [`__ape_upload__`]: hash },
+        uploads: [{ path, hash, data, tag }]
+      };
     }
-    wsSend = function(type, data, createdAt, dirctCall) {
-      let rej, promiseIsLive = false;
-      const timeLetForReqToBeMade = createdAt + totalRequestTimeout - Date.now();
-      const timer = setTimeout(() => {
-        if (promiseIsLive) {
-          rej(new Error("Request Timedout for :" + type));
-        }
-      }, timeLetForReqToBeMade);
-      const { processedData, uploads } = processBinaryForUpload(data);
-      const payload = {
-        type,
-        data: processedData,
-        //referer:window.location.href,
-        createdAt: new Date(createdAt),
-        requestedAt: dirctCall ? void 0 : /* @__PURE__ */ new Date()
-      };
-      const message = import_jss.default.stringify(payload);
-      const queryId = (0, import_messageHash.default)(message);
-      const replyPromise = new Promise((resolve, reject) => {
-        rej = reject;
-        waitingOn[queryId] = (err2, result) => {
-          clearTimeout(timer);
-          replyPromise.then = next.bind(replyPromise);
-          if (err2) {
-            reject(err2);
-          } else {
-            resolve(result);
-          }
-        };
-        __socket.send(message);
-        if (uploads.length > 0) {
-          uploadBinaryData(queryId, uploads).catch((err2) => {
-            console.error("\u{1F98D} Binary upload failed:", err2);
-          });
-        }
-      });
-      const next = replyPromise.then;
-      replyPromise.then = (worker) => {
-        promiseIsLive = true;
-        replyPromise.then = next.bind(replyPromise);
-        replyPromise.catch = err.bind(replyPromise);
-        return next.call(replyPromise, worker);
-      };
-      const err = replyPromise.catch;
-      replyPromise.catch = (worker) => {
-        promiseIsLive = true;
-        replyPromise.catch = err.bind(replyPromise);
-        replyPromise.then = next.bind(replyPromise);
-        return err.call(replyPromise, worker);
-      };
-      return replyPromise;
-    };
-    const sender2 = (type, data) => {
-      if ("string" !== typeof type) {
-        throw new Error("Missing Path vaule");
+    if (Array.isArray(data)) {
+      const processedArray = [];
+      const allUploads = [];
+      for (let i = 0; i < data.length; i++) {
+        const itemPath = path ? `${path}.${i}` : String(i);
+        const { processedData, uploads } = processBinaryForUpload(data[i], itemPath);
+        processedArray.push(processedData);
+        allUploads.push(...uploads);
       }
-      const createdAt = Date.now();
-      if (ready) {
-        return wsSend(type, data, createdAt, true);
-      }
-      const timeLetForReqToBeMade = createdAt + connentTimeout - Date.now();
-      const timer = setTimeout(() => {
-        const errMessage = "Request not sent for :" + type;
-        if (payload.waiting) {
-          payload.err(new Error(errMessage));
+      return { processedData: processedArray, uploads: allUploads };
+    }
+    if (typeof data === "object") {
+      const processedObj = {};
+      const allUploads = [];
+      for (const key of Object.keys(data)) {
+        const itemPath = path ? `${path}.${key}` : key;
+        const { processedData, uploads } = processBinaryForUpload(data[key], itemPath);
+        if (uploads.length > 0 && processedData?.__ape_upload__) {
+          const tag = uploads[uploads.length - 1].tag;
+          processedObj[`${key}<!${tag}>`] = processedData.__ape_upload__;
         } else {
-          throw new Error(errMessage);
+          processedObj[key] = processedData;
         }
-      }, timeLetForReqToBeMade);
-      const payload = { type, data, next: void 0, err: void 0, waiting: false, createdAt, timer };
-      const waitingOnOpen = new Promise((res, er) => {
-        payload.next = res;
-        payload.err = er;
-      });
-      const waitingOnOpenThen = waitingOnOpen.then;
-      const waitingOnOpenCatch = waitingOnOpen.catch;
-      waitingOnOpen.then = (worker) => {
-        payload.waiting = true;
-        waitingOnOpen.then = waitingOnOpenThen.bind(waitingOnOpen);
-        waitingOnOpen.catch = waitingOnOpenCatch.bind(waitingOnOpen);
-        return waitingOnOpenThen.call(waitingOnOpen, worker);
-      };
-      waitingOnOpen.catch = (worker) => {
-        payload.waiting = true;
-        waitingOnOpen.catch = waitingOnOpenCatch.bind(waitingOnOpen);
-        waitingOnOpen.then = waitingOnOpenThen.bind(waitingOnOpen);
-        return waitingOnOpenCatch.call(waitingOnOpen, worker);
-      };
-      aWaitingSend.push(payload);
-      if (!__socket) {
-        connectSocket();
+        allUploads.push(...uploads);
       }
-      return waitingOnOpen;
+      return { processedData: processedObj, uploads: allUploads };
+    }
+    return { processedData: data, uploads: [] };
+  }
+  async function uploadBinaryData(queryId, uploads) {
+    if (uploads.length === 0) return;
+    const hostname = configuredHost2 || window.location.hostname;
+    const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
+    const isHttps = window.location.protocol === "https:";
+    const defaultPort = isLocal ? 9010 : window.location.port || (isHttps ? 443 : 80);
+    const port2 = configuredPort2 || defaultPort;
+    const protocol = isHttps ? "https" : "http";
+    const portSuffix = isLocal || port2 !== 80 && port2 !== 443 ? `:${port2}` : "";
+    const baseUrl = `${protocol}://${hostname}${portSuffix}`;
+    console.log(`\u{1F98D} Uploading ${uploads.length} binary file(s)`);
+    await Promise.all(uploads.map(async ({ hash, data }) => {
+      try {
+        const response = await fetch(`${baseUrl}/api/ape/data/${queryId}/${hash}`, {
+          method: "PUT",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/octet-stream"
+          },
+          body: data
+        });
+        if (!response.ok) {
+          throw new Error(`Upload failed: ${response.status}`);
+        }
+      } catch (err) {
+        console.error(`\u{1F98D} Failed to upload binary at ${hash}:`, err);
+        throw err;
+      }
+    }));
+  }
+  wsSend = function(type, data, createdAt, dirctCall) {
+    let rej, promiseIsLive = false;
+    const timeLetForReqToBeMade = createdAt + totalRequestTimeout - Date.now();
+    const timer = setTimeout(() => {
+      if (promiseIsLive) {
+        rej(new Error("Request Timedout for :" + type));
+      }
+    }, timeLetForReqToBeMade);
+    const { processedData, uploads } = processBinaryForUpload(data);
+    const payload = {
+      type,
+      data: processedData,
+      //referer:window.location.href,
+      createdAt: new Date(createdAt),
+      requestedAt: dirctCall ? void 0 : /* @__PURE__ */ new Date()
     };
+    const message = import_jss2.default.stringify(payload);
+    const queryId = (0, import_messageHash.default)(message);
+    const replyPromise = new Promise((resolve, reject) => {
+      rej = reject;
+      waitingOn[queryId] = (err2, result) => {
+        clearTimeout(timer);
+        replyPromise.then = next.bind(replyPromise);
+        if (err2) {
+          reject(err2);
+        } else {
+          resolve(result);
+        }
+      };
+      __socket.send(message);
+      if (uploads.length > 0) {
+        uploadBinaryData(queryId, uploads).catch((err2) => {
+          console.error("\u{1F98D} Binary upload failed:", err2);
+        });
+      }
+    });
+    const next = replyPromise.then;
+    replyPromise.then = (worker) => {
+      promiseIsLive = true;
+      replyPromise.then = next.bind(replyPromise);
+      replyPromise.catch = err.bind(replyPromise);
+      return next.call(replyPromise, worker);
+    };
+    const err = replyPromise.catch;
+    replyPromise.catch = (worker) => {
+      promiseIsLive = true;
+      replyPromise.catch = err.bind(replyPromise);
+      replyPromise.then = next.bind(replyPromise);
+      return err.call(replyPromise, worker);
+    };
+    return replyPromise;
+  };
+  var sender = (type, data) => {
+    if ("string" !== typeof type) {
+      throw new Error("Missing Path vaule");
+    }
+    const createdAt = Date.now();
+    if (ready) {
+      return wsSend(type, data, createdAt, true);
+    }
+    const timeLetForReqToBeMade = createdAt + connentTimeout - Date.now();
+    const timer = setTimeout(() => {
+      const errMessage = "Request not sent for :" + type;
+      if (payload.waiting) {
+        payload.err(new Error(errMessage));
+      } else {
+        throw new Error(errMessage);
+      }
+    }, timeLetForReqToBeMade);
+    const payload = { type, data, next: void 0, err: void 0, waiting: false, createdAt, timer };
+    const waitingOnOpen = new Promise((res, er) => {
+      payload.next = res;
+      payload.err = er;
+    });
+    const waitingOnOpenThen = waitingOnOpen.then;
+    const waitingOnOpenCatch = waitingOnOpen.catch;
+    waitingOnOpen.then = (worker) => {
+      payload.waiting = true;
+      waitingOnOpen.then = waitingOnOpenThen.bind(waitingOnOpen);
+      waitingOnOpen.catch = waitingOnOpenCatch.bind(waitingOnOpen);
+      return waitingOnOpenThen.call(waitingOnOpen, worker);
+    };
+    waitingOnOpen.catch = (worker) => {
+      payload.waiting = true;
+      waitingOnOpen.catch = waitingOnOpenCatch.bind(waitingOnOpen);
+      waitingOnOpen.then = waitingOnOpenThen.bind(waitingOnOpen);
+      return waitingOnOpenCatch.call(waitingOnOpen, worker);
+    };
+    aWaitingSend.push(payload);
+    if (!__socket) {
+      connectSocket();
+    }
+    return waitingOnOpen;
+  };
+  function buildClientInterface() {
     return {
-      sender: wrap(sender2),
+      sender: wrap(sender),
       setOnReciver: (onTypeStFn, handlerFn) => {
         if ("string" === typeof onTypeStFn) {
           ofTypesOb[onTypeStFn] = [handlerFn];
@@ -675,23 +997,51 @@ var ape = (() => {
             reciverOnAr.push(onTypeStFn);
           }
         }
-      }
-      // END setOnReciver
+      },
+      onConnectionChange: (handler2) => {
+        connectionChangeListeners.push(handler2);
+        handler2(connectionState);
+        return () => {
+          const idx = connectionChangeListeners.indexOf(handler2);
+          if (idx > -1) connectionChangeListeners.splice(idx, 1);
+        };
+      },
+      // Expose current transport type
+      getTransport: () => currentTransport
     };
   }
   connectSocket.autoReconnect = () => reconnect = true;
-  connectSocket.configure = configure;
+  connectSocket.configure = configure2;
+  connectSocket.ConnectionState = ConnectionState;
   connect = connectSocket;
   var connectSocket_default = connect;
 
   // client/browser.js
   var port = window.location.port || (window.location.protocol === "https:" ? 443 : 80);
   connectSocket_default.configure({ port: parseInt(port, 10) });
-  var { sender, setOnReciver } = connectSocket_default();
+  var { sender: sender2, setOnReciver, onConnectionChange, getTransport } = connectSocket_default();
   connectSocket_default.autoReconnect();
-  window.ape = sender;
+  window.ape = sender2;
   Object.defineProperty(window.ape, "on", {
     value: setOnReciver,
+    writable: false,
+    enumerable: false,
+    configurable: false
+  });
+  Object.defineProperty(window.ape, "onConnectionChange", {
+    value: onConnectionChange,
+    writable: false,
+    enumerable: false,
+    configurable: false
+  });
+  Object.defineProperty(window.ape, "configure", {
+    value: connectSocket_default.configure,
+    writable: false,
+    enumerable: false,
+    configurable: false
+  });
+  Object.defineProperty(window.ape, "getTransport", {
+    value: getTransport,
     writable: false,
     enumerable: false,
     configurable: false

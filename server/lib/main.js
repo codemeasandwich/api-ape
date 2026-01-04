@@ -4,6 +4,7 @@ const { WebSocketServer } = require('ws')
 const path = require('path')
 const fs = require('fs')
 const { getFileTransferManager } = require('./fileTransfer')
+const { createLongPollingHandler } = require('./longPolling')
 const { parse: parseUrl } = require('url')
 
 let created = false
@@ -79,7 +80,11 @@ module.exports = function (server, { where, onConnent, fileTransferOptions }) {
 
     // Handle WebSocket connections
     const wsPath = `/${where}/ape`
+    const pollPath = `/${where}/ape/poll`
     const wiringHandler = wiring(controllers, onConnent, fileTransfer)
+
+    // Create long polling handler for WebSocket fallback
+    const { handleStreamGet, handleStreamPost } = createLongPollingHandler(controllers, onConnent, fileTransfer)
 
     wss.on('connection', wiringHandler)
 
@@ -115,6 +120,18 @@ module.exports = function (server, { where, onConnent, fileTransferOptions }) {
                 res.writeHead(200, { 'Content-Type': 'application/javascript' })
                 res.end(data)
             })
+            return
+        }
+
+        // Long polling endpoints - GET /api/ape/poll (streaming receive)
+        if (pathname === pollPath && req.method === 'GET') {
+            handleStreamGet(req, res)
+            return
+        }
+
+        // Long polling endpoints - POST /api/ape/poll (send messages)
+        if (pathname === pollPath && req.method === 'POST') {
+            handleStreamPost(req, res, controllers)
             return
         }
 

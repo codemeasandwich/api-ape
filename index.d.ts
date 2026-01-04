@@ -166,7 +166,14 @@ export interface ApeClient {
     setOnReciver: SetOnReceiver
     /** Subscribe to connection state changes. Returns unsubscribe function. */
     onConnectionChange: (handler: (state: ConnectionState) => void) => () => void
+    /** Get current transport type ('websocket' | 'polling' | null) */
+    getTransport: () => TransportType | null
 }
+
+/**
+ * Transport type for connection
+ */
+export type TransportType = 'websocket' | 'polling'
 
 /**
  * Configuration options for client
@@ -176,6 +183,8 @@ export interface ApeClientConfig {
     port?: number
     /** WebSocket host */
     host?: string
+    /** Transport mode: 'auto' (default), 'websocket', or 'polling' */
+    transport?: 'auto' | 'websocket' | 'polling'
 }
 
 /**

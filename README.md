@@ -89,6 +89,7 @@ Include the bundled client and start calling:
 * **Real-time broadcasts** — Built-in `broadcast()` and `broadcastOthers()` methods for pushing to clients
 * **Promise-based calls** — Chainable paths like `ape.users.list()` map to `api/users/list.js`
 * **Automatic reconnection** — Client auto-reconnects on disconnect with exponential backoff
+* **HTTP streaming fallback** — Automatically falls back to long polling when WebSockets are blocked
 * **JJS Encoding** — Extended JSON supporting Date, RegExp, Error, Set, Map, undefined, and circular refs
 * **Connection lifecycle hooks** — Customize behavior on connect, receive, send, error, and disconnect
 
@@ -150,6 +151,53 @@ Listen for server broadcasts.
 ape.on('notification', ({ data, err, type }) => {
   console.log('Received:', data)
 })
+```
+
+#### `ape.configure(options)`
+
+Configure client connection options.
+
+```js
+// Configure transport mode
+ape.configure({ transport: 'auto' })      // Auto-detect (default)
+ape.configure({ transport: 'websocket' }) // Force WebSocket only
+ape.configure({ transport: 'polling' })   // Force HTTP streaming
+
+// Configure connection details
+ape.configure({ 
+  port: 9010,
+  host: 'example.com',
+  transport: 'auto'
+})
+```
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `port` | `number` | Server port (default: auto-detect) |
+| `host` | `string` | Server hostname (default: auto-detect) |
+| `transport` | `string` | Transport mode: `'auto'`, `'websocket'`, or `'polling'` |
+
+#### `ape.getTransport()`
+
+Get the currently active transport type.
+
+```js
+const transport = ape.getTransport()
+console.log(transport) // 'websocket' | 'polling' | null
+```
+
+#### `ape.onConnectionChange(handler)`
+
+Listen for connection state changes.
+
+```js
+const unsubscribe = ape.onConnectionChange((state) => {
+  console.log('Connection state:', state)
+  // 'disconnected' | 'connecting' | 'connected'
+})
+
+// Later: stop listening
+unsubscribe()
 ```
 
 ---
@@ -292,6 +340,48 @@ api-ape uses **JJS (JSON SuperSet)** encoding, which extends JSON to support:
 | Circular refs | ✅ Handled via pointers |
 
 This is automatic — send a Date, receive a Date. No configuration needed.
+
+---
+
+## HTTP Streaming Fallback
+
+api-ape automatically falls back to HTTP streaming when WebSockets are unavailable or blocked by firewalls/proxies.
+
+### How It Works
+
+1. **WebSocket First**: Client attempts WebSocket connection (4 second timeout)
+2. **Auto-Fallback**: On failure, switches to HTTP streaming transport
+3. **Background Retry**: Keeps attempting WebSocket reconnection every 30 seconds
+4. **Auto-Upgrade**: Switches back to WebSocket when available
+
+### Streaming Transport
+
+When in polling mode:
+- **GET `/api/ape/poll`**: Long-lived connection, server streams JSON messages
+- **POST `/api/ape/poll`**: Client sends messages
+- Cookie-based session (`apeHostId`) for authentication
+- Heartbeat every 20 seconds to prevent proxy timeout
+
+### Force Transport Mode
+
+```js
+// Force HTTP streaming (useful for testing)
+ape.configure({ transport: 'polling' })
+
+// Force WebSocket only (fail if unavailable)
+ape.configure({ transport: 'websocket' })
+
+// Auto-detect (default)
+ape.configure({ transport: 'auto' })
+```
+
+### Check Active Transport
+
+```js
+if (ape.getTransport() === 'polling') {
+  console.log('Using HTTP streaming fallback')
+}
+```
 
 ---
 

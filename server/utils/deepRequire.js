@@ -1,4 +1,4 @@
-if(!global.process){//(!!process && typeof process !== 'object'){
+if (!global.process) {//(!!process && typeof process !== 'object'){
   throw new Error("deepRequire need to be run on Node server")
 }
 
@@ -18,7 +18,7 @@ function getFilesFromDir(dir, fileTypes) {
       if (fs.statSync(curFile).isFile() && fileTypes.indexOf(path.extname(curFile)) != -1) {
         filesToReturn.push(curFile.replace(dir, ''));
       } else if (fs.statSync(curFile).isDirectory()) {
-       walkDir(curFile);
+        walkDir(curFile);
       }
     }
   };
@@ -27,19 +27,34 @@ function getFilesFromDir(dir, fileTypes) {
 }
 const re = /(?:\.([^.]+))?$/;
 
-module.exports = function(dirname,selector){
+module.exports = function (dirname, selector) {
   selector = selector || ["js"]
-  return getFilesFromDir(dirname, selector.map(ext=>`.${ext}`)).reduce((packages,file) =>{
+  const endpointSources = {} // Track which file defines each endpoint
 
-    if(file === "/index.js")  return packages
+  return getFilesFromDir(dirname, selector.map(ext => `.${ext}`)).reduce((packages, file) => {
+
+    if (file === "/index.js") return packages
     //if(file[0] !== "/") file = "/"+file;
 
-    const pathParts = file.replace(re.exec(file)[0],"").split("/").slice(1)
-    if(pathParts[pathParts.length-1] === "index")
-    pathParts.pop()
+    const pathParts = file.replace(re.exec(file)[0], "").split("/").slice(1)
+    if (pathParts[pathParts.length - 1] === "index")
+      pathParts.pop()
 
-    packages[pathParts.join("/").toLowerCase()] = require(dirname+`/${file}`)
+    const endpoint = pathParts.join("/").toLowerCase()
+
+    // Check for duplicate endpoints
+    if (packages[endpoint] !== undefined) {
+      throw new Error(
+        `🦍 Duplicate endpoint detected: "${endpoint}"\n` +
+        `   - ${endpointSources[endpoint]}\n` +
+        `   - ${file}\n` +
+        `   Remove one of these files to fix this conflict.`
+      )
+    }
+
+    endpointSources[endpoint] = file
+    packages[endpoint] = require(dirname + `/${file}`)
     return packages;
-  },{});
+  }, {});
 
 }
