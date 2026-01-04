@@ -3,10 +3,8 @@ const socketOpen = require('../socket/open')
 const socketReceive = require('../socket/receive')
 const socketSend = require('../socket/send')
 const makeid = require('../utils/genId')
-const UAParser = require('ua-parser-js');
+const parseUserAgent = require('../utils/parseUserAgent');
 const { addClient, removeClient } = require('./broadcast')
-
-const parser = new UAParser();
 
 // connent, beforeSend, beforeReceive, error, afterSend, afterReceive, disconnent
 
@@ -41,7 +39,7 @@ module.exports = function wiring(controllers, onConnent, fileTransfer) {
         } // END sentBufferFn
 
         const hostId = makeid(20)
-        const agent = parser.setUA(req.headers['user-agent']).getResult()
+        const agent = parseUserAgent(req.headers['user-agent'])
         const sharedValues = {
             socket, req, agent, send: (type, data, err) => sentBufferFn(false, type, data, err)
         }

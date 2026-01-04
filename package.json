@@ -43,7 +43,6 @@
   },
   "homepage": "https://github.com/codemeasandwich/api-ape#readme",
   "dependencies": {
-    "ua-parser-js": "^1.0.37",
     "ws": "^8.14.0"
   },
   "devDependencies": {

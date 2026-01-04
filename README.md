@@ -3,6 +3,10 @@
 [![npm version](https://img.shields.io/npm/v/api-ape.svg)](https://www.npmjs.com/package/api-ape)
 [![license](https://img.shields.io/npm/l/api-ape.svg)](https://github.com/codemeasandwich/api-ape/blob/main/LICENSE)
 [![GitHub issues](https://img.shields.io/github/issues/codemeasandwich/api-ape)](https://github.com/codemeasandwich/api-ape/issues)
+[![CSRF protected](https://img.shields.io/badge/CSRF-protected-green.svg)](#csrf-protection)
+[![Zero Config](https://img.shields.io/badge/setup-zero%20config-success.svg)](#quick-start)
+[![Bundle Size](https://img.shields.io/bundlephobia/minzip/api-ape)](https://bundlephobia.com/package/api-ape)
+[![JJS Encoding](https://img.shields.io/badge/encoding-JJS-blue.svg)](#jjs-encoding)
 
 **Remote Procedure Events (RPE)** — A lightweight WebSocket framework for building real-time APIs. Call server functions from the browser like local methods. Get real-time broadcasts with zero setup.
 
