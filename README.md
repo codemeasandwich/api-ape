@@ -99,7 +99,8 @@ api.on('message', ({ data }) => console.log(data))
 
 // Track connection state
 api.onConnectionChange((state) => {
-  console.log('Connection:', state) // 'disconnected' | 'connecting' | 'connected'
+  console.log('Connection:', state)
+  // 'offline' | 'walled' | 'disconnected' | 'connecting' | 'connected'
 })
 ```
 
@@ -217,12 +218,21 @@ Listen for connection state changes.
 ```js
 const unsubscribe = api.onConnectionChange((state) => {
   console.log('Connection state:', state)
-  // 'disconnected' | 'connecting' | 'connected'
 })
 
 // Later: stop listening
 unsubscribe()
 ```
+
+**Connection States:**
+
+| State | Description |
+|-------|-------------|
+| `offline` | Browser reports no network (`navigator.onLine = false`) |
+| `walled` | Captive portal detected (can't reach server) |
+| `disconnected` | Had connection, lost it |
+| `connecting` | Actively connecting to server |
+| `connected` | Connected and ready |
 
 ---
 

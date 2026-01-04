@@ -42,9 +42,17 @@ api.on('message', ({ data }) => console.log(data))
 
 // Track connection state
 api.onConnectionChange((state) => {
-  console.log('Connection:', state) // 'disconnected' | 'connecting' | 'connected'
+  console.log('Connection:', state)
+  // 'offline' | 'walled' | 'disconnected' | 'connecting' | 'connected'
 })
 ```
+
+**Connection States:**
+- `offline` — Browser reports no network
+- `walled` — Captive portal detected (WiFi without real internet)
+- `disconnected` — Had connection, lost it
+- `connecting` — Actively connecting
+- `connected` — Ready to use
 
 **No async setup needed!** The client auto-initializes and buffers calls until connected.
 
