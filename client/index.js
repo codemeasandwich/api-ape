@@ -41,10 +41,6 @@ function getClient() {
     clientPromise = (async () => {
         const connectSocket = (await import('./connectSocket.js')).default
 
-        // Configure for current port
-        const port = window.location.port || (window.location.protocol === 'https:' ? 443 : 80)
-        connectSocket.configure({ port: parseInt(port, 10) })
-
         // Connect
         const client = connectSocket()
         connectSocket.autoReconnect()
@@ -92,7 +88,6 @@ const senderProxy = new Proxy({}, {
         // Reserved properties
         if (prop === 'on') return on
         if (prop === 'onConnectionChange') return onConnectionChange
-        if (prop === 'configure') return () => { } // TODO: forward to connectSocket.configure
         if (prop === 'getTransport') return () => resolvedClient?.getTransport?.() || null
         if (prop === 'then' || prop === 'catch') return undefined // Not a Promise
 

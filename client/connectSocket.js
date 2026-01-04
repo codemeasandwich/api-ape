@@ -1,6 +1,6 @@
 import messageHash from '../utils/messageHash'
 import jss from '../utils/jss'
-import { createStreamingTransport, configure as configureStreaming } from './transports/streaming'
+import { createStreamingTransport } from './transports/streaming'
 
 let connect;
 
@@ -28,8 +28,6 @@ function notifyConnectionChange(newState) {
 }
 
 // Configuration
-let configuredPort = null
-let configuredHost = null
 let configuredTransport = 'auto' // 'auto' | 'websocket' | 'polling'
 
 // Transport state
@@ -47,20 +45,18 @@ const MAX_PING_CLOCK_SKEW = 60000 // Max allowed time difference (60s)
  */
 function isDevMode() {
   if (typeof window === 'undefined') return false
-  const hostname = configuredHost || window.location.hostname
-  return ['localhost', '127.0.0.1', '[::1]'].includes(hostname)
+  return ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
 }
 
 /**
  * Build ping URL for captive portal detection
  */
 function getPingUrl() {
-  const hostname = configuredHost || window.location.hostname
+  const hostname = window.location.hostname
   const localServers = ['localhost', '127.0.0.1', '[::1]']
   const isLocal = localServers.includes(hostname)
   const isHttps = window.location.protocol === 'https:'
-  const defaultPort = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
-  const port = configuredPort || defaultPort
+  const port = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
   const protocol = isHttps ? 'https' : 'http'
   const portSuffix = (isLocal || (port !== 80 && port !== 443)) ? `:${port}` : ''
   return `${protocol}://${hostname}${portSuffix}/api/ape/ping`
@@ -142,39 +138,19 @@ if (typeof window !== 'undefined') {
   setupOnlineListeners()
 }
 
-/**
- * Configure api-ape client connection
- * @param {object} opts
- * @param {number} [opts.port] - WebSocket port (default: 9010 for local, 443/80 for remote)
- * @param {string} [opts.host] - WebSocket host (default: auto-detect from window.location)
- * @param {string} [opts.transport] - Transport mode: 'auto' | 'websocket' | 'polling'
- */
-function configure(opts = {}) {
-  if (opts.port) {
-    configuredPort = opts.port
-    configureStreaming({ port: opts.port })
-  }
-  if (opts.host) {
-    configuredHost = opts.host
-    configureStreaming({ host: opts.host })
-  }
-  if (opts.transport) {
-    configuredTransport = opts.transport
-  }
-}
+
 
 /**
  * Get WebSocket URL - auto-detects from window.location, keeps /api/ape path
  */
 function getSocketUrl() {
-  const hostname = configuredHost || window.location.hostname
+  const hostname = window.location.hostname
   const localServers = ["localhost", "127.0.0.1", "[::1]"]
   const isLocal = localServers.includes(hostname)
   const isHttps = window.location.protocol === "https:"
 
   // Default port: 9010 for local dev, otherwise use window.location.port or implicit 443/80
-  const defaultPort = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
-  const port = configuredPort || defaultPort
+  const port = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
 
   // Build URL - keep /api/ape path
   const protocol = isHttps ? "wss" : "ws"
@@ -190,7 +166,7 @@ const totalRequestTimeout = 10000
 
 const joinKey = "/"
 // Properties accessed directly on `ape` that should NOT be intercepted
-const reservedKeys = new Set(['on', 'onConnectionChange', 'configure', 'getTransport'])
+const reservedKeys = new Set(['on', 'onConnectionChange', 'getTransport'])
 const handler = {
   get(fn, key) {
     // Skip proxy interception for reserved keys - return actual property
@@ -505,11 +481,10 @@ async function fetchLinkedResources(data, hostId) {
 
   const cleanedData = cleanLinkedKeys(data)
 
-  const hostname = configuredHost || window.location.hostname
+  const hostname = window.location.hostname
   const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
   const isHttps = window.location.protocol === "https:"
-  const defaultPort = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
-  const port = configuredPort || defaultPort
+  const port = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
   const protocol = isHttps ? "https" : "http"
   const portSuffix = (isLocal || (port !== 80 && port !== 443)) ? `:${port}` : ""
   const baseUrl = `${protocol}://${hostname}${portSuffix}`
@@ -699,11 +674,10 @@ async function uploadBinaryData(queryId, uploads) {
   if (uploads.length === 0) return
 
   // Build base URL
-  const hostname = configuredHost || window.location.hostname
+  const hostname = window.location.hostname
   const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
   const isHttps = window.location.protocol === "https:"
-  const defaultPort = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
-  const port = configuredPort || defaultPort
+  const port = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
   const protocol = isHttps ? "https" : "http"
   const portSuffix = (isLocal || (port !== 80 && port !== 443)) ? `:${port}` : ""
   const baseUrl = `${protocol}://${hostname}${portSuffix}`
@@ -875,9 +849,8 @@ function buildClientInterface() {
 }
 
 connectSocket.autoReconnect = () => reconnect = true
-connectSocket.configure = configure
 connectSocket.ConnectionState = ConnectionState
 connect = connectSocket
 
 export default connect;
-export { configure, ConnectionState };
+export { ConnectionState };

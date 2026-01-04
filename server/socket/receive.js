@@ -89,8 +89,20 @@ function setValueAtPath(obj, path, value) {
     current[parts[parts.length - 1]] = value
 }
 
+/**
+ * Extract sessionId cookie from request headers
+ */
+function getSessionId(req) {
+    const cookies = req?.headers?.cookie || ''
+    const match = cookies.match(/(?:^|;\s*)sessionId=([^;]*)/)
+    return match ? match[1] : null
+}
+
 module.exports = function receiveHandler(ape) {
     const { send, checkReply, events, controllers, sharedValues, hostId, embedValues, fileTransfer } = ape
+
+    // Extract sessionId from request cookies (set by outer framework session management)
+    const sessionId = getSessionId(sharedValues.req)
 
     // Build `this` context for controllers
     // Includes: client metadata + api-ape utilities
@@ -102,7 +114,8 @@ module.exports = function receiveHandler(ape) {
         broadcastOthers: (type, data) => broadcast(type, data, hostId), // exclude self
         online,
         getClients,
-        hostId
+        hostId,
+        sessionId  // Session ID from cookie (set by outer framework)
     }
 
     return async function onReceive(msg) {

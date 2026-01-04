@@ -181,10 +181,15 @@ function createLongPollingHandler(controllers, onConnent, fileTransfer) {
                 const clientState = streamClients.get(hostId)
                 const embedValues = clientState?.embed || {}
 
+                // Extract sessionId from cookies (set by outer framework)
+                const sessionIdMatch = (req.headers.cookie || '').match(/(?:^|;\s*)sessionId=([^;]*)/)
+                const sessionId = sessionIdMatch ? sessionIdMatch[1] : null
+
                 // Build controller context
                 const context = {
                     ...embedValues,
                     hostId,
+                    sessionId,  // Session ID from cookie (set by outer framework)
                     req,
                     broadcast: (t, d) => broadcast(t, d),
                     broadcastOthers: (t, d) => broadcast(t, d, hostId),

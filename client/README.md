@@ -64,19 +64,6 @@ api.onConnectionChange((state) => {
 - **JJS encoding** — Supports Date, RegExp, Error, Set, Map, undefined over the wire
 - **Request timeout** — Configurable timeout (default: 10s)
 
-## Configuration
-
-```js
-api.configure({
-  port: 3000,    // WebSocket port
-  host: 'api.example.com'  // WebSocket host
-})
-```
-
-Default port detection:
-- Local (`localhost`, `127.0.0.1`): `9010`
-- Remote: Uses current page port or `443`/`80`
-
 ## File Transfers
 
 Binary data is automatically handled. The client fetches binary resources and uploads binary data transparently.

@@ -5,29 +5,16 @@ import jss from '../../utils/jss'
  * Uses fetch + ReadableStream for receiving, POST for sending
  */
 
-// Configuration
-let configuredPort = null
-let configuredHost = null
-
-/**
- * Configure transport connection options
- */
-function configure(opts = {}) {
-    if (opts.port) configuredPort = opts.port
-    if (opts.host) configuredHost = opts.host
-}
-
 /**
  * Get base URL for polling endpoints
  */
 function getPollUrl() {
-    const hostname = configuredHost || window.location.hostname
+    const hostname = window.location.hostname
     const localServers = ["localhost", "127.0.0.1", "[::1]"]
     const isLocal = localServers.includes(hostname)
     const isHttps = window.location.protocol === "https:"
 
-    const defaultPort = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
-    const port = configuredPort || defaultPort
+    const port = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
 
     const protocol = isHttps ? "https" : "http"
     const portSuffix = (isLocal || (port !== 80 && port !== 443)) ? `:${port}` : ""
@@ -250,4 +237,4 @@ function createStreamingTransport() {
     }
 }
 
-export { createStreamingTransport, configure, getPollUrl }
+export { createStreamingTransport, getPollUrl }
