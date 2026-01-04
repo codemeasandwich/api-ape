@@ -54,11 +54,8 @@ function onConnent(socket, req, send) {
 
         onDisconnent: () => {
             console.info(`👋 Disconnected [${clientID}]`)
-            // Broadcast updated user count after disconnect
-            // Use setTimeout to ensure client is removed first
-            setTimeout(() => {
-                ape.broadcast('users', { count: ape.online() })
-            }, 50)
+            // Client is already removed from broadcast list, safe to broadcast new count
+            ape.broadcast('users', { count: ape.online() })
         }
     }
 }

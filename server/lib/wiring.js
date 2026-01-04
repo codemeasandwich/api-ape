@@ -45,6 +45,15 @@ module.exports = function wiring(controllers, onConnent, fileTransfer) {
         }
         sharedValues.send.toString = () => hostId
 
+        // Track this client for broadcast BEFORE calling onConnent
+        // This ensures ape.online() returns the correct count when sending init
+        const clientInfo = { hostId, send: null, embed: null }
+        addClient(clientInfo)
+
+        // Remove client on disconnect (set up early, will work once send is assigned)
+        socket.on('close', () => {
+            removeClient(clientInfo)
+        })
 
         let result = onConnent(socket, req, sharedValues.send)
         if (!result || !result.then) {
@@ -55,6 +64,7 @@ module.exports = function wiring(controllers, onConnent, fileTransfer) {
                 const isOk = socketOpen(socket, req, onError)
 
                 if (!isOk) {
+                    removeClient(clientInfo) // Clean up if connection fails
                     return;
                 }
 
@@ -74,13 +84,12 @@ module.exports = function wiring(controllers, onConnent, fileTransfer) {
                 send = socketSend(ape)
                 ape.send = send
 
-                // Track this client for broadcast
-                const clientInfo = { hostId, send, embed }
-                addClient(clientInfo)
+                // Update clientInfo with real send function and embed
+                clientInfo.send = send
+                clientInfo.embed = embed
 
-                // Remove client on disconnect
+                // Call onDisconnent when socket closes
                 socket.on('close', () => {
-                    removeClient(clientInfo)
                     onDisconnent()
                 })
 

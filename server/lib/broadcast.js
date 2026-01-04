@@ -11,13 +11,30 @@ const connectedClients = new Set()
  */
 function addClient(clientInfo) {
     connectedClients.add(clientInfo)
+    console.log(`🟢 Client added: ${clientInfo.hostId} (total: ${connectedClients.size})`)
 }
 
 /**
  * Remove a client from the connected set
+ * Accepts either the client object or { hostId } for lookup
  */
 function removeClient(clientInfo) {
-    connectedClients.delete(clientInfo)
+    const sizeBefore = connectedClients.size
+    // If exact reference found, delete it
+    if (connectedClients.has(clientInfo)) {
+        connectedClients.delete(clientInfo)
+        console.log(`🔴 Client removed (ref): ${clientInfo.hostId} (total: ${connectedClients.size})`)
+        return
+    }
+    // Otherwise search by hostId (needed for long polling cleanup)
+    for (const client of connectedClients) {
+        if (client.hostId === clientInfo.hostId) {
+            connectedClients.delete(client)
+            console.log(`🔴 Client removed (lookup): ${clientInfo.hostId} (total: ${connectedClients.size})`)
+            return
+        }
+    }
+    console.log(`⚠️ Client not found for removal: ${clientInfo.hostId} (total: ${connectedClients.size})`)
 }
 
 /**

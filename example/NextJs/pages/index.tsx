@@ -49,7 +49,8 @@ export default function Home() {
      * Subscribe to connection state changes
      * 
      * `api.onConnectionChange` gets called with the current state immediately,
-     * then on each state transition. States: 'disconnected' | 'connecting' | 'connected'
+     * then on each state transition.
+     * States: 'offline' | 'walled' | 'disconnected' | 'connecting' | 'connected'
      */
     const unsubscribe = api.onConnectionChange(setConnectionState)
 
@@ -184,7 +185,11 @@ export default function Home() {
                 : '✅ Connected'
           ) : connectionState === 'connecting'
             ? '⏳ Connecting...'
-            : '❌ Disconnected'}
+            : connectionState === 'offline'
+              ? '📴 Offline • No internet connection'
+              : connectionState === 'walled'
+                ? '🚧 Captive Portal • Please complete WiFi login'
+                : '❌ Disconnected'}
         </p>
 
         {!joined ? (
@@ -198,7 +203,10 @@ export default function Home() {
               autoFocus
             />
             <button type="submit" className={styles.button} disabled={connectionState !== 'connected'}>
-              {connectionState === 'connected' ? 'Join Chat →' : 'Connecting...'}
+              {connectionState === 'connected' ? 'Join Chat →'
+                : connectionState === 'offline' ? 'Offline...'
+                  : connectionState === 'walled' ? 'WiFi Login Required...'
+                    : 'Connecting...'}
             </button>
           </form>
         ) : (
