@@ -1,24 +1,40 @@
 {
   "name": "api-ape",
   "version": "2.1.0",
-  "description": "Remote procedure events",
+  "description": "Remote Procedure Events (RPE) - A lightweight WebSocket framework for building real-time APIs. Call server functions from the browser like local methods with automatic reconnection, HTTP streaming fallback, and extended JSON encoding.",
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {
-    "test": "jest --no-cache ",
-    "test:go": "npm test -- --watch --coverage",
-    "test:update": "npm test -- --updateSnapshot",
-    "test:cover": "npm test -- --coverage --no-cache --detectOpenHandles",
-    "test:watch": "npm test -- --watch --runInBand"
+    "test": "jest --no-cache",
+    "test:watch": "jest --watch --runInBand",
+    "test:cover": "jest --coverage --no-cache --detectOpenHandles",
+    "demo:express": "cd example/ExpressJs && npm install && npm start",
+    "demo:nextjs": "cd example/NextJs && docker-compose up --build",
+    "demo:vite": "cd example/Vite && npm install && npm run dev",
+    "demo:bun": "cd example/Bun && npm install && npm start"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/codemeasandwich/api-ape.git"
   },
   "keywords": [
+    "websocket",
+    "realtime",
     "rpc",
     "api",
-    "ape"
+    "remote-procedure-call",
+    "real-time",
+    "broadcast",
+    "socket",
+    "event-driven",
+    "http-streaming",
+    "long-polling",
+    "client-server",
+    "auto-reconnect",
+    "jjs",
+    "rpe",
+    "nodejs",
+    "framework"
   ],
   "author": "brian shannon",
   "license": "MIT",
@@ -27,11 +43,11 @@
   },
   "homepage": "https://github.com/codemeasandwich/api-ape#readme",
   "dependencies": {
-    "jest": "^29.3.1",
     "ua-parser-js": "^1.0.37",
     "ws": "^8.14.0"
   },
   "devDependencies": {
-    "esbuild": "^0.27.2"
+    "esbuild": "^0.27.2",
+    "jest": "^29.3.1"
   }
 }
