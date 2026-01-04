@@ -1,7 +1,5 @@
 # dependencies
-/node_modules
-/example/ExpressJs/node_modules
-/example/NextJs/node_modules
+**/node_modules
 
 # testing
 /coverage
