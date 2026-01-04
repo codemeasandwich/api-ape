@@ -507,7 +507,6 @@ npm run test:cover  # Coverage report
 - `npm test` — Run all tests
 - `npm run test:watch` — Watch mode for development
 - `npm run test:cover` — Generate coverage report
-- `npm run test:update` — Update snapshots
 
 **Supported:** Node.js 14+, modern browsers (Chrome, Firefox, Safari, Edge)
 
@@ -559,25 +558,39 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ```
 api-ape/
 ├── client/
-│   ├── browser.js       # Browser entry point (window.ape)
-│   └── connectSocket.js # WebSocket client with auto-reconnect
+│   ├── browser.js           # Browser entry point (window.ape)
+│   ├── connectSocket.js     # WebSocket client with auto-reconnect
+│   └── transports/
+│       └── streaming.js     # HTTP streaming fallback transport
 ├── server/
 │   ├── lib/
-│   │   ├── main.js      # HTTP server integration
-│   │   ├── loader.js    # Auto-loads controller files
-│   │   ├── broadcast.js # Client tracking & broadcast
-│   │   └── wiring.js    # WebSocket handler setup
+│   │   ├── main.js          # HTTP server integration
+│   │   ├── loader.js        # Auto-loads controller files
+│   │   ├── broadcast.js     # Client tracking & broadcast
+│   │   ├── wiring.js        # WebSocket handler setup
+│   │   ├── fileTransfer.js  # Binary file transfer via HTTP
+│   │   └── longPolling.js   # HTTP streaming fallback handler
 │   ├── socket/
-│   │   ├── receive.js   # Incoming message handler
-│   │   └── send.js      # Outgoing message handler
-│   └── security/
-│       └── reply.js      # Duplicate request protection
+│   │   ├── open.js          # Connection handler
+│   │   ├── receive.js       # Incoming message handler
+│   │   └── send.js          # Outgoing message handler
+│   ├── security/
+│   │   ├── reply.js         # Duplicate request protection
+│   │   ├── origin.js        # Origin validation
+│   │   └── extractRootDomain.js # Domain extraction utility
+│   └── utils/
+│       ├── deepRequire.js   # Deep module loader
+│       └── genId.js         # ID generation
 ├── utils/
-│   ├── jss.js           # JSON SuperSet encoder/decoder
-│   └── messageHash.js   # Request deduplication
+│   ├── jss.js               # JSON SuperSet encoder/decoder
+│   ├── jss.test.js          # JJS tests
+│   ├── messageHash.js       # Request deduplication hashing
+│   └── messageHash.test.js  # Hash tests
 └── example/
-    ├── ExpressJs/       # Chat app example
-    └── NextJs/          # Next.js integration
+    ├── ExpressJs/           # Minimal chat app example
+    ├── NextJs/              # Next.js production example
+    ├── Vite/                # Vite/Vue example
+    └── Bun/                 # Bun runtime example
 ```
 
 ---
