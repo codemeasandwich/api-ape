@@ -1,6 +1,6 @@
 const loader = require('./loader')
 const wiring = require('./wiring')
-const { WebSocketServer } = require('./wsProvider').getWebSocketProvider()
+const { getWebSocketProvider, isBun, isDeno, getRuntime } = require('./wsProvider')
 const path = require('path')
 const fs = require('fs')
 const { getFileTransferManager } = require('./fileTransfer')
@@ -33,7 +33,7 @@ function matchRoute(pathname, pattern) {
 }
 
 /**
- * Send JSON response
+ * Send JSON response (Node.js style)
  */
 function sendJson(res, statusCode, data) {
     res.writeHead(statusCode, { 'Content-Type': 'application/json' })
@@ -41,10 +41,12 @@ function sendJson(res, statusCode, data) {
 }
 
 /**
- * Get cookie value from request
+ * Get cookie value from request headers
  */
-function getCookie(req, name) {
-    const cookies = req.headers.cookie
+function getCookie(headers, name) {
+    const cookies = typeof headers.get === 'function'
+        ? headers.get('cookie')
+        : headers.cookie
     if (!cookies) return null
     const match = cookies.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`))
     return match ? match[1] : null
@@ -53,46 +55,67 @@ function getCookie(req, name) {
 /**
  * Check if request is from localhost
  */
-function isLocalhost(req) {
-    const host = req.headers.host?.split(':')[0] || ''
-    return ['localhost', '127.0.0.1', '[::1]'].includes(host)
+function isLocalhost(host) {
+    const hostname = host?.split(':')[0] || ''
+    return ['localhost', '127.0.0.1', '[::1]'].includes(hostname)
 }
 
 /**
  * Check if connection is secure (HTTPS)
  */
 function isSecure(req) {
-    return req.socket?.encrypted || req.headers['x-forwarded-proto'] === 'https'
+    if (typeof req.headers?.get === 'function') {
+        return req.headers.get('x-forwarded-proto') === 'https'
+    }
+    return req.socket?.encrypted || req.headers?.['x-forwarded-proto'] === 'https'
 }
 
-module.exports = function (server, { where, onConnent, fileTransferOptions }) {
-
-    if (created) {
-        throw new Error("Api-Ape already started")
-    }
-    created = true
-
+/**
+ * Create core api-ape handlers (shared between runtimes)
+ */
+function createApeCore({ where, onConnent, fileTransferOptions }) {
     const controllers = loader(where)
     const fileTransfer = getFileTransferManager(fileTransferOptions)
-
-    // Create WebSocket server attached to the HTTP server
-    const wss = new WebSocketServer({ noServer: true })
-
-    // Handle WebSocket connections
-    const wsPath = `/${where}/ape`
-    const pollPath = `/${where}/ape/poll`
     const wiringHandler = wiring(controllers, onConnent, fileTransfer)
-
-    // Create long polling handler for WebSocket fallback
     const { handleStreamGet, handleStreamPost } = createLongPollingHandler(controllers, onConnent, fileTransfer)
 
-    wss.on('connection', wiringHandler)
+    const wsPath = `/${where}/ape`
+    const pollPath = `/${where}/ape/poll`
+    const clientPath = `/${where}/ape.js`
+    const downloadPattern = `/${where}/ape/data/:hash`
+    const uploadPattern = `/${where}/ape/data/:queryId/:pathHash`
+
+    return {
+        controllers,
+        fileTransfer,
+        wiringHandler,
+        handleStreamGet,
+        handleStreamPost,
+        wsPath,
+        pollPath,
+        clientPath,
+        downloadPattern,
+        uploadPattern
+    }
+}
+
+/**
+ * Node.js / Express integration
+ * Uses server.on('upgrade') and server.on('request')
+ */
+function initNodeServer(server, options) {
+    const { WebSocketServer } = getWebSocketProvider()
+    const core = createApeCore(options)
+    const { where } = options
+
+    const wss = new WebSocketServer({ noServer: true })
+    wss.on('connection', core.wiringHandler)
 
     // Handle HTTP upgrade requests for WebSocket
     server.on('upgrade', (req, socket, head) => {
         const { pathname } = parseUrl(req.url)
 
-        if (pathname === wsPath) {
+        if (pathname === core.wsPath) {
             wss.handleUpgrade(req, socket, head, (ws) => {
                 wss.emit('connection', ws, req)
             })
@@ -109,8 +132,8 @@ module.exports = function (server, { where, onConnent, fileTransferOptions }) {
     server.on('request', (req, res) => {
         const { pathname } = parseUrl(req.url)
 
-        // Serve bundled client at /api/ape.js (or /{where}/ape.js)
-        if (pathname === `/${where}/ape.js`) {
+        // Serve bundled client
+        if (pathname === core.clientPath) {
             const filePath = path.join(__dirname, '../../dist/ape.js')
             fs.readFile(filePath, (err, data) => {
                 if (err) {
@@ -123,33 +146,33 @@ module.exports = function (server, { where, onConnent, fileTransferOptions }) {
             return
         }
 
-        // Long polling endpoints - GET /api/ape/poll (streaming receive)
-        if (pathname === pollPath && req.method === 'GET') {
-            handleStreamGet(req, res)
+        // Long polling - GET
+        if (pathname === core.pollPath && req.method === 'GET') {
+            core.handleStreamGet(req, res)
             return
         }
 
-        // Long polling endpoints - POST /api/ape/poll (send messages)
-        if (pathname === pollPath && req.method === 'POST') {
-            handleStreamPost(req, res, controllers)
+        // Long polling - POST
+        if (pathname === core.pollPath && req.method === 'POST') {
+            core.handleStreamPost(req, res, core.controllers)
             return
         }
 
-        // File download endpoint - GET /api/ape/data/:hash
-        const downloadMatch = matchRoute(pathname, `/${where}/ape/data/:hash`)
+        // File download
+        const downloadMatch = matchRoute(pathname, core.downloadPattern)
         if (req.method === 'GET' && downloadMatch) {
             const { hash } = downloadMatch
-            const hostId = getCookie(req, 'apeHostId') || req.headers['x-ape-host-id']
+            const hostId = getCookie(req.headers, 'apeHostId') || req.headers['x-ape-host-id']
 
             if (!hostId) {
                 return sendJson(res, 401, { error: 'Missing session identifier' })
             }
 
-            if (!isLocalhost(req) && !isSecure(req)) {
+            if (!isLocalhost(req.headers.host) && !isSecure(req)) {
                 return sendJson(res, 403, { error: 'HTTPS required for file transfers' })
             }
 
-            const result = fileTransfer.getDownload(hash, hostId)
+            const result = core.fileTransfer.getDownload(hash, hostId)
 
             if (!result) {
                 return sendJson(res, 404, { error: 'Download not found or unauthorized' })
@@ -163,17 +186,17 @@ module.exports = function (server, { where, onConnent, fileTransferOptions }) {
             return
         }
 
-        // File upload endpoint - PUT /api/ape/data/:queryId/:pathHash
-        const uploadMatch = matchRoute(pathname, `/${where}/ape/data/:queryId/:pathHash`)
+        // File upload
+        const uploadMatch = matchRoute(pathname, core.uploadPattern)
         if (req.method === 'PUT' && uploadMatch) {
             const { queryId, pathHash } = uploadMatch
-            const hostId = getCookie(req, 'apeHostId') || req.headers['x-ape-host-id']
+            const hostId = getCookie(req.headers, 'apeHostId') || req.headers['x-ape-host-id']
 
             if (!hostId) {
                 return sendJson(res, 401, { error: 'Missing session identifier' })
             }
 
-            if (!isLocalhost(req) && !isSecure(req)) {
+            if (!isLocalhost(req.headers.host) && !isSecure(req)) {
                 return sendJson(res, 403, { error: 'HTTPS required for file transfers' })
             }
 
@@ -181,7 +204,7 @@ module.exports = function (server, { where, onConnent, fileTransferOptions }) {
             req.on('data', chunk => chunks.push(chunk))
             req.on('end', () => {
                 const data = Buffer.concat(chunks)
-                const success = fileTransfer.receiveUpload(queryId, pathHash, data, hostId)
+                const success = core.fileTransfer.receiveUpload(queryId, pathHash, data, hostId)
 
                 if (success) {
                     sendJson(res, 200, { success: true })
@@ -200,4 +223,244 @@ module.exports = function (server, { where, onConnent, fileTransferOptions }) {
             listener.call(server, req, res)
         }
     })
+
+    return { wss, core }
 }
+
+/**
+ * Bun integration
+ * Returns fetch and websocket handlers to spread into Bun.serve()
+ */
+function initBunServer(options) {
+    const { BunWebSocket } = require('./ws/adapters/bun')
+    const core = createApeCore(options)
+    const clients = new Map()
+
+    /**
+     * Fetch handler for Bun.serve()
+     * Handles all api-ape routes, returns null for non-ape routes
+     */
+    function fetch(req, server) {
+        const url = new URL(req.url)
+        const pathname = url.pathname
+
+        // WebSocket upgrade
+        if (pathname === core.wsPath) {
+            const upgrade = req.headers.get('upgrade')
+            if (upgrade?.toLowerCase() === 'websocket') {
+                const success = server.upgrade(req, { data: { req } })
+                if (success) return undefined
+                return new Response('WebSocket upgrade failed', { status: 500 })
+            }
+        }
+
+        // Serve client bundle
+        if (pathname === core.clientPath) {
+            try {
+                const filePath = path.join(__dirname, '../../dist/ape.js')
+                const data = fs.readFileSync(filePath)
+                return new Response(data, {
+                    headers: { 'Content-Type': 'application/javascript' }
+                })
+            } catch {
+                return new Response('Client bundle not found', { status: 500 })
+            }
+        }
+
+        // Not an api-ape route
+        return null
+    }
+
+    /**
+     * WebSocket handlers for Bun.serve()
+     */
+    const websocket = {
+        open(ws) {
+            const wrapper = new BunWebSocket(ws)
+            clients.set(ws, wrapper)
+            const { req } = ws.data || {}
+            core.wiringHandler(wrapper, req)
+        },
+
+        message(ws, message) {
+            const wrapper = clients.get(ws)
+            if (wrapper) {
+                wrapper._onMessage(message)
+            }
+        },
+
+        close(ws, code, reason) {
+            const wrapper = clients.get(ws)
+            if (wrapper) {
+                wrapper._onClose(code, reason)
+                clients.delete(ws)
+            }
+        },
+
+        error(ws, error) {
+            const wrapper = clients.get(ws)
+            if (wrapper) {
+                wrapper._onError(error)
+            }
+        }
+    }
+
+    return { fetch, websocket, clients, core }
+}
+
+/**
+ * Check if server is a Bun server (has reload method and Bun globals)
+ */
+function isBunServer(server) {
+    return isBun() && typeof server?.reload === 'function'
+}
+
+/**
+ * Initialize Bun server using server.reload() to hook in
+ * This allows same signature: ape(server, { where: 'api' })
+ */
+function initBunServerWithReload(server, options) {
+    const { BunWebSocket } = require('./ws/adapters/bun')
+    const core = createApeCore(options)
+    const clients = new Map()
+
+    // Check if WebSocket support is enabled on Bun server
+    // Bun requires websocket handlers to be defined at Bun.serve() creation
+    const hasWebSocketSupport = typeof server.upgrade === 'function'
+
+    if (!hasWebSocketSupport && options.transport !== 'longpolling') {
+        throw new Error(`
+🦍 api-ape: Bun WebSocket support not enabled!
+
+To enable WebSocket support in Bun, add a 'websocket' property when creating your server:
+
+    const server = Bun.serve({
+        port: 3000,
+        fetch(req) { ... },
+        websocket: { message() {} }  // <-- Required for api-ape
+    })
+
+    ape(server, { where: 'api' })
+
+If you only want HTTP long-polling (no WebSocket), pass:
+    ape(server, { where: 'api', transport: 'longpolling' })
+`)
+    }
+
+    // Store original fetch handler
+    const originalFetch = server.fetch
+
+    /**
+     * Wrapped fetch handler that handles api-ape routes first
+     */
+    function wrappedFetch(req, server) {
+        const url = new URL(req.url)
+        const pathname = url.pathname
+
+        // WebSocket upgrade
+        if (pathname === core.wsPath) {
+            const upgrade = req.headers.get('upgrade')
+            if (upgrade?.toLowerCase() === 'websocket') {
+                const success = server.upgrade(req, { data: { req } })
+                if (success) return undefined
+                return new Response('WebSocket upgrade failed', { status: 500 })
+            }
+        }
+
+        // Serve client bundle
+        if (pathname === core.clientPath) {
+            try {
+                const filePath = path.join(__dirname, '../../dist/ape.js')
+                const data = fs.readFileSync(filePath)
+                return new Response(data, {
+                    headers: { 'Content-Type': 'application/javascript' }
+                })
+            } catch {
+                return new Response('Client bundle not found', { status: 500 })
+            }
+        }
+
+        // Pass to original fetch handler
+        if (originalFetch) {
+            return originalFetch(req, server)
+        }
+
+        return new Response('Not Found', { status: 404 })
+    }
+
+    /**
+     * WebSocket handlers
+     */
+    const websocket = {
+        open(ws) {
+            const wrapper = new BunWebSocket(ws)
+            clients.set(ws, wrapper)
+            const { req } = ws.data || {}
+            core.wiringHandler(wrapper, req)
+        },
+
+        message(ws, message) {
+            const wrapper = clients.get(ws)
+            if (wrapper) {
+                wrapper._onMessage(message)
+            }
+        },
+
+        close(ws, code, reason) {
+            const wrapper = clients.get(ws)
+            if (wrapper) {
+                wrapper._onClose(code, reason)
+                clients.delete(ws)
+            }
+        },
+
+        error(ws, error) {
+            const wrapper = clients.get(ws)
+            if (wrapper) {
+                wrapper._onError(error)
+            }
+        }
+    }
+
+    // Use server.reload() to hook in our handlers
+    server.reload({
+        fetch: wrappedFetch,
+        websocket
+    })
+
+    return { clients, core }
+}
+
+/**
+ * Main api-ape entry point
+ * Unified signature for all runtimes:
+ *   ape(server, { where: 'api' })
+ * 
+ * Works with:
+ * - Node.js http.Server
+ * - Express server
+ * - Bun.serve() server
+ */
+module.exports = function (server, options) {
+    if (created) {
+        throw new Error("Api-Ape already started")
+    }
+    created = true
+
+    // Bun server - use server.reload() to hook in
+    if (isBunServer(server)) {
+        return initBunServerWithReload(server, options)
+    }
+
+    // Node.js / Express - server is an http.Server with .on() method
+    if (server && typeof server.on === 'function') {
+        return initNodeServer(server, options)
+    }
+
+    throw new Error('Unsupported server type. Expected http.Server (Node.js) or Bun.serve() server.')
+}
+
+// Export runtime detection utilities
+module.exports.isBun = isBun
+module.exports.isDeno = isDeno
+module.exports.getRuntime = getRuntime

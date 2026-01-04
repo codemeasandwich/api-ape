@@ -19,7 +19,10 @@ server/
 │       ├── index.js  # Module entry point
 │       ├── frames.js # Frame encoding/decoding
 │       ├── socket.js # WebSocket connection class
-│       └── server.js # WebSocketServer class
+│       ├── server.js # WebSocketServer class
+│       └── adapters/ # Runtime-specific adapters
+│           ├── bun.js  # Bun native WebSocket
+│           └── deno.js # Deno native WebSocket
 ├── socket/
 │   ├── receive.js    # Incoming message handler
 │   └── send.js       # Outgoing message handler
@@ -108,15 +111,15 @@ Drop JS files in your `where` directory:
 
 ```
 api/
-├── hello.js      → ape.hello(data)
-├── users.js      → ape.users(data)
+├── hello.js      → api.hello(data)
+├── users.js      → api.users(data)
 ├── posts/
-│   ├── index.js  → ape.posts(data)     # index.js maps to parent folder
-│   ├── list.js   → ape.posts.list(data)
-│   └── create.js → ape.posts.create(data)
+│   ├── index.js  → api.posts(data)     # index.js maps to parent folder
+│   ├── list.js   → api.posts.list(data)
+│   └── create.js → api.posts.create(data)
 ```
 
-**Note**: Both `api/users.js` and `api/users/index.js` map to the same endpoint `ape.users(data)`. Use `index.js` when you want to group related files in a folder.
+**Note**: Both `api/users.js` and `api/users/index.js` map to the same endpoint `api.users(data)`. Use `index.js` when you want to group related files in a folder.
 
 **⚠️ Duplicate Detection**: If both files exist, api-ape will throw an error on startup:
 ```
@@ -197,8 +200,10 @@ api-ape includes its own RFC 6455 WebSocket implementation with **zero npm depen
 
 The server automatically detects and uses the best available WebSocket implementation:
 
-1. **Node.js 24+** (stable): Uses native `node:ws` module
-2. **Earlier Node.js / Bun**: Uses built-in RFC 6455 polyfill
+1. **Deno**: Uses native `Deno.upgradeWebSocket()` API
+2. **Bun**: Uses native `Bun.serve()` WebSocket handlers
+3. **Node.js 24+** (stable): Uses native `node:ws` module
+4. **Earlier Node.js**: Uses built-in RFC 6455 polyfill
 
 ```javascript
 // Automatic - no configuration needed

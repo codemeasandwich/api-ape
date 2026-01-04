@@ -42,18 +42,18 @@
 
         onMounted(() => {
           // Receive init with history + user count on connect
-          ape.on('init', ({ data }) => {
+          api.on('init', ({ data }) => {
             messages.value = data.history || []
             users.value = data.users || 0
           })
 
           // Listen for user count updates
-          ape.on('users', ({ data }) => {
+          api.on('users', ({ data }) => {
             users.value = data.count
           })
 
           // Listen for new messages from others
-          ape.on('message', ({ data }) => {
+          api.on('message', ({ data }) => {
             messages.value.push(data)
           })
         })
@@ -61,7 +61,7 @@
         function send() {
           if (!input.value) return
           const msg = { user: user.value, text: input.value }
-          ape.message(msg).then(() => {
+          api.message(msg).then(() => {
             messages.value.push(msg)
           })
           input.value = ''

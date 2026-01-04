@@ -6,7 +6,8 @@ WebSocket client library with auto-reconnection and proxy-based API calls.
 
 | File | Description |
 |------|-------------|
-| `browser.js` | Browser entry point - exposes `window.ape` |
+| `index.js` | **Unified entry** — auto-initializing client with call buffering |
+| `browser.js` | Browser entry point — exposes `window.ape` |
 | `connectSocket.js` | WebSocket client with auto-reconnect, queuing, and JJS encoding |
 
 ## Usage
@@ -17,35 +18,35 @@ WebSocket client library with auto-reconnection and proxy-based API calls.
 <script src="/api/ape.js"></script>
 <script>
   // Call server functions
-  ape.hello('World').then(result => console.log(result))
+  api.hello('World').then(result => console.log(result))
   
   // Listen for broadcasts
-  ape.on('message', ({ data }) => console.log(data))
+  api.on('message', ({ data }) => console.log(data))
 </script>
 ```
 
-### ES Module Import
+### ES Module Import (React, Vue, etc.)
 
 ```bash
 npm i api-ape
 ```
 
 ```js
-import ape from 'api-ape'
+import api from 'api-ape'
 
-// Configure
-ape.configure({ port: 3000 })
-
-// Connect and enable auto-reconnect
-const { sender, setOnReciver } = ape()
-ape.autoReconnect()
-
-// Use sender as API
-sender.users.list().then(users => ...)
+// Just use it! Calls are buffered until connected.
+api.users.list().then(users => console.log(users))
 
 // Listen for broadcasts
-setOnReciver('newUser', ({ data }) => ...)
+api.on('message', ({ data }) => console.log(data))
+
+// Track connection state
+api.onConnectionChange((state) => {
+  console.log('Connection:', state) // 'disconnected' | 'connecting' | 'connected'
+})
 ```
+
+**No async setup needed!** The client auto-initializes and buffers calls until connected.
 
 ## Features
 
@@ -58,7 +59,7 @@ setOnReciver('newUser', ({ data }) => ...)
 ## Configuration
 
 ```js
-ape.configure({
+api.configure({
   port: 3000,    // WebSocket port
   host: 'api.example.com'  // WebSocket host
 })
@@ -76,7 +77,7 @@ Binary data is automatically handled. The client fetches binary resources and up
 
 ```js
 // Server returns Buffer, client receives ArrayBuffer
-const result = await ape.files.download('image.png')
+const result = await api.files.download('image.png')
 console.log(result.data)  // ArrayBuffer
 
 // Display as image
@@ -91,7 +92,7 @@ const file = input.files[0]
 const arrayBuffer = await file.arrayBuffer()
 
 // Binary data is uploaded automatically
-await ape.files.upload({
+await api.files.upload({
   name: file.name,
   data: arrayBuffer  // Sent via HTTP PUT
 })

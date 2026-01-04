@@ -3,25 +3,26 @@
  * 
  * This component demonstrates how to use api-ape in a React/Next.js application:
  * 
- * 1. **Client Initialization**: Connect to api-ape WebSocket server
- * 2. **Proxy Pattern**: Use `client.sender` as a Proxy to call server functions
- * 3. **Event Listeners**: Listen for server broadcasts using `setOnReciver`
+ * 1. **Unified Import**: Just `import api from 'api-ape'` - no async setup!
+ * 2. **Proxy Pattern**: Use `api.message()` to call server functions
+ * 3. **Event Listeners**: Listen for server broadcasts using `api.on()`
  * 4. **Promise-based Calls**: Server functions return Promises automatically
  * 
  * Server-side: api/message.js handles incoming messages and broadcasts to other clients
  * Client-side: This component sends messages and receives broadcasts
  * 
  * Key api-ape concepts:
- * - `client.sender` is a Proxy - accessing `sender.message()` calls server function
+ * - `api` is a Proxy - accessing `api.message()` calls server function
  * - Property name (`message`) maps to server file: `api/message.js`
- * - `setOnReciver(type, handler)` listens for server broadcasts
+ * - `api.on(type, handler)` listens for server broadcasts
  * - All calls return Promises - server response is automatically matched by queryId
+ * - Calls are buffered until the connection is ready - no need for getApeClient().then()!
  */
 
 import Head from 'next/head'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import styles from '../styles/Chat.module.css'
-import { getApeClient } from '../ape/client'
+import api from 'api-ape'
 import Info from './Info'
 
 export default function Home() {
@@ -34,78 +35,54 @@ export default function Home() {
   const [sending, setSending] = useState(false)
   const [connectionState, setConnectionState] = useState('connecting')
 
-  // Refs
-  const apiRef = useRef(null) // Stores the api-ape sender Proxy
-
   /**
-   * Initialize api-ape client on component mount
+   * Set up api-ape event listeners on component mount
    * 
-   * This effect:
-   * 1. Gets the api-ape client singleton (connects to WebSocket)
-   * 2. Stores the `sender` Proxy in a ref for later use
-   * 3. Sets up event listeners for server broadcasts
-   * 
-   * The client auto-reconnects if the connection drops.
+   * With the unified import, no need for getApeClient().then()!
+   * The api object automatically buffers calls until connected.
    */
   useEffect(() => {
     // Skip on server-side rendering
     if (typeof window === 'undefined') return
 
-    getApeClient().then((client) => {
-      if (!client) return
+    /**
+     * Subscribe to connection state changes
+     * 
+     * `api.onConnectionChange` gets called with the current state immediately,
+     * then on each state transition. States: 'disconnected' | 'connecting' | 'connected'
+     */
+    const unsubscribe = api.onConnectionChange(setConnectionState)
 
-      /**
-       * Store the sender Proxy
-       * 
-       * `client.sender` is a Proxy object that allows you to call server functions
-       * by accessing properties. For example:
-       * - `sender.message(data)` calls `api/message.js` on the server
-       * - The property name (`message`) maps to the server file path
-       * - All calls return Promises that resolve with the server's response
-       */
-      apiRef.current = client.sender
-      console.log('🦍 api-ape client connected')
-
-      /**
-       * Subscribe to connection state changes
-       * 
-       * `onConnectionChange` gets called with the current state immediately,
-       * then on each state transition. States: 'disconnected' | 'connecting' | 'connected'
-       */
-      const unsubscribe = client.onConnectionChange(setConnectionState)
-
-      /**
-       * Set up event listeners for server broadcasts
-       * 
-       * `setOnReciver(type, handler)` listens for broadcasts from the server.
-       * The server can broadcast using `this.broadcast()` or `this.broadcastOthers()`
-       * in controller functions (see api/message.js).
-       * 
-       * Broadcast types:
-       * - 'init': Initial data when client connects (history, user count)
-       * - 'message': New message from another client
-       * - 'users': Updated user count
-       */
-      client.setOnReciver('init', ({ data }) => {
-        // Server sent initial data (happens on connect)
-        setMessages(data.history || [])
-        setUserCount(data.users || 0)
-        console.log('🦍 Initialized with', data.history?.length || 0, 'messages')
-      })
-
-      client.setOnReciver('message', ({ data }) => {
-        // Server broadcasted a new message from another client
-        // This is NOT the response to our own send - it's a broadcast!
-        setMessages(prev => [...prev, data.message])
-      })
-
-      client.setOnReciver('users', ({ data }) => {
-        // Server broadcasted updated user count
-        setUserCount(data.count)
-      })
-
-      return () => unsubscribe()
+    /**
+     * Set up event listeners for server broadcasts
+     * 
+     * `api.on(type, handler)` listens for broadcasts from the server.
+     * The server can broadcast using `this.broadcast()` or `this.broadcastOthers()`
+     * in controller functions (see api/message.js).
+     * 
+     * Broadcast types:
+     * - 'init': Initial data when client connects (history, user count)
+     * - 'message': New message from another client
+     * - 'users': Updated user count
+     */
+    api.on('init', ({ data }) => {
+      // Server sent initial data (happens on connect)
+      setMessages(data.history || [])
+      setUserCount(data.users || 0)
+      console.log('🦍 Initialized with', data.history?.length || 0, 'messages')
     })
+
+    api.on('message', ({ data }) => {
+      // Server broadcasted a new message from another client
+      setMessages(prev => [...prev, data.message])
+    })
+
+    api.on('users', ({ data }) => {
+      // Server broadcasted updated user count
+      setUserCount(data.count)
+    })
+
+    return () => unsubscribe()
   }, [])
 
   /**
@@ -126,19 +103,19 @@ export default function Home() {
    */
   const sendMessage = (e) => {
     e.preventDefault()
-    if (!input.trim() || !apiRef.current || sending) return
+    if (!input.trim() || sending) return
 
-    const api = apiRef.current
     setSending(true)
 
     /**
      * Call server function using Proxy pattern
      * 
-     * `api.message({ user, text })`:
+     * `api.message({ user, text })`
      * - Calls the `message` function in `api/message.js`
      * - Sends `{ user, text }` as the function argument
      * - Returns a Promise that resolves with the server's return value
      * - Server automatically broadcasts to other clients (see api/message.js)
+     * - Calls are buffered until connected - no need to check connection status!
      * 
      * The server function receives the data and can:
      * - Validate input
@@ -154,7 +131,7 @@ export default function Home() {
          * The response is whatever the server function returned.
          * In this case, api/message.js returns: `{ ok: true, message: msg }`
          * 
-         * Note: Other clients receive the message via broadcast (setOnReciver above),
+         * Note: Other clients receive the message via broadcast (api.on above),
          * but we add it here from the server's response to show it immediately.
          */
         if (response?.message) {

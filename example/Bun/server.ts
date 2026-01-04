@@ -1,44 +1,46 @@
 /**
- * Bun server using api-ape library (TypeScript)
- * Bun natively supports TypeScript - no build step needed!
+ * Bun server using api-ape library with native Bun.serve() WebSocket
+ * Uses the SAME unified signature as Node.js/Express: ape(server, { where: 'api' })
  */
 
-import { createServer, IncomingMessage, ServerResponse } from 'http'
 import path from 'path'
-import fs from 'fs'
-import ape from 'api-ape'
+
+const ape = require('api-ape')
 
 const port = parseInt(process.env.PORT || '3000', 10)
 
-// Create HTTP server
-const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    const url = new URL(req.url || '/', `http://localhost:${port}`)
+// Message history
+const _messages: { user: string; text: string; time: number }[] = []
 
-    if (url.pathname === '/') {
-        res.writeHead(200, { 'Content-Type': 'text/html' })
-        res.end(fs.readFileSync(path.join(__dirname, 'index.html')))
-        return
-    }
+// Create Bun server first
+const server = Bun.serve({
+    port,
 
-    if (url.pathname === '/styles.css') {
-        res.writeHead(200, { 'Content-Type': 'text/css' })
-        res.end(fs.readFileSync(path.join(__dirname, 'styles.css')))
-        return
-    }
+    fetch(req) {
+        const url = new URL(req.url)
 
-    res.writeHead(404)
-    res.end('Not Found')
+        // Serve static files
+        if (url.pathname === '/') {
+            return new Response(Bun.file(path.join(import.meta.dir, 'index.html')))
+        }
+
+        if (url.pathname === '/styles.css') {
+            return new Response(Bun.file(path.join(import.meta.dir, 'styles.css')))
+        }
+
+        return new Response('Not Found', { status: 404 })
+    },
+
+    // Required: Enables WebSocket support. ape() replaces via server.reload()
+    websocket: { message() { } }
 })
 
-// Initialize api-ape
+// Initialize api-ape with the Bun server - SAME signature as Node.js/Express!
 ape(server, {
     where: 'api',
-    onConnent: (socket, req, send) => {
-        const messageModule = require('./api/message')
-        setTimeout(() => {
-            send('init', { history: messageModule._messages, users: ape.online() })
-            ape.broadcast('users', { count: ape.online() })
-        }, 100)
+    onConnent: (socket: any, req: any, send: (type: string, data: any) => void) => {
+        send('init', { history: _messages, users: ape.online() })
+        ape.broadcast('users', { count: ape.online() })
 
         return {
             onDisconnent: () => ape.broadcast('users', { count: ape.online() })
@@ -46,14 +48,12 @@ ape(server, {
     }
 })
 
-server.listen(port, () => {
-    console.log(`
+console.log(`
 ╔═══════════════════════════════════════════════════════╗
-║       🦍 api-ape Bun Example (TypeScript)             ║
+║       🦍 api-ape Bun Example (Native WebSocket)       ║
 ╠═══════════════════════════════════════════════════════╣
 ║  HTTP:      http://localhost:${port}/                  ║
 ║  WebSocket: ws://localhost:${port}/api/ape             ║
-║  Runtime:   Bun 🥖 + TypeScript                       ║
+║  Unified:   ape(server, { where: 'api' })             ║
 ╚═══════════════════════════════════════════════════════╝
 `)
-})

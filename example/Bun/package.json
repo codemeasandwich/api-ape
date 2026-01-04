@@ -5,5 +5,8 @@
     },
     "dependencies": {
         "api-ape": "file:../.."
+    },
+    "devDependencies": {
+        "@types/bun": "latest"
     }
 }

@@ -120,9 +120,48 @@ declare namespace ape {
     export function online(): number
     /** Get all connected client hostIds */
     export function getClients(): string[]
+
+    // Browser client methods (available when imported in browser context)
+    /** Subscribe to broadcasts from the server */
+    export function on<T = any>(type: string, handler: (message: { err?: Error; type: string; data: T }) => void): void
+    /** Subscribe to connection state changes. Returns unsubscribe function. */
+    export function onConnectionChange(handler: (state: 'disconnected' | 'connecting' | 'connected') => void): () => void
+    /** Get current transport type */
+    export function getTransport(): 'websocket' | 'polling' | null
+
+    /** Call any server function dynamically (browser only) */
+    export function message<T = any, R = any>(data?: T): Promise<R>
 }
 
+// Server-side default export (also works as browser client proxy)
 export default ape
+
+// =============================================================================
+// BROWSER CLIENT (Default export in browser context)
+// =============================================================================
+
+/**
+ * Unified browser client - auto-initializing Proxy that buffers calls until ready.
+ * 
+ * In browser context (via bundler or direct import), `import api from 'api-ape'`
+ * returns this client instead of the server function.
+ * 
+ * Usage:
+ *   import api from 'api-ape'
+ *   api.message({ text: 'Hello!' })  // Buffered until connected
+ *   api.on('message', (data) => {})  // Listen for broadcasts
+ *   api.onConnectionChange((state) => {}) // Connection state updates
+ */
+export interface ApeBrowserClient extends ApeSender {
+    /** Subscribe to broadcasts from the server */
+    on<T = any>(type: string, handler: MessageHandler<T>): void
+
+    /** Subscribe to connection state changes. Returns unsubscribe function. */
+    onConnectionChange(handler: (state: ConnectionState) => void): () => void
+
+    /** Get current transport type ('websocket' | 'polling' | null) */
+    getTransport(): TransportType | null
+}
 
 // =============================================================================
 // CLIENT TYPES

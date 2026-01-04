@@ -168,3 +168,70 @@ describe('roundtrip', () => {
         expect(result.frame.payload.toString()).toBe(original)
     })
 })
+
+// Tests for wsProvider.js
+describe('wsProvider.js', () => {
+    const {
+        getWebSocketProvider,
+        getRuntime,
+        isDeno,
+        isBun,
+        isNode24Stable
+    } = require('../wsProvider')
+
+    describe('runtime detection', () => {
+        it('isDeno should return false in Node environment', () => {
+            expect(isDeno()).toBe(false)
+        })
+
+        it('isBun should return false in Node environment', () => {
+            // In Node.js, process.versions.bun is undefined
+            expect(isBun()).toBe(false)
+        })
+
+        it('getRuntime should return "node" in Node environment', () => {
+            expect(getRuntime()).toBe('node')
+        })
+
+        it('isNode24Stable should check version correctly', () => {
+            const result = isNode24Stable()
+            const nodeVersion = parseInt(process.versions.node.split('.')[0], 10)
+
+            if (nodeVersion >= 24 && !process.versions.node.includes('-')) {
+                expect(result).toBe(true)
+            } else {
+                expect(result).toBe(false)
+            }
+        })
+    })
+
+    describe('getWebSocketProvider', () => {
+        it('should return a provider object', () => {
+            const provider = getWebSocketProvider()
+            expect(provider).toHaveProperty('type')
+            expect(provider).toHaveProperty('WebSocketServer')
+            expect(provider).toHaveProperty('runtime')
+        })
+
+        it('should return polyfill or node-native type in Node', () => {
+            const provider = getWebSocketProvider()
+            expect(['polyfill', 'node-native']).toContain(provider.type)
+        })
+
+        it('should return node runtime', () => {
+            const provider = getWebSocketProvider()
+            expect(provider.runtime).toBe('node')
+        })
+
+        it('should return a WebSocketServer constructor', () => {
+            const provider = getWebSocketProvider()
+            expect(typeof provider.WebSocketServer).toBe('function')
+        })
+
+        it('should cache the provider', () => {
+            const provider1 = getWebSocketProvider()
+            const provider2 = getWebSocketProvider()
+            expect(provider1).toBe(provider2)
+        })
+    })
+})

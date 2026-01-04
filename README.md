@@ -74,14 +74,33 @@ Include the bundled client and start calling:
 <script src="/api/ape.js"></script>
 <script>
   // Call server functions like local methods
-  const result = await ape.hello('World')
+  const result = await api.hello('World')
   console.log(result) // "Hello, World!"
   
   // Listen for broadcasts
-  ape.on('message', ({ data }) => {
+  api.on('message', ({ data }) => {
     console.log('New message:', data)
   })
 </script>
+```
+
+### Client (React, Vue, etc.)
+
+With bundlers, use the unified import — no async setup needed:
+
+```js
+import api from 'api-ape'
+
+// Just use it! Calls are buffered until connected.
+const result = await api.hello('World')
+
+// Listen for broadcasts
+api.on('message', ({ data }) => console.log(data))
+
+// Track connection state
+api.onConnectionChange((state) => {
+  console.log('Connection:', state) // 'disconnected' | 'connecting' | 'connected'
+})
 ```
 
 **That's it!** Your server function is now callable from the browser.
@@ -92,7 +111,7 @@ Include the bundled client and start calling:
 
 * **Auto-wiring** — Drop JS files in a folder, they become API endpoints automatically
 * **Real-time broadcasts** — Built-in `broadcast()` and `broadcastOthers()` methods for pushing to clients
-* **Promise-based calls** — Chainable paths like `ape.users.list()` map to `api/users/list.js`
+* **Promise-based calls** — Chainable paths like `api.users.list()` map to `api/users/list.js`
 * **Automatic reconnection** — Client auto-reconnects on disconnect with exponential backoff
 * **HTTP streaming fallback** — Automatically falls back to long polling when WebSockets are blocked
 * **JJS Encoding** — Extended JSON supporting Date, RegExp, Error, Set, Map, undefined, and circular refs
@@ -131,45 +150,45 @@ Inside controller functions, `this` provides:
 
 ### Client
 
-#### `ape.<path>.<method>(...args)`
+#### `api.<path>.<method>(...args)`
 
 Call a server function. Returns a Promise.
 
 ```js
 // Calls api/users/list.js
-const users = await ape.users.list()
+const users = await api.users.list()
 
 // Calls api/users/create.js with data
-const user = await ape.users.create({ name: 'Alice' })
+const user = await api.users.create({ name: 'Alice' })
 
 // Nested paths work too
-// ape.admin.users -> api/admin/users.js
-// ape.admin.users.delete -> api/admin/users/delete.js
-await ape.admin.users.delete(userId)
+// api.admin.users -> api/admin/users.js
+// api.admin.users.delete -> api/admin/users/delete.js
+await api.admin.users.delete(userId)
 ```
 
-#### `ape.on(type, handler)`
+#### `api.on(type, handler)`
 
 Listen for server broadcasts.
 
 ```js
-ape.on('notification', ({ data, err, type }) => {
+api.on('notification', ({ data, err, type }) => {
   console.log('Received:', data)
 })
 ```
 
-#### `ape.configure(options)`
+#### `api.configure(options)`
 
 Configure client connection options.
 
 ```js
 // Configure transport mode
-ape.configure({ transport: 'auto' })      // Auto-detect (default)
-ape.configure({ transport: 'websocket' }) // Force WebSocket only
-ape.configure({ transport: 'polling' })   // Force HTTP streaming
+api.configure({ transport: 'auto' })      // Auto-detect (default)
+api.configure({ transport: 'websocket' }) // Force WebSocket only
+api.configure({ transport: 'polling' })   // Force HTTP streaming
 
 // Configure connection details
-ape.configure({ 
+api.configure({ 
   port: 9010,
   host: 'example.com',
   transport: 'auto'
@@ -182,21 +201,21 @@ ape.configure({
 | `host` | `string` | Server hostname (default: auto-detect) |
 | `transport` | `string` | Transport mode: `'auto'`, `'websocket'`, or `'polling'` |
 
-#### `ape.getTransport()`
+#### `api.getTransport()`
 
 Get the currently active transport type.
 
 ```js
-const transport = ape.getTransport()
+const transport = api.getTransport()
 console.log(transport) // 'websocket' | 'polling' | null
 ```
 
-#### `ape.onConnectionChange(handler)`
+#### `api.onConnectionChange(handler)`
 
 Listen for connection state changes.
 
 ```js
-const unsubscribe = ape.onConnectionChange((state) => {
+const unsubscribe = api.onConnectionChange((state) => {
   console.log('Connection state:', state)
   // 'disconnected' | 'connecting' | 'connected'
 })
@@ -321,7 +340,7 @@ module.exports = async function(id) {
 
 ```js
 try {
-  const result = await ape.data.get(id)
+  const result = await api.data.get(id)
   console.log(result)
 } catch (err) {
   console.error('Server error:', err)
@@ -371,19 +390,19 @@ When in polling mode:
 
 ```js
 // Force HTTP streaming (useful for testing)
-ape.configure({ transport: 'polling' })
+api.configure({ transport: 'polling' })
 
 // Force WebSocket only (fail if unavailable)
-ape.configure({ transport: 'websocket' })
+api.configure({ transport: 'websocket' })
 
 // Auto-detect (default)
-ape.configure({ transport: 'auto' })
+api.configure({ transport: 'auto' })
 ```
 
 ### Check Active Transport
 
 ```js
-if (ape.getTransport() === 'polling') {
+if (api.getTransport() === 'polling') {
   console.log('Using HTTP streaming fallback')
 }
 ```
@@ -442,7 +461,7 @@ Ensure your server allows WebSocket connections from your origin. api-ape uses t
 
 * Check that your controller file is in the `where` directory (default: `api/`)
 * Ensure the file exports a function: `module.exports = function(...) { ... }`
-* File paths map directly: `api/users/list.js` → `ape.users.list()`
+* File paths map directly: `api/users/list.js` → `api.users.list()`
 
 ### Connection Drops Frequently
 
@@ -468,7 +487,7 @@ module.exports = function(filename) {
 The client receives `ArrayBuffer` automatically:
 
 ```js
-const result = await ape.files.download('image.png')
+const result = await api.files.download('image.png')
 console.log(result.data)  // ArrayBuffer
 
 // Display as image
@@ -481,7 +500,7 @@ img.src = URL.createObjectURL(blob)
 ```js
 // Client
 const arrayBuffer = await file.arrayBuffer()
-await ape.files.upload({ name: file.name, data: arrayBuffer })
+await api.files.upload({ name: file.name, data: arrayBuffer })
 
 // Server (api/files/upload.js)
 module.exports = function({ name, data }) {
@@ -496,7 +515,7 @@ Binary data is transferred via temporary HTTP endpoints (`/api/ape/data/:hash`) 
 
 Type definitions are included (`index.d.ts`). For full type safety, you may need to:
 * Define interfaces for your controller parameters and return types
-* Use type assertions when calling `ape.<path>.<method>()`
+* Use type assertions when calling `api.<path>.<method>()`
 
 ---
 

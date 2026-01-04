@@ -8,26 +8,26 @@ const { sender, setOnReciver, onConnectionChange, getTransport } = connectSocket
 connectSocket.autoReconnect()
 
 // Global API - use defineProperty to bypass Proxy interception
-window.ape = sender
-Object.defineProperty(window.ape, 'on', {
+window.api = sender
+Object.defineProperty(window.api, 'on', {
     value: setOnReciver,
     writable: false,
     enumerable: false,
     configurable: false
 })
-Object.defineProperty(window.ape, 'onConnectionChange', {
+Object.defineProperty(window.api, 'onConnectionChange', {
     value: onConnectionChange,
     writable: false,
     enumerable: false,
     configurable: false
 })
-Object.defineProperty(window.ape, 'configure', {
+Object.defineProperty(window.api, 'configure', {
     value: connectSocket.configure,
     writable: false,
     enumerable: false,
     configurable: false
 })
-Object.defineProperty(window.ape, 'getTransport', {
+Object.defineProperty(window.api, 'getTransport', {
     value: getTransport,
     writable: false,
     enumerable: false,

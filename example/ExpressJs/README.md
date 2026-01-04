@@ -67,19 +67,19 @@ module.exports = function (data) {
 <script src="/api/ape.js"></script>
 <script>
   // Receive init on connect (pushed by server)
-  ape.on('init', ({ data }) => {
+  api.on('init', ({ data }) => {
     console.log('History:', data.history)
     console.log('Users online:', data.users)
   })
   
   // Listen for user count updates
-  ape.on('users', ({ data }) => console.log('Online:', data.count))
+  api.on('users', ({ data }) => console.log('Online:', data.count))
   
   // Listen for messages
-  ape.on('message', ({ data }) => console.log(data))
+  api.on('message', ({ data }) => console.log(data))
   
   // Send message
-  ape.message({ text: 'Hello!' })
+  api.message({ text: 'Hello!' })
 </script>
 ```
 
@@ -92,6 +92,6 @@ module.exports = function (data) {
 | Push on connect | `send('init', { history, users })` |
 | Broadcast all | `broadcast('users', { count })` |
 | Broadcast others | `this.broadcastOthers('message', data)` |
-| Listen | `ape.on('init', handler)` |
+| Listen | `api.on('init', handler)` |
 
 > **Zero dependencies**: api-ape uses Node.js 24+ native WebSocket when available, otherwise a built-in RFC 6455 polyfill.

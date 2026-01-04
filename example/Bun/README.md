@@ -24,35 +24,34 @@ Bun/
 
 ## How It Works
 
-### Server (server.js)
+### Server (server.ts)
 
-```js
+Uses the **same unified signature** as Node.js/Express:
+
+```ts
 const ape = require('api-ape')
 
+// Create Bun server
 const server = Bun.serve({
   port: 3000,
   fetch(req) {
-    const url = new URL(req.url)
-    if (url.pathname === '/') {
-      return new Response(Bun.file('./index.html'))
-    }
-    return new Response('Not Found', { status: 404 })
-  }
+    // Your static files
+    return new Response(Bun.file('./index.html'))
+  },
+  websocket: { message() {} }  // Placeholder
 })
 
-// Pass Bun's server to api-ape
+// Same signature as Node.js/Express!
 ape(server, {
   where: 'api',
   onConnent: (socket, req, send) => {
     send('init', { history: [], users: ape.online() })
-    ape.broadcast('users', { count: ape.online() })
-    
-    return {
-      onDisconnent: () => ape.broadcast('users', { count: ape.online() })
-    }
+    return { onDisconnent: () => ape.broadcast('users', { count: ape.online() }) }
   }
 })
 ```
+
+**api-ape automatically uses `server.reload()` to hook in handlers.**
 
 ## Why Bun?
 
@@ -62,8 +61,7 @@ ape(server, {
 | **Fast startup** | Bun starts in milliseconds |
 | **Native TypeScript** | No build step for TS files |
 | **Smaller footprint** | Fewer dependencies |
-
-> **Coming soon**: Native `Bun.serve()` WebSocket will be auto-detected, providing even better performance.
+| **Native WebSocket** | Uses Bun.serve() built-in|
 
 ## Key Concepts Demonstrated
 

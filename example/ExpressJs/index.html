@@ -21,20 +21,20 @@
         this.onStoreChange = attachStore(() => this.messages)
 
         // Receive init with history + user count on connect
-        ape.on('init', ({ data }) => {
+        api.on('init', ({ data }) => {
           this.messages = data.history || []
           this.users = data.users || 0
           this.onStoreChange()
         })
 
         // Listen for user count updates
-        ape.on('users', ({ data }) => {
+        api.on('users', ({ data }) => {
           this.users = data.count
           this.onStoreChange()
         })
 
         // Listen for new messages from others
-        ape.on('message', ({ data }) => {
+        api.on('message', ({ data }) => {
           this.messages.push(data)
           this.onStoreChange()
         })
@@ -43,7 +43,7 @@
       send(e) {
         if (e.key !== 'Enter' || !e.target.value) return
         const msg = { user: this.user, text: e.target.value }
-        ape.message(msg).then(() => {
+        api.message(msg).then(() => {
           this.messages.push(msg)
           this.onStoreChange()
         })

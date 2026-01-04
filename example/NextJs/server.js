@@ -5,7 +5,7 @@
 const { createServer } = require('http')
 const next = require('next')
 const ape = require('api-ape')
-const { onConnect } = require('./ape/onConnect')
+const { onConnent } = require('./ape/onConnent')
 
 const dev = process.env.NODE_ENV !== 'production'
 const hostname = '0.0.0.0'
@@ -20,7 +20,7 @@ app.prepare().then(() => {
     })
 
     // Initialize api-ape with the raw http server
-    ape(server, { where: 'api', onConnent: onConnect })
+    ape(server, { where: 'api', onConnent })
 
     server.listen(port, () => {
         console.log(`

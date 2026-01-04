@@ -26,10 +26,8 @@ findPort(3000, port => {
     where: 'api',
     onConnent: (socket, req, send) => {
       const { _messages } = require('./api/message')
-      setTimeout(() => {
-        send('init', { history: _messages, users: ape.online() })
-        ape.broadcast('users', { count: ape.online() })
-      }, 100)
+      send('init', { history: _messages, users: ape.online() })
+      ape.broadcast('users', { count: ape.online() })
 
       return {
         onDisconnent: () => ape.broadcast('users', { count: ape.online() })

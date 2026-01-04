@@ -87,7 +87,7 @@ npm i api-ape
 import ape from 'api-ape'
 
 // Configure and connect
-ape.configure({ port: 3000 })
+api.configure({ port: 3000 })
 const { sender, setOnReciver } = ape()
 ape.autoReconnect()
 

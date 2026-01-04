@@ -19,29 +19,26 @@ function getHistory() {
     }
 }
 
-function onConnect(socket, req, send) {
+function onConnent(socket, req, send) {
     const clientID = send.toString()
     console.log(`🦍 Client connected: ${clientID}`)
 
     const embed = createEmbed(clientID, req.headers?.['x-session-id'])
 
-    // Send init message with history and user count after a tiny delay
-    // (to ensure client is ready to receive)
-    setTimeout(() => {
-        console.log(`📤 Sending init to ${clientID}, users: ${ape.online()}`)
-        try {
-            send('init', {
-                history: getHistory(),
-                users: ape.online()
-            })
-            console.log(`✅ Init sent to ${clientID}`)
-        } catch (e) {
-            console.error(`❌ Failed to send init:`, e)
-        }
+    // Send init message with history and user count
+    console.log(`📤 Sending init to ${clientID}, users: ${ape.online()}`)
+    try {
+        send('init', {
+            history: getHistory(),
+            users: ape.online()
+        })
+        console.log(`✅ Init sent to ${clientID}`)
+    } catch (e) {
+        console.error(`❌ Failed to send init:`, e)
+    }
 
-        // Broadcast updated user count to all clients
-        ape.broadcast('users', { count: ape.online() })
-    }, 100)
+    // Broadcast updated user count to all clients
+    ape.broadcast('users', { count: ape.online() })
 
     return {
         embed,
@@ -66,4 +63,4 @@ function onConnect(socket, req, send) {
     }
 }
 
-module.exports = { onConnect }
+module.exports = { onConnent }
