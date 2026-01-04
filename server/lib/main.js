@@ -1,6 +1,6 @@
 const loader = require('./loader')
 const wiring = require('./wiring')
-const { WebSocketServer } = require('ws')
+const { WebSocketServer } = require('./wsProvider').getWebSocketProvider()
 const path = require('path')
 const fs = require('fs')
 const { getFileTransferManager } = require('./fileTransfer')

@@ -63,6 +63,8 @@ ape(server, {
 | **Native TypeScript** | No build step for TS files |
 | **Smaller footprint** | Fewer dependencies |
 
+> **Coming soon**: Native `Bun.serve()` WebSocket will be auto-detected, providing even better performance.
+
 ## Key Concepts Demonstrated
 
 | Concept | Example |

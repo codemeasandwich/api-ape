@@ -13,7 +13,13 @@ server/
 │   ├── broadcast.js  # Client tracking & broadcast utilities
 │   ├── fileTransfer.js # Binary file transfer manager
 │   ├── longPolling.js  # HTTP streaming fallback handler
-│   └── wiring.js     # WebSocket handler setup
+│   ├── wiring.js     # WebSocket handler setup
+│   ├── wsProvider.js # Runtime detection (Node 24+ native / polyfill)
+│   └── ws/           # RFC 6455 WebSocket polyfill (zero dependencies)
+│       ├── index.js  # Module entry point
+│       ├── frames.js # Frame encoding/decoding
+│       ├── socket.js # WebSocket connection class
+│       └── server.js # WebSocketServer class
 ├── socket/
 │   ├── receive.js    # Incoming message handler
 │   └── send.js       # Outgoing message handler
@@ -180,3 +186,32 @@ Send messages to server when using HTTP streaming transport.
 4. Automatically upgrades back to WebSocket when available
 
 The fallback is **completely transparent** to your controllers - they work identically with both transports.
+
+---
+
+## Zero-Dependency WebSocket
+
+api-ape includes its own RFC 6455 WebSocket implementation with **zero npm dependencies**.
+
+### Runtime Detection
+
+The server automatically detects and uses the best available WebSocket implementation:
+
+1. **Node.js 24+** (stable): Uses native `node:ws` module
+2. **Earlier Node.js / Bun**: Uses built-in RFC 6455 polyfill
+
+```javascript
+// Automatic - no configuration needed
+ape(server, { where: 'api' })
+```
+
+### Polyfill Features
+
+The built-in polyfill implements:
+
+- Full RFC 6455 handshake (SHA-1 + GUID)
+- Text and binary frames
+- Frame fragmentation
+- Ping/pong heartbeats
+- Proper close handshake
+- Masking (client→server)

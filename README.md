@@ -3,6 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/api-ape.svg)](https://www.npmjs.com/package/api-ape)
 [![license](https://img.shields.io/npm/l/api-ape.svg)](https://github.com/codemeasandwich/api-ape/blob/main/LICENSE)
 [![GitHub issues](https://img.shields.io/github/issues/codemeasandwich/api-ape)](https://github.com/codemeasandwich/api-ape/issues)
+[![Zero Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](#zero-dependencies)
 [![CSRF protected](https://img.shields.io/badge/CSRF-protected-green.svg)](#csrf-protection)
 [![Zero Config](https://img.shields.io/badge/setup-zero%20config-success.svg)](#quick-start)
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/api-ape)](https://bundlephobia.com/package/api-ape)
@@ -542,6 +543,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 **Current version:** See `package.json` or npm registry
 
 **Release notes:** Check [GitHub releases](https://github.com/codemeasandwich/api-ape/releases) for detailed changelog.
+
+---
+
+## Zero Dependencies
+
+api-ape has **zero runtime dependencies**. The WebSocket implementation is built-in:
+
+- **Node.js 24+**: Uses native `node:ws` module automatically
+- **Earlier Node.js / Bun**: Uses RFC 6455 compliant polyfill
+
+No `npm install` surprises, no dependency audits, no supply chain concerns.
 
 ---
 

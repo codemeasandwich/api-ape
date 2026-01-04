@@ -2,8 +2,23 @@
 // Project: https://github.com/codemeasandwich/api-ape
 
 import { Server as HttpServer } from 'http'
-import { WebSocket } from 'ws'
 import { IncomingMessage } from 'http'
+
+/**
+ * WebSocket instance type (compatible with ws library and native implementations)
+ */
+export interface ApeWebSocket {
+    send(data: string | Buffer): void
+    close(code?: number, reason?: string): void
+    on(event: 'message', handler: (data: Buffer) => void): this
+    on(event: 'close', handler: () => void): this
+    on(event: 'error', handler: (err: Error) => void): this
+    readonly readyState: number
+    readonly CONNECTING: 0
+    readonly OPEN: 1
+    readonly CLOSING: 2
+    readonly CLOSED: 3
+}
 
 // =============================================================================
 // SERVER TYPES
@@ -26,7 +41,7 @@ export interface ControllerContext {
     /** Original HTTP request */
     req: IncomingMessage
     /** WebSocket instance */
-    socket: WebSocket
+    socket: ApeWebSocket
     /** Parsed user-agent info */
     agent: {
         browser: { name?: string; version?: string }
@@ -78,7 +93,7 @@ export interface ConnectionHandlers {
  * onConnent callback signature
  */
 export type OnConnectCallback = (
-    socket: WebSocket,
+    socket: ApeWebSocket,
     req: IncomingMessage,
     send: SendFunction
 ) => ConnectionHandlers | void
