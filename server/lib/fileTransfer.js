@@ -28,8 +28,122 @@ class FileTransferManager {
         // Map<`${queryId}/${pathHash}`, { sessionHostId, createdAt, resolver, rejector, timer, data }>
         this.pendingUploads = new Map()
 
+        // Map<fileId, StreamingFileEntry> - for client-to-client streaming
+        // StreamingFileEntry: { uploaderId, chunks[], totalReceived, isComplete, createdAt, timer }
+        this.streamingFiles = new Map()
+
         // Cleanup interval
         this._cleanupInterval = setInterval(() => this._cleanup(), 30000)
+    }
+
+    /**
+     * Register a streaming file (client-to-client transfer)
+     * Called when <!F> tag is detected in incoming message
+     * @param {string} fileId - Unique file identifier
+     * @param {string} uploaderId - Client ID of uploader
+     * @returns {string} The fileId
+     */
+    registerStreamingFile(fileId, uploaderId) {
+        // Clear existing entry if any
+        if (this.streamingFiles.has(fileId)) {
+            const existing = this.streamingFiles.get(fileId)
+            if (existing.timer) clearTimeout(existing.timer)
+        }
+
+        const entry = {
+            uploaderId,
+            chunks: [],
+            totalReceived: 0,
+            isComplete: false,
+            createdAt: Date.now(),
+            timer: setTimeout(() => {
+                this.streamingFiles.delete(fileId)
+                console.log(`📦 Streaming file expired: ${fileId}`)
+            }, this.startTimeout + this.completeTimeout)
+        }
+
+        this.streamingFiles.set(fileId, entry)
+        console.log(`📦 Registered streaming file: ${fileId} from ${uploaderId}`)
+        return fileId
+    }
+
+    /**
+     * Append a chunk to a streaming file
+     * @param {string} fileId - File identifier
+     * @param {Buffer} chunk - Data chunk
+     * @returns {boolean} True if accepted
+     */
+    appendChunk(fileId, chunk) {
+        const entry = this.streamingFiles.get(fileId)
+        if (!entry) {
+            console.warn(`📦 Streaming file not found: ${fileId}`)
+            return false
+        }
+
+        entry.chunks.push(chunk)
+        entry.totalReceived += chunk.length
+        return true
+    }
+
+    /**
+     * Mark streaming file as complete
+     * @param {string} fileId - File identifier
+     * @param {Buffer} data - Complete file data (if not chunked)
+     * @returns {boolean} True if successful
+     */
+    completeStreamingUpload(fileId, data) {
+        const entry = this.streamingFiles.get(fileId)
+        if (!entry) {
+            console.warn(`📦 Streaming file not found for completion: ${fileId}`)
+            return false
+        }
+
+        if (data) {
+            entry.chunks = [data]
+            entry.totalReceived = data.length
+        }
+        entry.isComplete = true
+
+        // Reset timer for cleanup after completion
+        clearTimeout(entry.timer)
+        entry.timer = setTimeout(() => {
+            this.streamingFiles.delete(fileId)
+            console.log(`📦 Streaming file cleaned up: ${fileId}`)
+        }, this.completeTimeout)
+
+        console.log(`📦 Streaming upload complete: ${fileId} (${entry.totalReceived} bytes)`)
+        return true
+    }
+
+    /**
+     * Get streaming file data (available bytes so far)
+     * @param {string} fileId - File identifier
+     * @param {number} offset - Byte offset to start from (for resumable downloads)
+     * @returns {{ data: Buffer, isComplete: boolean, totalReceived: number } | null}
+     */
+    getStreamingFile(fileId, offset = 0) {
+        const entry = this.streamingFiles.get(fileId)
+        if (!entry) {
+            return null
+        }
+
+        // Concatenate chunks
+        const data = Buffer.concat(entry.chunks)
+
+        return {
+            data: offset > 0 ? data.slice(offset) : data,
+            isComplete: entry.isComplete,
+            totalReceived: entry.totalReceived
+        }
+    }
+
+    /**
+     * Check if a file ID is a streaming file
+     * @param {string} fileId - File identifier
+     * @returns {boolean}
+     */
+    isStreamingFile(fileId) {
+        return this.streamingFiles.has(fileId)
     }
 
     /**
@@ -210,6 +324,15 @@ class FileTransferManager {
                 console.log(`📤 Cleanup stale upload: ${key}`)
             }
         }
+
+        // Cleanup streaming files
+        for (const [fileId, entry] of this.streamingFiles) {
+            if (now - entry.createdAt > maxAge) {
+                clearTimeout(entry.timer)
+                this.streamingFiles.delete(fileId)
+                console.log(`📦 Cleanup stale streaming file: ${fileId}`)
+            }
+        }
     }
 
     /**
@@ -228,6 +351,12 @@ class FileTransferManager {
 
         this.pendingDownloads.clear()
         this.pendingUploads.clear()
+
+        // Clear streaming file timers
+        for (const entry of this.streamingFiles.values()) {
+            clearTimeout(entry.timer)
+        }
+        this.streamingFiles.clear()
     }
 }
 

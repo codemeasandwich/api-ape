@@ -212,12 +212,23 @@ function switchToStreaming() {
     streamingTransport.onMessage = async (msg) => {
       const { err, type, data } = msg
 
+      // Process linked resources and shared files
+      let processedData = data
+      if (data && !err) {
+        try {
+          processedData = await fetchLinkedResources(data)
+          processedData = await fetchSharedFiles(processedData)
+        } catch (fetchErr) {
+          console.error(`🦍 Failed to hydrate streaming data:`, fetchErr)
+        }
+      }
+
       // Dispatch to type-specific handlers
       if (ofTypesOb[type]) {
-        ofTypesOb[type].forEach(worker => worker({ err, type, data }))
+        ofTypesOb[type].forEach(worker => worker({ err, type, data: processedData }))
       }
       // Dispatch to general handlers
-      receiverArray.forEach(worker => worker({ err, type, data }))
+      receiverArray.forEach(worker => worker({ err, type, data: processedData }))
     }
 
     streamingTransport.onOpen = () => {
@@ -337,7 +348,8 @@ function tryWebSocket(isRetry = false) {
         // Check for linked resources and fetch them before resolving
         if (data && !err) {
           try {
-            const hydratedData = await fetchLinkedResources(data)
+            let hydratedData = await fetchLinkedResources(data)
+            hydratedData = await fetchSharedFiles(hydratedData)
             waitingOn[queryId](err, hydratedData)
           } catch (fetchErr) {
             waitingOn[queryId](fetchErr, null)
@@ -357,6 +369,7 @@ function tryWebSocket(isRetry = false) {
     if (data && !err) {
       try {
         processedData = await fetchLinkedResources(data)
+        processedData = await fetchSharedFiles(processedData)
       } catch (fetchErr) {
         console.error(`🦍 Failed to hydrate broadcast data:`, fetchErr)
       }
@@ -426,6 +439,134 @@ function findLinkedResources(obj, path = '') {
   }
 
   return resources
+}
+
+/**
+ * Find all F-tagged (shared file) properties in data
+ * Returns array of { path, hash, originalKey }
+ */
+function findFileTags(obj, path = '') {
+  const files = []
+
+  if (obj === null || obj === undefined || typeof obj !== 'object') {
+    return files
+  }
+
+  if (Array.isArray(obj)) {
+    for (let i = 0; i < obj.length; i++) {
+      files.push(...findFileTags(obj[i], path ? `${path}.${i}` : String(i)))
+    }
+    return files
+  }
+
+  for (const key of Object.keys(obj)) {
+    // Check for F-tag in key (client-to-client shared file marker)
+    if (key.endsWith('<!F>')) {
+      const cleanKey = key.slice(0, -4)
+      const hash = obj[key]
+      files.push({
+        path: path ? `${path}.${cleanKey}` : cleanKey,
+        hash,
+        originalKey: key
+      })
+    } else {
+      files.push(...findFileTags(obj[key], path ? `${path}.${key}` : key))
+    }
+  }
+
+  return files
+}
+
+/**
+ * Clean up F-tagged keys (rename key<!F> to key)
+ */
+function cleanFileTags(obj) {
+  if (obj === null || obj === undefined || typeof obj !== 'object') {
+    return obj
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(cleanFileTags)
+  }
+
+  const cleaned = {}
+  for (const key of Object.keys(obj)) {
+    if (key.endsWith('<!F>')) {
+      const cleanKey = key.slice(0, -4)
+      cleaned[cleanKey] = obj[key]
+    } else {
+      cleaned[key] = cleanFileTags(obj[key])
+    }
+  }
+  return cleaned
+}
+
+/**
+ * Fetch shared files (client-to-client transfers)
+ * Retries if upload is still in progress
+ */
+async function fetchSharedFiles(data, maxRetries = 5) {
+  const files = findFileTags(data)
+
+  if (files.length === 0) {
+    return data
+  }
+
+  console.log(`🦍 Fetching ${files.length} shared file(s)`)
+
+  const cleanedData = cleanFileTags(data)
+
+  const hostname = window.location.hostname
+  const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
+  const isHttps = window.location.protocol === "https:"
+  const port = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
+  const protocol = isHttps ? "https" : "http"
+  const portSuffix = (isLocal || (port !== 80 && port !== 443)) ? `:${port}` : ""
+  const baseUrl = `${protocol}://${hostname}${portSuffix}`
+
+  await Promise.all(files.map(async ({ path, hash }) => {
+    let retries = 0
+    let backoff = 100 // Start with 100ms
+
+    while (retries < maxRetries) {
+      try {
+        const response = await fetch(`${baseUrl}/api/ape/data/${hash}`, {
+          credentials: 'include'
+        })
+
+        if (!response.ok) {
+          // 404 might mean file not uploaded yet, retry
+          if (response.status === 404 && retries < maxRetries - 1) {
+            retries++
+            await new Promise(r => setTimeout(r, backoff))
+            backoff *= 2 // Exponential backoff
+            continue
+          }
+          throw new Error(`Failed to fetch shared file: ${response.status}`)
+        }
+
+        const arrayBuffer = await response.arrayBuffer()
+        setValueAtPath(cleanedData, path, arrayBuffer)
+
+        // Check if upload is still in progress
+        const isComplete = response.headers.get('X-Ape-Complete') === '1'
+        if (!isComplete) {
+          console.log(`🦍 Shared file ${hash} still uploading (${response.headers.get('X-Ape-Total-Received') || '?'} bytes)`)
+        }
+        break
+      } catch (err) {
+        if (retries >= maxRetries - 1) {
+          console.error(`🦍 Failed to fetch shared file at ${path}:`, err)
+          setValueAtPath(cleanedData, path, null)
+        }
+        retries++
+        await new Promise(r => setTimeout(r, backoff))
+        backoff *= 2
+      }
+    }
+  }))
+
+  return cleanedData
 }
 
 /**
@@ -664,6 +805,101 @@ function processBinaryForUpload(data, path = '') {
   }
 
   return { processedData: data, uploads: [] }
+}
+
+/**
+ * Find and extract binary data for SHARING (client-to-client)
+ * Uses <!F> tag instead of <!A>/<!B>
+ * Returns { processedData, shares: [{ path, hash, data }] }
+ */
+function processBinaryForSharing(data, path = '') {
+  if (data === null || data === undefined) {
+    return { processedData: data, shares: [] }
+  }
+
+  if (isBinaryData(data)) {
+    const hash = generateUploadHash(path || 'share')
+    return {
+      processedData: { [`__ape_share__`]: hash },
+      shares: [{ path, hash, data }]
+    }
+  }
+
+  if (Array.isArray(data)) {
+    const processedArray = []
+    const allShares = []
+
+    for (let i = 0; i < data.length; i++) {
+      const itemPath = path ? `${path}.${i}` : String(i)
+      const { processedData, shares } = processBinaryForSharing(data[i], itemPath)
+      processedArray.push(processedData)
+      allShares.push(...shares)
+    }
+
+    return { processedData: processedArray, shares: allShares }
+  }
+
+  if (typeof data === 'object') {
+    const processedObj = {}
+    const allShares = []
+
+    for (const key of Object.keys(data)) {
+      const itemPath = path ? `${path}.${key}` : key
+      const { processedData, shares } = processBinaryForSharing(data[key], itemPath)
+
+      // If this was binary data, mark the key with <!F> tag
+      if (shares.length > 0 && processedData?.__ape_share__) {
+        processedObj[`${key}<!F>`] = processedData.__ape_share__
+      } else {
+        processedObj[key] = processedData
+      }
+      allShares.push(...shares)
+    }
+
+    return { processedData: processedObj, shares: allShares }
+  }
+
+  return { processedData: data, shares: [] }
+}
+
+/**
+ * Upload shared files via HTTP PUT
+ * Uses different endpoint pattern for streaming files
+ */
+async function uploadSharedFiles(shares) {
+  if (shares.length === 0) return
+
+  // Build base URL
+  const hostname = window.location.hostname
+  const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
+  const isHttps = window.location.protocol === "https:"
+  const port = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
+  const protocol = isHttps ? "https" : "http"
+  const portSuffix = (isLocal || (port !== 80 && port !== 443)) ? `:${port}` : ""
+  const baseUrl = `${protocol}://${hostname}${portSuffix}`
+
+  console.log(`🦍 Uploading ${shares.length} shared file(s)`)
+
+  await Promise.all(shares.map(async ({ hash, data }) => {
+    try {
+      // For shared files, use upload pattern with hash as both queryId and pathHash
+      const response = await fetch(`${baseUrl}/api/ape/data/_share/${hash}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/octet-stream'
+        },
+        body: data
+      })
+
+      if (!response.ok) {
+        throw new Error(`Shared upload failed: ${response.status}`)
+      }
+    } catch (err) {
+      console.error(`🦍 Failed to upload shared file ${hash}:`, err)
+      throw err
+    }
+  }))
 }
 
 /**

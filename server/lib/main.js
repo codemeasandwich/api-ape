@@ -185,6 +185,26 @@ function initNodeServer(server, options) {
         const downloadMatch = matchRoute(pathname, core.downloadPattern)
         if (req.method === 'GET' && downloadMatch) {
             const { hash } = downloadMatch
+
+            // Check for streaming file first (client-to-client sharing, no session check)
+            const streamingFile = core.fileTransfer.getStreamingFile(hash)
+            if (streamingFile) {
+                if (!isLocalhost(req.headers.host) && !isSecure(req)) {
+                    return sendJson(res, 403, { error: 'HTTPS required for file transfers' })
+                }
+
+                // Return available data (may be partial if upload still in progress)
+                res.writeHead(200, {
+                    'Content-Type': 'application/octet-stream',
+                    'Content-Length': streamingFile.data.length,
+                    'X-Ape-Complete': streamingFile.isComplete ? '1' : '0',
+                    'X-Ape-Total-Received': String(streamingFile.totalReceived)
+                })
+                res.end(streamingFile.data)
+                return
+            }
+
+            // Session-bound download (original behavior)
             const clientId = getCookie(req.headers, 'apeClientId') || req.headers['x-ape-client-id']
 
             if (!clientId) {
@@ -213,11 +233,6 @@ function initNodeServer(server, options) {
         const uploadMatch = matchRoute(pathname, core.uploadPattern)
         if (req.method === 'PUT' && uploadMatch) {
             const { queryId, pathHash } = uploadMatch
-            const clientId = getCookie(req.headers, 'apeClientId') || req.headers['x-ape-client-id']
-
-            if (!clientId) {
-                return sendJson(res, 401, { error: 'Missing session identifier' })
-            }
 
             if (!isLocalhost(req.headers.host) && !isSecure(req)) {
                 return sendJson(res, 403, { error: 'HTTPS required for file transfers' })
@@ -227,6 +242,23 @@ function initNodeServer(server, options) {
             req.on('data', chunk => chunks.push(chunk))
             req.on('end', () => {
                 const data = Buffer.concat(chunks)
+
+                // Check if this is a streaming file upload (client-to-client)
+                // For streaming files, queryId might be the fileId directly
+                if (core.fileTransfer.isStreamingFile(pathHash)) {
+                    const success = core.fileTransfer.completeStreamingUpload(pathHash, data)
+                    if (success) {
+                        return sendJson(res, 200, { success: true, streaming: true })
+                    }
+                    return sendJson(res, 404, { error: 'Streaming file not found' })
+                }
+
+                // Regular upload (session-bound)
+                const clientId = getCookie(req.headers, 'apeClientId') || req.headers['x-ape-client-id']
+                if (!clientId) {
+                    return sendJson(res, 401, { error: 'Missing session identifier' })
+                }
+
                 const success = core.fileTransfer.receiveUpload(queryId, pathHash, data, clientId)
 
                 if (success) {

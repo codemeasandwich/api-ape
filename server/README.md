@@ -167,6 +167,40 @@ module.exports = function({ name, data }) {
 
 Binary data is transferred via `/api/ape/data/:hash` with session verification and HTTPS enforcement (localhost exempt).
 
+### Client-to-Client File Streaming (`<!F>`)
+
+For sharing files between clients (broadcasts), use the `<!F>` marker. Messages route immediately; file data transfers asynchronously with true streaming support.
+
+```
+Client A → Server: { msg: "here's a file", file<!F>: "hash123" }  + HTTP upload
+Server → Client B: { msg: "here's a file", file<!F>: "hash123" }  (immediate)
+Client B → Server: GET /api/ape/data/hash123                       (streams available bytes)
+```
+
+**Key differences from regular file transfer (`<!A>`/`<!B>`):**
+
+| Feature | Regular (`<!A>`/`<!B>`) | Shared (`<!F>`) |
+|---------|------------------------|-----------------|
+| **Session check** | Required | Skipped |
+| **Blocking** | Waits for upload | Non-blocking |
+| **Partial download** | No | Yes (stream what's uploaded) |
+| **Use case** | Client → Server | Client → Client via broadcast |
+
+**Server-side flow:**
+
+1. Message with `<!F>` received → streaming file registered
+2. Controller invoked immediately (non-blocking)
+3. When broadcast, `<!F>` tags pass through unchanged
+4. HTTP upload completes streaming file
+5. Other clients fetch from `/api/ape/data/:hash` (no session check)
+
+**Response headers:**
+
+| Header | Description |
+|--------|-------------|
+| `X-Ape-Complete` | `1` if upload finished, `0` if still streaming |
+| `X-Ape-Total-Received` | Bytes received so far |
+
 ---
 
 ## HTTP Streaming Endpoints

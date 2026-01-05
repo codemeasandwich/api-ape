@@ -78,6 +78,13 @@ function processBinaryData(data, queryId, fileTransfer, clientId, path = '') {
     const allBinaryEntries = []
 
     for (const key of Object.keys(data)) {
+      // F-tagged values pass through unchanged (client-to-client sharing)
+      // Client will fetch from /api/ape/data/:hash
+      if (key.endsWith('<!F>')) {
+        processedObj[key] = data[key]
+        continue
+      }
+
       const itemPath = path ? `${path}.${key}` : key
       const { processedData, binaryEntries } = processBinaryData(
         data[key], queryId, fileTransfer, clientId, itemPath

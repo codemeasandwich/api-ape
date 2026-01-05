@@ -48,6 +48,42 @@ function findUploadTags(obj, path = '') {
 }
 
 /**
+ * Find F-tagged properties in data (indicating client-to-client file sharing)
+ * Returns array of { path, hash }
+ */
+function findFileTags(obj, path = '') {
+    const files = []
+
+    if (obj === null || obj === undefined || typeof obj !== 'object') {
+        return files
+    }
+
+    if (Array.isArray(obj)) {
+        for (let i = 0; i < obj.length; i++) {
+            files.push(...findFileTags(obj[i], path ? `${path}.${i}` : String(i)))
+        }
+        return files
+    }
+
+    for (const key of Object.keys(obj)) {
+        // Check for F tag (client-to-client file sharing marker)
+        const fMatch = key.match(/^(.+)<!F>$/)
+
+        if (fMatch) {
+            files.push({
+                path: path ? `${path}.${fMatch[1]}` : fMatch[1],
+                hash: obj[key],
+                originalKey: key
+            })
+        } else {
+            files.push(...findFileTags(obj[key], path ? `${path}.${key}` : key))
+        }
+    }
+
+    return files
+}
+
+/**
  * Clean upload tags from data (rename key<!B> to key)
  */
 function cleanUploadTags(obj) {
@@ -156,6 +192,16 @@ module.exports = function receiveHandler(ape) {
                         }
                         return
                     }
+                }
+
+                // Check for F-tagged files (client-to-client sharing)
+                // Register them but DON'T wait - controller invoked immediately
+                const fileTags = findFileTags(data)
+                if (fileTags.length > 0) {
+                    console.log(`📁 Registering ${fileTags.length} streaming file(s) for ${type}`)
+                    fileTags.forEach(({ hash }) => {
+                        fileTransfer.registerStreamingFile(hash, hostId)
+                    })
                 }
             }
 
