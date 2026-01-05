@@ -1,6 +1,6 @@
 {
   "name": "api-ape",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "Remote Procedure Events (RPE) - A lightweight WebSocket framework for building real-time APIs. Call server functions from the browser like local methods with automatic reconnection, HTTP streaming fallback, and extended JSON encoding.",
   "main": "index.js",
   "browser": "./client/index.js",
@@ -33,7 +33,7 @@
     "demo:nextjs": "cd example/NextJs && docker-compose up --build",
     "demo:vite": "cd example/Vite && npm install && npm run dev",
     "demo:bun": "cd example/Bun && npm install && npm start",
-    "publish": "bash scripts/publish.sh"
+    "release": "bash scripts/publish.sh"
   },
   "repository": {
     "type": "git",
