@@ -32,7 +32,8 @@
     "demo:express": "cd example/ExpressJs && npm install && npm start",
     "demo:nextjs": "cd example/NextJs && docker-compose up --build",
     "demo:vite": "cd example/Vite && npm install && npm run dev",
-    "demo:bun": "cd example/Bun && npm install && npm start"
+    "demo:bun": "cd example/Bun && npm install && npm start",
+    "publish": "bash scripts/publish.sh"
   },
   "repository": {
     "type": "git",
