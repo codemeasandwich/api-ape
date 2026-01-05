@@ -11,16 +11,89 @@ echo "📦 Local version: $LOCAL_VERSION"
 NPM_VERSION=$(npm view "$PACKAGE_NAME" version 2>/dev/null || echo "0.0.0")
 echo "🌐 npm version: $NPM_VERSION"
 
-# Check if versions match - if so, bump the patch version
-if [[ "$LOCAL_VERSION" == "$NPM_VERSION" ]]; then
-  echo "⚠️  Local version matches npm. Incrementing patch version..."
+# Function to compare semver versions
+# Echoes: 0 if equal, 1 if first > second, 2 if first < second
+compare_versions() {
+  local v1=$1 v2=$2
+  IFS='.' read -r v1_major v1_minor v1_patch <<< "$v1"
+  IFS='.' read -r v2_major v2_minor v2_patch <<< "$v2"
   
-  # Parse version parts
+  if [[ $v1_major -gt $v2_major ]]; then echo 1; return; fi
+  if [[ $v1_major -lt $v2_major ]]; then echo 2; return; fi
+  if [[ $v1_minor -gt $v2_minor ]]; then echo 1; return; fi
+  if [[ $v1_minor -lt $v2_minor ]]; then echo 2; return; fi
+  if [[ $v1_patch -gt $v2_patch ]]; then echo 1; return; fi
+  if [[ $v1_patch -lt $v2_patch ]]; then echo 2; return; fi
+  echo 0
+}
+
+# Check version relationship
+VERSION_CMP=$(compare_versions "$LOCAL_VERSION" "$NPM_VERSION")
+
+if [[ $VERSION_CMP -eq 1 ]]; then
+  # Local version is higher than npm - use it as-is (manually set)
+  echo "✅ Local version ($LOCAL_VERSION) is higher than npm ($NPM_VERSION). Using manually set version."
+elif [[ $VERSION_CMP -eq 0 ]]; then
+  # Versions match - need to bump based on commits
+  echo "⚠️  Local version matches npm. Analyzing commits for semantic version bump..."
+  
+  # Get the previous tag to analyze commits
+  PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+  
+  if [[ -n "$PREV_TAG" ]]; then
+    COMMIT_RANGE="$PREV_TAG..HEAD"
+  else
+    COMMIT_RANGE="HEAD"
+  fi
+  
+  # Analyze commits to determine bump type
+  HAS_BREAKING=false
+  HAS_FEAT=false
+  HAS_FIX=false
+  
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    
+    # Check for breaking changes (BREAKING CHANGE in message or ! after type)
+    if [[ "$line" =~ BREAKING[[:space:]]CHANGE ]] || [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(feat|fix|refactor|chore)![:\(] ]]; then
+      HAS_BREAKING=true
+    fi
+    
+    # Check for features
+    if [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(feat|feature)[:\(] ]]; then
+      HAS_FEAT=true
+    fi
+    
+    # Check for fixes
+    if [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(fix|bugfix)[:\(] ]]; then
+      HAS_FIX=true
+    fi
+  done < <(git log $COMMIT_RANGE --oneline)
+  
+  # Parse current version
   IFS='.' read -r MAJOR MINOR PATCH <<< "$LOCAL_VERSION"
-  NEW_PATCH=$((PATCH + 1))
-  NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
   
-  echo "📝 Bumping version: $LOCAL_VERSION → $NEW_VERSION"
+  # Determine new version based on commit types
+  if [[ "$HAS_BREAKING" == true ]]; then
+    NEW_MAJOR=$((MAJOR + 1))
+    NEW_VERSION="$NEW_MAJOR.0.0"
+    BUMP_TYPE="major (breaking change)"
+  elif [[ "$HAS_FEAT" == true ]]; then
+    NEW_MINOR=$((MINOR + 1))
+    NEW_VERSION="$MAJOR.$NEW_MINOR.0"
+    BUMP_TYPE="minor (new feature)"
+  elif [[ "$HAS_FIX" == true ]]; then
+    NEW_PATCH=$((PATCH + 1))
+    NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+    BUMP_TYPE="patch (bug fix)"
+  else
+    # Default to patch if no recognized commit types
+    NEW_PATCH=$((PATCH + 1))
+    NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+    BUMP_TYPE="patch (default)"
+  fi
+  
+  echo "📝 Bumping version ($BUMP_TYPE): $LOCAL_VERSION → $NEW_VERSION"
   
   # Update package.json with new version
   node -e "
@@ -38,7 +111,30 @@ if [[ "$LOCAL_VERSION" == "$NPM_VERSION" ]]; then
   LOCAL_VERSION="$NEW_VERSION"
   echo "✅ Version bumped and commit amended"
 else
-  echo "✅ Local version ($LOCAL_VERSION) differs from npm ($NPM_VERSION). Proceeding..."
+  # Local version is lower than npm - this shouldn't happen, bump to npm + patch
+  echo "⚠️  Local version ($LOCAL_VERSION) is lower than npm ($NPM_VERSION). Bumping from npm version..."
+  
+  IFS='.' read -r MAJOR MINOR PATCH <<< "$NPM_VERSION"
+  NEW_PATCH=$((PATCH + 1))
+  NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+  
+  echo "📝 Bumping version: $NPM_VERSION → $NEW_VERSION"
+  
+  # Update package.json with new version
+  node -e "
+    const fs = require('fs');
+    const pkg = require('./package.json');
+    pkg.version = '$NEW_VERSION';
+    fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+  "
+  
+  # Amend the last commit with the version bump
+  git add package.json
+  git commit --amend --no-edit
+  git push --force-with-lease
+  
+  LOCAL_VERSION="$NEW_VERSION"
+  echo "✅ Version bumped and commit amended"
 fi
 
 TAG="v$LOCAL_VERSION"
@@ -65,6 +161,127 @@ if [[ "$TAG_EXISTS" == false ]]; then
   git push origin "$TAG"
 fi
 
+# Generate changelog from commits since last release
+echo "📋 Generating changelog..."
+
+# Get the previous tag (most recent tag before the current one)
+PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+if [[ -n "$PREV_TAG" ]]; then
+  COMMIT_RANGE="$PREV_TAG..HEAD"
+  echo "   Commits from $PREV_TAG to HEAD"
+else
+  COMMIT_RANGE="HEAD"
+  echo "   All commits (no previous tag found)"
+fi
+
+# Get commits and group by type
+declare -a FEAT_COMMITS
+declare -a FIX_COMMITS
+declare -a REFACTOR_COMMITS
+declare -a DOCS_COMMITS
+declare -a STYLE_COMMITS
+declare -a TEST_COMMITS
+declare -a CHORE_COMMITS
+declare -a OTHER_COMMITS
+
+while IFS= read -r line; do
+  [[ -z "$line" ]] && continue
+  
+  # Extract the type and message
+  if [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(feat|feature)[:\(] ]]; then
+    FEAT_COMMITS+=("${line#* }")
+  elif [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(fix|bugfix)[:\(] ]]; then
+    FIX_COMMITS+=("${line#* }")
+  elif [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(refactor)[:\(] ]]; then
+    REFACTOR_COMMITS+=("${line#* }")
+  elif [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(docs|doc)[:\(] ]]; then
+    DOCS_COMMITS+=("${line#* }")
+  elif [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(style)[:\(] ]]; then
+    STYLE_COMMITS+=("${line#* }")
+  elif [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(test|tests)[:\(] ]]; then
+    TEST_COMMITS+=("${line#* }")
+  elif [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(chore|build|ci)[:\(] ]]; then
+    CHORE_COMMITS+=("${line#* }")
+  else
+    OTHER_COMMITS+=("${line#* }")
+  fi
+done < <(git log $COMMIT_RANGE --oneline)
+
+# Build changelog
+CHANGELOG=""
+
+if [[ ${#FEAT_COMMITS[@]} -gt 0 ]]; then
+  CHANGELOG+="## Features\n"
+  for commit in "${FEAT_COMMITS[@]}"; do
+    CHANGELOG+="- $commit\n"
+  done
+  CHANGELOG+="\n"
+fi
+
+if [[ ${#FIX_COMMITS[@]} -gt 0 ]]; then
+  CHANGELOG+="## Bug Fixes\n"
+  for commit in "${FIX_COMMITS[@]}"; do
+    CHANGELOG+="- $commit\n"
+  done
+  CHANGELOG+="\n"
+fi
+
+if [[ ${#REFACTOR_COMMITS[@]} -gt 0 ]]; then
+  CHANGELOG+="## Refactoring\n"
+  for commit in "${REFACTOR_COMMITS[@]}"; do
+    CHANGELOG+="- $commit\n"
+  done
+  CHANGELOG+="\n"
+fi
+
+if [[ ${#DOCS_COMMITS[@]} -gt 0 ]]; then
+  CHANGELOG+="## Documentation\n"
+  for commit in "${DOCS_COMMITS[@]}"; do
+    CHANGELOG+="- $commit\n"
+  done
+  CHANGELOG+="\n"
+fi
+
+if [[ ${#STYLE_COMMITS[@]} -gt 0 ]]; then
+  CHANGELOG+="## Styling\n"
+  for commit in "${STYLE_COMMITS[@]}"; do
+    CHANGELOG+="- $commit\n"
+  done
+  CHANGELOG+="\n"
+fi
+
+if [[ ${#TEST_COMMITS[@]} -gt 0 ]]; then
+  CHANGELOG+="## Tests\n"
+  for commit in "${TEST_COMMITS[@]}"; do
+    CHANGELOG+="- $commit\n"
+  done
+  CHANGELOG+="\n"
+fi
+
+if [[ ${#CHORE_COMMITS[@]} -gt 0 ]]; then
+  CHANGELOG+="## Chores\n"
+  for commit in "${CHORE_COMMITS[@]}"; do
+    CHANGELOG+="- $commit\n"
+  done
+  CHANGELOG+="\n"
+fi
+
+if [[ ${#OTHER_COMMITS[@]} -gt 0 ]]; then
+  CHANGELOG+="## Other Changes\n"
+  for commit in "${OTHER_COMMITS[@]}"; do
+    CHANGELOG+="- $commit\n"
+  done
+  CHANGELOG+="\n"
+fi
+
+# Fallback if no commits found
+if [[ -z "$CHANGELOG" ]]; then
+  CHANGELOG="No notable changes in this release."
+fi
+
+echo "   Changelog generated!"
+
 # Create GitHub release (triggers the publish workflow)
 echo "🚀 Creating GitHub release..."
 
@@ -73,9 +290,9 @@ REPO_NAME="api-ape"
 
 # Try gh CLI first, fall back to curl
 if command -v gh &> /dev/null; then
-  gh release create "$TAG" \
+  echo -e "$CHANGELOG" | gh release create "$TAG" \
     --title "$TAG" \
-    --generate-notes
+    --notes-file -
 else
   # Use GitHub API with curl
   if [[ -z "$GITHUB_TOKEN" ]]; then
@@ -85,6 +302,9 @@ else
     exit 1
   fi
   
+  # Escape the changelog for JSON
+  CHANGELOG_ESCAPED=$(echo -e "$CHANGELOG" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
+  
   # Create release via GitHub API
   RESPONSE=$(curl -s -X POST \
     -H "Authorization: token $GITHUB_TOKEN" \
@@ -93,7 +313,7 @@ else
     -d "{
       \"tag_name\": \"$TAG\",
       \"name\": \"$TAG\",
-      \"generate_release_notes\": true
+      \"body\": $CHANGELOG_ESCAPED
     }")
   
   # Check if release was created
