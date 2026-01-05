@@ -4,11 +4,11 @@
  */
 
 const ape = require('./lib/main')
-const { broadcast, online, getClients } = require('./lib/broadcast')
+const { broadcast, clients } = require('./lib/broadcast')
 
 // Attach broadcast utilities to the main function for clean exports
 ape.broadcast = broadcast
-ape.online = online
-ape.getClients = getClients
+ape.clients = clients
 
 module.exports = ape
+

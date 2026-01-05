@@ -118,18 +118,20 @@ declare function ape(server: HttpServer, options: ApeServerOptions): void
 declare namespace ape {
     /** Broadcast to all connected clients */
     export function broadcast(type: string, data: any, excludeClientId?: string): void
-    /** Get count of connected clients */
-    export function online(): number
-    /** Get all connected client clientIds */
-    export function getClients(): string[]
+
+    /**
+     * Read-only Map of connected clients
+     * Each ClientWrapper provides: clientId, sessionId, embed, agent, sendTo(type, data)
+     */
+    export const clients: ReadonlyMap<string, ClientWrapper>
 
     // Browser client methods (available when imported in browser context)
     /** Subscribe to broadcasts from the server */
     export function on<T = any>(type: string, handler: (message: { err?: Error; type: string; data: T }) => void): void
     /** Subscribe to connection state changes. Returns unsubscribe function. */
     export function onConnectionChange(handler: (state: 'offline' | 'walled' | 'disconnected' | 'connecting' | 'connected') => void): () => void
-    /** Get current transport type */
-    export function getTransport(): 'websocket' | 'polling' | null
+    /** Current transport type (read-only) */
+    export const transport: 'websocket' | 'polling' | null
 
     /** Call any server function dynamically (browser only) */
     export function message<T = any, R = any>(data?: T): Promise<R>
@@ -161,8 +163,8 @@ export interface ApeBrowserClient extends ApeSender {
     /** Subscribe to connection state changes. Returns unsubscribe function. */
     onConnectionChange(handler: (state: ConnectionState) => void): () => void
 
-    /** Get current transport type ('websocket' | 'polling' | null) */
-    getTransport(): TransportType | null
+    /** Current transport type (read-only) */
+    readonly transport: TransportType | null
 }
 
 // =============================================================================
@@ -224,8 +226,8 @@ export interface ApeClient {
     setOnReceiver: SetOnReceiver
     /** Subscribe to connection state changes. Returns unsubscribe function. */
     onConnectionChange: (handler: (state: ConnectionState) => void) => () => void
-    /** Get current transport type ('websocket' | 'polling' | null) */
-    getTransport: () => TransportType | null
+    /** Current transport type (read-only) */
+    readonly transport: TransportType | null
 }
 
 /**
@@ -256,5 +258,24 @@ export { connectSocket }
 // =============================================================================
 
 export declare const broadcast: (type: string, data: any) => void
-export declare const online: () => number
-export declare const getClients: () => string[]
+export declare const clients: ReadonlyMap<string, ClientWrapper>
+
+/**
+ * Client wrapper providing client info and sendTo function
+ */
+export interface ClientWrapper {
+    /** Unique client identifier */
+    readonly clientId: string
+    /** Session ID from cookie (set by outer framework) */
+    readonly sessionId: string | null
+    /** Embedded values from onConnect */
+    readonly embed: Record<string, any>
+    /** Parsed user-agent info */
+    readonly agent: {
+        browser: { name?: string; version?: string }
+        os: { name?: string; version?: string }
+        device: { type?: string; vendor?: string; model?: string }
+    }
+    /** Send a message to this specific client */
+    sendTo(type: string, data: any): void
+}

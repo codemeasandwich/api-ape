@@ -4,7 +4,7 @@ const socketReceive = require('../socket/receive')
 const socketSend = require('../socket/send')
 const makeid = require('../utils/genId')
 const parseUserAgent = require('../utils/parseUserAgent');
-const { addClient, removeClient } = require('./broadcast')
+const { addClient, removeClient, updateClientEmbed, updateClientSend } = require('./broadcast')
 
 // connect, beforeSend, beforeReceive, error, afterSend, afterReceive, disconnect
 
@@ -40,19 +40,23 @@ module.exports = function wiring(controllers, onConnect, fileTransfer) {
 
         const clientId = makeid(20)
         const agent = parseUserAgent(req.headers['user-agent'])
+
+        // Extract sessionId from cookies (set by outer framework)
+        const sessionIdMatch = (req.headers.cookie || '').match(/(?:^|;\s*)sessionId=([^;]*)/)
+        const sessionId = sessionIdMatch ? sessionIdMatch[1] : null
+
         const sharedValues = {
             socket, req, agent, send: (type, data, err) => sentBufferFn(false, type, data, err)
         }
         sharedValues.send.toString = () => clientId
 
         // Track this client for broadcast BEFORE calling onConnect
-        // This ensures ape.online() returns the correct count when sending init
-        const clientInfo = { clientId, send: null, embed: null }
-        addClient(clientInfo)
+        // This ensures ape.clients.size returns the correct count when sending init
+        addClient({ clientId, sessionId, agent, send: null, embed: null })
 
         // Remove client on disconnect (set up early, will work once send is assigned)
         socket.on('close', () => {
-            removeClient(clientInfo)
+            removeClient(clientId)
         })
 
         let result = onConnect(socket, req, sharedValues.send)
@@ -64,7 +68,7 @@ module.exports = function wiring(controllers, onConnect, fileTransfer) {
                 const isOk = socketOpen(socket, req, onError)
 
                 if (!isOk) {
-                    removeClient(clientInfo) // Clean up if connection fails
+                    removeClient(clientId) // Clean up if connection fails
                     return;
                 }
 
@@ -84,9 +88,9 @@ module.exports = function wiring(controllers, onConnect, fileTransfer) {
                 send = socketSend(ape)
                 ape.send = send
 
-                // Update clientInfo with real send function and embed
-                clientInfo.send = send
-                clientInfo.embed = embed
+                // Update client with real send function and embed values
+                updateClientSend(clientId, send)
+                updateClientEmbed(clientId, embed)
 
                 // Call onDisconnect when socket closes
                 socket.on('close', () => {

@@ -1,6 +1,7 @@
-const { addClient, removeClient, broadcast } = require('./broadcast')
+const { addClient, removeClient, broadcast, clients, updateClientEmbed } = require('./broadcast')
 const makeid = require('../utils/genId')
 const jss = require('../../utils/jss')
+const parseUserAgent = require('../utils/parseUserAgent')
 
 // Active streaming connections: clientId -> { res, messageQueue, heartbeatTimer }
 const streamClients = new Map()
@@ -116,9 +117,15 @@ function createLongPollingHandler(controllers, onConnect, fileTransfer) {
             }
         }, 20000)
 
-        // Register client for broadcasts
-        const clientInfo = { clientId, send }
-        addClient(clientInfo)
+        // Extract sessionId from cookies
+        const sessionIdMatch = (req.headers.cookie || '').match(/(?:^|;\s*)sessionId=([^;]*)/)
+        const sessionId = sessionIdMatch ? sessionIdMatch[1] : null
+
+        // Parse user agent
+        const agent = parseUserAgent(req.headers['user-agent'])
+
+        // Register client for broadcasts with full metadata
+        addClient({ clientId, sessionId, agent, send, embed: null })
         streamClients.set(clientId, clientState)
 
         // Call onConnect hook if provided
@@ -131,6 +138,7 @@ function createLongPollingHandler(controllers, onConnect, fileTransfer) {
                         }
                         if (handlers.embed) {
                             clientState.embed = handlers.embed
+                            updateClientEmbed(clientId, handlers.embed)
                         }
                     }
                 })
@@ -193,8 +201,9 @@ function createLongPollingHandler(controllers, onConnect, fileTransfer) {
                     req,
                     broadcast: (t, d) => broadcast(t, d),
                     broadcastOthers: (t, d) => broadcast(t, d, clientId),
-                    online: () => streamClients.size,
-                    getClients: () => Array.from(streamClients.keys())
+                    // Use clients Map for count and list
+                    online: () => clients.size,
+                    getClients: () => Array.from(clients.keys())
                 }
 
                 // Execute controller

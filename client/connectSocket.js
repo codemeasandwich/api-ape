@@ -166,7 +166,7 @@ const totalRequestTimeout = 10000
 
 const joinKey = "/"
 // Properties accessed directly on `ape` that should NOT be intercepted
-const reservedKeys = new Set(['on', 'onConnectionChange', 'getTransport'])
+const reservedKeys = new Set(['on', 'onConnectionChange', 'transport'])
 const handler = {
   get(fn, key) {
     // Skip proxy interception for reserved keys - return actual property
@@ -842,8 +842,8 @@ function buildClientInterface() {
         if (idx > -1) connectionChangeListeners.splice(idx, 1)
       }
     },
-    // Expose current transport type
-    getTransport: () => currentTransport
+    // Expose current transport type (read-only)
+    get transport() { return currentTransport }
   }
 }
 

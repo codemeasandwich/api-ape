@@ -88,7 +88,7 @@ const senderProxy = new Proxy({}, {
         // Reserved properties
         if (prop === 'on') return on
         if (prop === 'onConnectionChange') return onConnectionChange
-        if (prop === 'getTransport') return () => resolvedClient?.getTransport?.() || null
+        if (prop === 'transport') return resolvedClient?.transport || null
         if (prop === 'then' || prop === 'catch') return undefined // Not a Promise
 
         // Return a function that either calls directly or buffers
