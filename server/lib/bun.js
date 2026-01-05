@@ -6,7 +6,7 @@
  * ```ts
  * import { apeBun } from 'api-ape/bun'
  * 
- * const ape = apeBun({ where: 'api', onConnent: ... })
+ * const ape = apeBun({ where: 'api', onConnect: ... })
  * 
  * Bun.serve({
  *   port: 3000,
@@ -25,15 +25,15 @@ const { BunWebSocket, BunWebSocketServer } = require('./ws/adapters/bun')
 
 /**
  * Create api-ape handlers for Bun.serve()
- * @param {{ where: string, onConnent?: Function, fileTransferOptions?: Object }} options
+ * @param {{ where: string, onConnect?: Function, fileTransferOptions?: Object }} options
  */
-function apeBun({ where, onConnent, fileTransferOptions }) {
+function apeBun({ where, onConnect, fileTransferOptions }) {
     const controllers = loader(where)
     const fileTransfer = getFileTransferManager(fileTransferOptions)
     const wss = new BunWebSocketServer({ noServer: true })
 
     const wsPath = `/${where}/ape`
-    const wiringHandler = wiring(controllers, onConnent, fileTransfer)
+    const wiringHandler = wiring(controllers, onConnect, fileTransfer)
 
     // Handle connections
     wss.on('connection', wiringHandler)

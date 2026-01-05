@@ -5,7 +5,7 @@
 const { createServer } = require('http')
 const next = require('next')
 const ape = require('api-ape')
-const { onConnent } = require('./ape/onConnent')
+const { onConnect } = require('./ape/onConnect')
 
 const dev = process.env.NODE_ENV !== 'production'
 const hostname = '0.0.0.0'
@@ -20,7 +20,7 @@ app.prepare().then(() => {
     })
 
     // Initialize api-ape with the raw http server
-    ape(server, { where: 'api', onConnent })
+    ape(server, { where: 'api', onConnect })
 
     server.listen(port, () => {
         console.log(`
@@ -29,7 +29,7 @@ app.prepare().then(() => {
 ╠═══════════════════════════════════════════════════════╣
 ║  HTTP:      http://localhost:${port}/                  ║
 ║  WebSocket: ws://localhost:${port}/api/ape             ║
-║  ape(server, { where: "api", onConnent })             ║
+║  ape(server, { where: "api", onConnect })              ║
 ╚═══════════════════════════════════════════════════════╝
     `)
     })

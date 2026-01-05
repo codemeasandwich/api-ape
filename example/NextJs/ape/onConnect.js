@@ -1,6 +1,6 @@
 /**
  * api-ape onConnect handler
- * Creates the handlers object returned from onConnent
+ * Creates the handlers object returned from onConnect
  */
 
 const { createEmbed } = require('./embed')
@@ -19,7 +19,7 @@ function getHistory() {
     }
 }
 
-function onConnent(socket, req, send) {
+function onConnect(socket, req, send) {
     const clientID = send.toString()
     console.log(`🦍 Client connected: ${clientID}`)
 
@@ -52,7 +52,7 @@ function onConnent(socket, req, send) {
         onError: (errStr) =>
             onError(clientID, errStr),
 
-        onDisconnent: () => {
+        onDisconnect: () => {
             console.info(`👋 Disconnected [${clientID}]`)
             // Client is already removed from broadcast list, safe to broadcast new count
             ape.broadcast('users', { count: ape.online() })
@@ -60,4 +60,4 @@ function onConnent(socket, req, send) {
     }
 }
 
-module.exports = { onConnent }
+module.exports = { onConnect }

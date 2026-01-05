@@ -6,7 +6,7 @@
  * 
  * 1. **Client Initialization**: Connect to api-ape WebSocket server
  * 2. **Proxy Pattern**: Use `client.sender` as a Proxy to call server functions
- * 3. **Event Listeners**: Listen for server broadcasts using `setOnReciver`
+ * 3. **Event Listeners**: Listen for server broadcasts using `setOnReceiver`
  * 4. **Promise-based Calls**: Server functions return Promises automatically
  */
 
@@ -46,17 +46,17 @@ onMounted(async () => {
   })
 
   // Set up event listeners for server broadcasts
-  client.setOnReciver('init', ({ data }: { data: { history: Message[], users: number } }) => {
+  client.setOnReceiver('init', ({ data }: { data: { history: Message[], users: number } }) => {
     messages.value = data.history || []
     userCount.value = data.users || 0
     console.log('🦍 Initialized with', data.history?.length || 0, 'messages')
   })
 
-  client.setOnReciver('message', ({ data }: { data: { message: Message } }) => {
+  client.setOnReceiver('message', ({ data }: { data: { message: Message } }) => {
     messages.value.push(data.message)
   })
 
-  client.setOnReciver('users', ({ data }: { data: { count: number } }) => {
+  client.setOnReceiver('users', ({ data }: { data: { count: number } }) => {
     userCount.value = data.count
   })
 })

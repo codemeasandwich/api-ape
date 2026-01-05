@@ -44,9 +44,9 @@ const server = Bun.serve({
 // Same signature as Node.js/Express!
 ape(server, {
   where: 'api',
-  onConnent: (socket, req, send) => {
+  onConnect: (socket, req, send) => {
     send('init', { history: [], users: ape.online() })
-    return { onDisconnent: () => ape.broadcast('users', { count: ape.online() }) }
+    return { onDisconnect: () => ape.broadcast('users', { count: ape.online() }) }
   }
 })
 ```
@@ -68,7 +68,7 @@ ape(server, {
 | Concept | Example |
 |---------|---------|
 | Auto-wiring | `ape(server, { where: 'api' })` loads `api/*.js` |
-| onConnect hook | `onConnent: (socket, req, send) => { ... }` |
+| onConnect hook | `onConnect: (socket, req, send) => { ... }` |
 | Push on connect | `send('init', { history, users })` |
 | Broadcast all | `broadcast('users', { count })` |
 | Broadcast others | `this.broadcastOthers('message', data)` |

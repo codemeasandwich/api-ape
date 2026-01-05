@@ -73,11 +73,11 @@ function isSecure(req) {
 /**
  * Create core api-ape handlers (shared between runtimes)
  */
-function createApeCore({ where, onConnent, fileTransferOptions }) {
+function createApeCore({ where, onConnect, fileTransferOptions }) {
     const controllers = loader(where)
     const fileTransfer = getFileTransferManager(fileTransferOptions)
-    const wiringHandler = wiring(controllers, onConnent, fileTransfer)
-    const { handleStreamGet, handleStreamPost } = createLongPollingHandler(controllers, onConnent, fileTransfer)
+    const wiringHandler = wiring(controllers, onConnect, fileTransfer)
+    const { handleStreamGet, handleStreamPost } = createLongPollingHandler(controllers, onConnect, fileTransfer)
 
     const wsPath = `/${where}/ape`
     const pollPath = `/${where}/ape/poll`

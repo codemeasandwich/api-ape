@@ -61,7 +61,7 @@ const { onConnect } = require('./ape/onConnect')
 const app = next({ dev: true })
 const server = express()
 
-ape(server, { where: 'api', onConnent: onConnect })
+ape(server, { where: 'api', onConnect: onConnect })
 server.all('*', app.getRequestHandler())
 server.listen(3000)
 ```
@@ -73,7 +73,7 @@ module.exports.onConnect = (socket, req, send) => ({
   embed: { userId: generateId() },
   onReceive: (queryId, data, type) => { ... },
   onSend: (data, type) => { ... },
-  onDisconnent: () => { ... }
+  onDisconnect: () => { ... }
 })
 ```
 
@@ -87,11 +87,11 @@ npm i api-ape
 import ape from 'api-ape'
 
 // Connect
-const { sender, setOnReciver } = ape()
+const { sender, setOnReceiver } = ape()
 ape.autoReconnect()
 
 useEffect(() => {
-  setOnReciver('message', ({ data }) => {
+  setOnReceiver('message', ({ data }) => {
     setMessages(prev => [...prev, data.message])
   })
 }, [])

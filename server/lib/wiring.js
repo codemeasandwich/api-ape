@@ -6,7 +6,7 @@ const makeid = require('../utils/genId')
 const parseUserAgent = require('../utils/parseUserAgent');
 const { addClient, removeClient } = require('./broadcast')
 
-// connent, beforeSend, beforeReceive, error, afterSend, afterReceive, disconnent
+// connect, beforeSend, beforeReceive, error, afterSend, afterReceive, disconnect
 
 
 function defaultEvents(events = {}) {
@@ -15,7 +15,7 @@ function defaultEvents(events = {}) {
         onReceive: () => { },
         onSend: () => { },
         onError: (errSt) => console.error(errSt),
-        onDisconnent: () => { },
+        onDisconnect: () => { },
     } // END fallBackEvents
     return Object.assign({}, fallBackEvents, events)
 } // END defaultEvents
@@ -24,8 +24,8 @@ function defaultEvents(events = {}) {
 //============================================== wiring
 //=====================================================
 
-module.exports = function wiring(controllers, onConnent, fileTransfer) {
-    onConnent = onConnent || (() => { });
+module.exports = function wiring(controllers, onConnect, fileTransfer) {
+    onConnect = onConnect || (() => { });
     return function webSocketHandler(socket, req) {
 
         let send;
@@ -45,7 +45,7 @@ module.exports = function wiring(controllers, onConnent, fileTransfer) {
         }
         sharedValues.send.toString = () => clientId
 
-        // Track this client for broadcast BEFORE calling onConnent
+        // Track this client for broadcast BEFORE calling onConnect
         // This ensures ape.online() returns the correct count when sending init
         const clientInfo = { clientId, send: null, embed: null }
         addClient(clientInfo)
@@ -55,12 +55,12 @@ module.exports = function wiring(controllers, onConnent, fileTransfer) {
             removeClient(clientInfo)
         })
 
-        let result = onConnent(socket, req, sharedValues.send)
+        let result = onConnect(socket, req, sharedValues.send)
         if (!result || !result.then) {
             result = Promise.resolve(result)
         }
         result.then(defaultEvents)
-            .then(({ embed, onReceive, onSend, onError, onDisconnent }) => {
+            .then(({ embed, onReceive, onSend, onError, onDisconnect }) => {
                 const isOk = socketOpen(socket, req, onError)
 
                 if (!isOk) {
@@ -75,7 +75,7 @@ module.exports = function wiring(controllers, onConnent, fileTransfer) {
                     req,
                     clientId,
                     checkReply,
-                    events: { onReceive, onSend, onError, onDisconnent },
+                    events: { onReceive, onSend, onError, onDisconnect },
                     controllers,
                     sharedValues,
                     embedValues: embed,
@@ -88,9 +88,9 @@ module.exports = function wiring(controllers, onConnent, fileTransfer) {
                 clientInfo.send = send
                 clientInfo.embed = embed
 
-                // Call onDisconnent when socket closes
+                // Call onDisconnect when socket closes
                 socket.on('close', () => {
-                    onDisconnent()
+                    onDisconnect()
                 })
 
                 sentBufferAr.forEach(args => send(...args))

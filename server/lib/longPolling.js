@@ -45,7 +45,7 @@ function sendJson(res, statusCode, data) {
 /**
  * Create long polling handler
  */
-function createLongPollingHandler(controllers, onConnent, fileTransfer) {
+function createLongPollingHandler(controllers, onConnect, fileTransfer) {
 
     /**
      * Handle GET /api/ape/poll - Streaming receive
@@ -121,13 +121,13 @@ function createLongPollingHandler(controllers, onConnent, fileTransfer) {
         addClient(clientInfo)
         streamClients.set(clientId, clientState)
 
-        // Call onConnent hook if provided
-        if (onConnent) {
-            Promise.resolve(onConnent(null, req, send))
+        // Call onConnect hook if provided
+        if (onConnect) {
+            Promise.resolve(onConnect(null, req, send))
                 .then(handlers => {
                     if (handlers) {
-                        if (handlers.onDisconnent) {
-                            clientState.onDisconnect = handlers.onDisconnent
+                        if (handlers.onDisconnect) {
+                            clientState.onDisconnect = handlers.onDisconnect
                         }
                         if (handlers.embed) {
                             clientState.embed = handlers.embed
@@ -135,7 +135,7 @@ function createLongPollingHandler(controllers, onConnent, fileTransfer) {
                     }
                 })
                 .catch(err => {
-                    console.error('onConnent error:', err)
+                    console.error('onConnect error:', err)
                 })
         }
 

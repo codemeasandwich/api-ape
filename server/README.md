@@ -47,9 +47,9 @@ const server = createServer()
 
 ape(server, {
   where: 'api',        // Controller directory
-  onConnent: (socket, req, send) => ({
+  onConnect: (socket, req, send) => ({
     embed: { userId: req.session?.userId },
-    onDisconnent: () => console.log('Client left')
+    onDisconnect: () => console.log('Client left')
   })
 })
 
@@ -63,7 +63,7 @@ server.listen(3000)
 | Option | Type | Description |
 |--------|------|-------------|
 | `where` | `string` | Directory containing controller files |
-| `onConnent` | `function` | Connection lifecycle hook |
+| `onConnect` | `function` | Connection lifecycle hook |
 | `fileTransferOptions` | `object` | Binary transfer settings (see below) |
 
 ### File Transfer Options
@@ -95,13 +95,13 @@ ape(app, {
 ### Connection Lifecycle Hooks
 
 ```js
-onConnent(socket, req, send) {
+onConnect(socket, req, send) {
   return {
     embed: { ... },          // Values available as this.* in controllers
     onReceive: (queryId, data, type) => afterFn,
     onSend: (data, type) => afterFn,
     onError: (errStr) => { ... },
-    onDisconnent: () => { ... }
+    onDisconnect: () => { ... }
   }
 }
 ```

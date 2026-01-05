@@ -55,7 +55,7 @@ function getClient() {
 
         // Flush buffered receivers
         bufferedReceivers.forEach(({ type, handler }) => {
-            client.setOnReciver(type, handler)
+            client.setOnReceiver(type, handler)
         })
         bufferedReceivers.length = 0
 
@@ -115,7 +115,7 @@ const senderProxy = new Proxy({}, {
  */
 function on(type, handler) {
     if (resolvedClient) {
-        resolvedClient.setOnReciver(type, handler)
+        resolvedClient.setOnReceiver(type, handler)
     } else {
         bufferedReceivers.push({ type, handler })
         getClient()

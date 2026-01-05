@@ -1,6 +1,6 @@
 /**
  * api-ape onConnect handler
- * Creates the handlers object returned from onConnent
+ * Creates the handlers object returned from onConnect
  */
 
 import ape from 'api-ape'
@@ -35,7 +35,7 @@ export function onConnect(socket: any, req: any, send: any) {
     ape.broadcast('users', { count: ape.online() })
 
     return {
-        onDisconnent: () => {
+        onDisconnect: () => {
             console.info(`👋 Disconnected [${clientID}]`)
             // Broadcast updated user count after disconnect
             // Use setTimeout to ensure client is removed first

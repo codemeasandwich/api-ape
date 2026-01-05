@@ -46,14 +46,14 @@ async function initClient() {
     connectSocket.configure({ port: parseInt(port, 10) })
 
     // Connect and get sender/receiver/connection state
-    const { sender, setOnReciver, onConnectionChange } = connectSocket()
+    const { sender, setOnReceiver, onConnectionChange } = connectSocket()
 
     // Enable auto-reconnect
     connectSocket.autoReconnect()
 
     console.log('🦍 api-ape client initialized')
 
-    return { sender, setOnReciver, onConnectionChange, connectSocket }
+    return { sender, setOnReceiver, onConnectionChange, connectSocket }
 }
 
 /**

@@ -131,7 +131,7 @@ Initialize api-ape on a Node.js HTTP/HTTPS server.
 |--------|------|-------------|
 | `server` | `http.Server` | Node.js HTTP or HTTPS server instance |
 | `where` | `string` | Directory containing controller files (default: `'api'`) |
-| `onConnent` | `function` | Connection lifecycle hook (see [Connection Lifecycle](#connection-lifecycle)) |
+| `onConnect` | `function` | Connection lifecycle hook (see [Connection Lifecycle](#connection-lifecycle)) |
 
 #### Controller Context (`this`)
 
@@ -229,7 +229,7 @@ Customize behavior per connection:
 ```js
 ape(server, {
   where: 'api',
-  onConnent(socket, req, clientId) {
+  onConnect(socket, req, clientId) {
     return {
       // Embed values into `this` for all controllers
       embed: {
@@ -249,7 +249,7 @@ ape(server, {
       },
       
       onError: (errStr) => console.error(errStr),
-      onDisconnent: () => console.log('Client left')
+      onDisconnect: () => console.log('Client left')
     }
   }
 })
@@ -454,7 +454,7 @@ This prevents malicious sites from making requests to your api-ape server while 
 ### Security Considerations
 
 * Validate all input in controllers
-* Use authentication/authorization in `onConnent` hooks
+* Use authentication/authorization in `onConnect` hooks
 * Sanitize data before broadcasting
 * Keep dependencies up to date
 

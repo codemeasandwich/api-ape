@@ -88,7 +88,7 @@ api.message({ user: 'Alice', text: 'Hello!' })
   })
 
 // 3. Listen for server broadcasts
-client.setOnReciver('message', ({ data }) => {
+client.setOnReceiver('message', ({ data }) => {
   // Server called: this.broadcastOthers('message', data)
   // This fires for ALL clients except the sender
   console.log('Broadcast received:', data.message)

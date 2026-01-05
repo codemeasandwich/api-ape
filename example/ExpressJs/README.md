@@ -39,14 +39,14 @@ const server = app.listen(3000)
 
 ape(server, {
   where: 'api',
-  onConnent: (socket, req, send) => {
+  onConnect: (socket, req, send) => {
     // Push history + user count on connect
     const { _messages } = require('./api/message')
     send('init', { history: _messages, users: ape.online() })
     ape.broadcast('users', { count: ape.online() })
 
     return {
-      onDisconnent: () => ape.broadcast('users', { count: ape.online() })
+      onDisconnect: () => ape.broadcast('users', { count: ape.online() })
     }
   }
 })
@@ -88,7 +88,7 @@ module.exports = function (data) {
 | Concept | Example |
 |---------|---------|
 | Auto-wiring | `ape(app, { where: 'api' })` loads `api/*.js` |
-| onConnect hook | `onConnent: (socket, req, send) => { ... }` |
+| onConnect hook | `onConnect: (socket, req, send) => { ... }` |
 | Push on connect | `send('init', { history, users })` |
 | Broadcast all | `broadcast('users', { count })` |
 | Broadcast others | `this.broadcastOthers('message', data)` |

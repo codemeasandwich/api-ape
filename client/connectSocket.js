@@ -160,7 +160,7 @@ function getSocketUrl() {
 }
 
 let reconnect = false
-const connentTimeout = 5000
+const connectTimeout = 5000
 const totalRequestTimeout = 10000
 //const location = window.location
 
@@ -193,10 +193,9 @@ function wrap(api) {
 
 let __socket = false, ready = false, wsSend = false;
 const waitingOn = {};
-const reciverOn = [];
 
 let aWaitingSend = []
-const reciverOnAr = [];
+const receiverArray = [];
 const ofTypesOb = {};
 
 /**
@@ -218,7 +217,7 @@ function switchToStreaming() {
         ofTypesOb[type].forEach(worker => worker({ err, type, data }))
       }
       // Dispatch to general handlers
-      reciverOnAr.forEach(worker => worker({ err, type, data }))
+      receiverArray.forEach(worker => worker({ err, type, data }))
     }
 
     streamingTransport.onOpen = () => {
@@ -227,11 +226,11 @@ function switchToStreaming() {
       console.log('🦍 HTTP streaming connected')
 
       // Flush waiting messages
-      aWaitingSend.forEach(({ type, data, next, err, waiting, createdAt, timer }) => {
+      aWaitingSend.forEach(({ type, data, resolve, reject, waiting, createdAt, timer }) => {
         clearTimeout(timer)
         const resultPromise = streamingSend(type, data, createdAt)
         if (waiting) {
-          resultPromise.then(next).catch(err)
+          resultPromise.then(resolve).catch(reject)
         }
       })
       aWaitingSend = []
@@ -319,11 +318,11 @@ function tryWebSocket(isRetry = false) {
     ready = true
     notifyConnectionChange(ConnectionState.Connected)
 
-    aWaitingSend.forEach(({ type, data, next, err, waiting, createdAt, timer }) => {
+    aWaitingSend.forEach(({ type, data, resolve, reject, waiting, createdAt, timer }) => {
       clearTimeout(timer)
       const resultPromise = wsSend(type, data, createdAt)
       if (waiting) {
-        resultPromise.then(next).catch(err)
+        resultPromise.then(resolve).catch(reject)
       }
     })
     aWaitingSend = []
@@ -353,7 +352,7 @@ function tryWebSocket(isRetry = false) {
       return
     }
 
-    // Only messages WITHOUT queryId go to setOnReciver
+    // Only messages WITHOUT queryId go to setOnReceiver
     let processedData = data
     if (data && !err) {
       try {
@@ -366,7 +365,7 @@ function tryWebSocket(isRetry = false) {
     if (ofTypesOb[type]) {
       ofTypesOb[type].forEach(worker => worker({ err, type, data: processedData }))
     }
-    reciverOnAr.forEach(worker => worker({ err, type, data: processedData }))
+    receiverArray.forEach(worker => worker({ err, type, data: processedData }))
   }
 
   ws.onerror = function (err) {
@@ -779,19 +778,19 @@ const sender = (type, data) => {
     return wsSend(type, data, createdAt, true)
   }
 
-  const timeLetForReqToBeMade = (createdAt + connentTimeout) - Date.now() // 5sec for reconnent
+  const timeLetForReqToBeMade = (createdAt + connectTimeout) - Date.now() // 5sec for reconnect
 
   const timer = setTimeout(() => {
     const errMessage = "Request not sent for :" + type
     if (payload.waiting) {
-      payload.err(new Error(errMessage))
+      payload.reject(new Error(errMessage))
     } else {
       throw new Error(errMessage)
     }
   }, timeLetForReqToBeMade);
 
-  const payload = { type, data, next: undefined, err: undefined, waiting: false, createdAt, timer };
-  const waitingOnOpen = new Promise((res, er) => { payload.next = res; payload.err = er; })
+  const payload = { type, data, resolve: undefined, reject: undefined, waiting: false, createdAt, timer };
+  const waitingOnOpen = new Promise((res, rej) => { payload.resolve = res; payload.reject = rej; })
 
   const waitingOnOpenThen = waitingOnOpen.then;
   const waitingOnOpenCatch = waitingOnOpen.catch;
@@ -822,14 +821,14 @@ const sender = (type, data) => {
 function buildClientInterface() {
   return {
     sender: wrap(sender),
-    setOnReciver: (onTypeStFn, handlerFn) => {
+    setOnReceiver: (onTypeStFn, handlerFn) => {
       if ("string" === typeof onTypeStFn) {
         // Replace handler for this type (prevents duplicates in React StrictMode)
         ofTypesOb[onTypeStFn] = [handlerFn]
       } else {
         // For general receivers, prevent duplicates by checking
-        if (!reciverOnAr.includes(onTypeStFn)) {
-          reciverOnAr.push(onTypeStFn)
+        if (!receiverArray.includes(onTypeStFn)) {
+          receiverArray.push(onTypeStFn)
         }
       }
     },

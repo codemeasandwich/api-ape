@@ -35,7 +35,7 @@ const petsReq = ape.pets.list(data, (item) => shouldSubscribe)
 
 ## Phase 4: Subscription Callback
 - [ ] Second arg: `(item) => boolean` subscription predicate
-- [ ] Register listener via `setOnReciver` for matching type
+- [ ] Register listener via `setOnReceiver` for matching type
 - [ ] Filter incoming broadcasts client-side with predicate
 
 ## Phase 5: Server Query Execution

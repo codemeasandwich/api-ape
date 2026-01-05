@@ -24,13 +24,13 @@ findPort(3000, port => {
   // Initialize api-ape with the HTTP server
   ape(server, {
     where: 'api',
-    onConnent: (socket, req, send) => {
+    onConnect: (socket, req, send) => {
       const { _messages } = require('./api/message')
       send('init', { history: _messages, users: ape.online() })
       ape.broadcast('users', { count: ape.online() })
 
       return {
-        onDisconnent: () => ape.broadcast('users', { count: ape.online() })
+        onDisconnect: () => ape.broadcast('users', { count: ape.online() })
       }
     }
   })

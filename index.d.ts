@@ -50,7 +50,7 @@ export interface ControllerContext {
         os: { name?: string; version?: string }
         device: { type?: string; vendor?: string; model?: string }
     }
-    /** Custom embedded values from onConnent */
+    /** Custom embedded values from onConnect */
     [key: string]: any
 }
 
@@ -63,7 +63,7 @@ export type ControllerFunction<T = any, R = any> = (
 ) => R | Promise<R>
 
 /**
- * Send function provided to onConnent
+ * Send function provided to onConnect
  */
 export type SendFunction = {
     (type: string, data: any): void
@@ -76,7 +76,7 @@ export type SendFunction = {
 export type AfterHook = (err: Error | null, result: any) => void
 
 /**
- * Connection lifecycle hooks returned from onConnent
+ * Connection lifecycle hooks returned from onConnect
  */
 export interface ConnectionHandlers {
     /** Values to embed into controller context */
@@ -88,11 +88,11 @@ export interface ConnectionHandlers {
     /** Called on error */
     onError?: (errorString: string) => void
     /** Called when client disconnects */
-    onDisconnent?: () => void
+    onDisconnect?: () => void
 }
 
 /**
- * onConnent callback signature
+ * onConnect callback signature
  */
 export type OnConnectCallback = (
     socket: ApeWebSocket,
@@ -107,7 +107,7 @@ export interface ApeServerOptions {
     /** Directory containing controller files */
     where: string
     /** Connection lifecycle hook */
-    onConnent?: OnConnectCallback
+    onConnect?: OnConnectCallback
 }
 
 /**
@@ -221,7 +221,7 @@ export type SetOnReceiver = {
  */
 export interface ApeClient {
     sender: ApeSender
-    setOnReciver: SetOnReceiver
+    setOnReceiver: SetOnReceiver
     /** Subscribe to connection state changes. Returns unsubscribe function. */
     onConnectionChange: (handler: (state: ConnectionState) => void) => () => void
     /** Get current transport type ('websocket' | 'polling' | null) */

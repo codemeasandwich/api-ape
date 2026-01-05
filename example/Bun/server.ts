@@ -1,3 +1,5 @@
+/// <reference types="bun-types" />
+
 /**
  * Bun server using api-ape library with native Bun.serve() WebSocket
  * Uses the SAME unified signature as Node.js/Express: ape(server, { where: 'api' })
@@ -38,12 +40,12 @@ const server = Bun.serve({
 // Initialize api-ape with the Bun server - SAME signature as Node.js/Express!
 ape(server, {
     where: 'api',
-    onConnent: (socket: any, req: any, send: (type: string, data: any) => void) => {
+    onConnect: (socket: any, req: any, send: (type: string, data: any) => void) => {
         send('init', { history: _messages, users: ape.online() })
         ape.broadcast('users', { count: ape.online() })
 
         return {
-            onDisconnent: () => ape.broadcast('users', { count: ape.online() })
+            onDisconnect: () => ape.broadcast('users', { count: ape.online() })
         }
     }
 })
