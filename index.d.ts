@@ -110,6 +110,113 @@ export interface ApeServerOptions {
     onConnect?: OnConnectCallback
 }
 
+// =============================================================================
+// 🌲 FOREST - DISTRIBUTED MESH TYPES
+// =============================================================================
+
+/**
+ * Supported database client types for Forest adapters
+ */
+export type ForestDatabaseClient =
+    | RedisClient
+    | MongoClient
+    | PostgresPool
+    | SupabaseClient
+    | FirebaseDatabase
+    | ForestCustomAdapter
+
+/** Redis client (node-redis or ioredis) */
+export interface RedisClient {
+    duplicate(): RedisClient
+    publish(channel: string, message: string): Promise<number>
+    subscribe(channel: string): Promise<void>
+    on(event: string, handler: (...args: any[]) => void): void
+}
+
+/** MongoDB client */
+export interface MongoClient {
+    db(name?: string): any
+}
+
+/** PostgreSQL pool (pg) */
+export interface PostgresPool {
+    query(text: string, values?: any[]): Promise<any>
+    connect(): Promise<any>
+}
+
+/** Supabase client */
+export interface SupabaseClient {
+    from(table: string): any
+    channel(name: string): any
+    removeChannel(channel: any): Promise<void>
+}
+
+/** Firebase Realtime Database */
+export interface FirebaseDatabase {
+    ref(path: string): any
+    goOnline?(): void
+    app?: any
+}
+
+/**
+ * Forest adapter instance interface
+ */
+export interface ForestAdapterInstance {
+    /** This server's unique ID */
+    readonly serverId: string
+
+    /** Join the distributed mesh */
+    join(serverId?: string): Promise<void>
+
+    /** Leave the mesh and cleanup */
+    leave(): Promise<void>
+
+    /** Client-to-server lookup operations */
+    lookup: {
+        /** Register a client on this server */
+        add(clientId: string): Promise<void>
+        /** Find which server owns a client */
+        read(clientId: string): Promise<string | null>
+        /** Remove a client mapping (must own it) */
+        remove(clientId: string): Promise<void>
+    }
+
+    /** Inter-server channel operations */
+    channels: {
+        /** Push message to a server's channel (empty string = broadcast) */
+        push(serverId: string, message: any): Promise<void>
+        /** Subscribe to a server's channel, returns unsubscribe function */
+        pull(serverId: string, handler: (message: any, senderServerId: string) => void): Promise<() => Promise<void>>
+    }
+}
+
+/**
+ * Custom adapter interface for implementing your own Forest adapter
+ */
+export interface ForestCustomAdapter {
+    join(serverId: string): Promise<void>
+    leave(): Promise<void>
+    lookup: {
+        add(clientId: string): Promise<void>
+        read(clientId: string): Promise<string | null>
+        remove(clientId: string): Promise<void>
+    }
+    channels: {
+        push(serverId: string, message: any): Promise<void>
+        pull(serverId: string, handler: (message: any, senderServerId: string) => void): Promise<() => Promise<void>>
+    }
+}
+
+/**
+ * Options for joinVia()
+ */
+export interface ForestOptions {
+    /** Prefix for keys/tables (default: 'ape') */
+    namespace?: string
+    /** Custom server ID (default: auto-generated) */
+    serverId?: string
+}
+
 /**
  * Initialize api-ape on a Node.js HTTP/HTTPS server
  */
@@ -124,6 +231,42 @@ declare namespace ape {
      * Each ClientWrapper provides: clientId, sessionId, embed, agent, sendTo(type, data)
      */
     export const clients: ReadonlyMap<string, ClientWrapper>
+
+    // =========================================================================
+    // 🌲 FOREST - DISTRIBUTED MESH
+    // =========================================================================
+
+    /**
+     * Join the distributed mesh for multi-server coordination.
+     * Pass any supported database client - APE auto-detects the type.
+     * 
+     * @example
+     * // Redis
+     * ape.joinVia(redisClient);
+     * 
+     * // With options
+     * ape.joinVia(mongoClient, { namespace: 'myapp', serverId: 'srv-1' });
+     * 
+     * // Custom adapter
+     * ape.joinVia({ join, leave, lookup, channels });
+     */
+    export function joinVia(client: ForestDatabaseClient, options?: ForestOptions): Promise<ForestAdapterInstance>
+
+    /**
+     * Leave the distributed mesh gracefully.
+     * Removes all client mappings and unsubscribes from channels.
+     */
+    export function leaveCluster(): Promise<void>
+
+    /**
+     * Current Forest adapter instance (null if not joined)
+     */
+    export const cluster: ForestAdapterInstance | null
+
+    /**
+     * This server's ID in the cluster (null if not joined)
+     */
+    export const serverId: string | null
 
     // Browser client methods (available when imported in browser context)
     /** Subscribe to broadcasts from the server */

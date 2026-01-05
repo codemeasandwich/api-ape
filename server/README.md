@@ -23,6 +23,14 @@ server/
 │       └── adapters/ # Runtime-specific adapters
 │           ├── bun.js  # Bun native WebSocket
 │           └── deno.js # Deno native WebSocket
+├── adapters/         # 🌲 Forest - Distributed mesh adapters
+│   ├── index.js      # Auto-detection & factory
+│   ├── redis.js      # Redis PUB/SUB adapter
+│   ├── mongo.js      # MongoDB Change Streams adapter
+│   ├── postgres.js   # PostgreSQL LISTEN/NOTIFY adapter
+│   ├── supabase.js   # Supabase Realtime adapter
+│   ├── firebase.js   # Firebase RTDB adapter
+│   └── README.md     # Adapter documentation
 ├── socket/
 │   ├── receive.js    # Incoming message handler
 │   └── send.js       # Outgoing message handler
@@ -221,3 +229,267 @@ The built-in polyfill implements:
 - Ping/pong heartbeats
 - Proper close handshake
 - Masking (client→server)
+
+---
+
+## 🌲 Forest: Distributed Mesh
+
+**Forest** is api-ape's distributed coordination system for horizontal scaling. It routes messages between servers via a shared database, enabling you to run multiple api-ape instances behind a load balancer.
+
+### Quick Start
+
+```js
+const ape = require('api-ape');
+const { createClient } = require('redis');
+
+const redis = createClient();
+await redis.connect();
+
+// Join the mesh — pass any supported database client
+ape.joinVia(redis);
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  await ape.leaveCluster();
+  process.exit(0);
+});
+```
+
+### The Problem Forest Solves
+
+Without coordination, each server only knows about its own connected clients:
+
+```
+              Load Balancer
+                   │
+      ┌────────────┼────────────┐
+      │            │            │
+   Server A     Server B     Server C
+   client-1     client-2     client-3
+```
+
+If Server A wants to send a message to `client-2`, it doesn't know where `client-2` is connected.
+
+**Naive solutions:**
+- **Broadcast to all servers** — O(n) messages, doesn't scale
+- **Sticky sessions** — Complex LB config, no failover
+
+**Forest's solution:**
+- **Direct routing** — Lookup `clientId → serverId`, push only to that server. O(1).
+
+### How It Works
+
+Forest uses two database primitives:
+
+| Primitive | Purpose | Example |
+|-----------|---------|---------|
+| **Lookup Table** | Maps `clientId → serverId` | Redis key, Postgres row |
+| **Channels** | Real-time message push | Redis PUB/SUB, Postgres NOTIFY |
+
+#### Message Flow
+
+```
+Server A: "Send message to client-2"
+    │
+    ▼
+1. Check local clients → not found
+    │
+    ▼
+2. lookup.read("client-2") → "srv-B"
+    │
+    ▼
+3. channels.push("srv-B", { destClientId: "client-2", ... })
+    │
+    ▼
+   Database (Redis/Postgres/Mongo/etc)
+    │
+    ▼
+Server B: Receives message, delivers to client-2
+```
+
+### Supported Backends
+
+| Backend | How to Connect | Channels | Lookup | Ideal For |
+|---------|---------------|----------|--------|-----------|
+| **Redis** | `createClient()` | PUB/SUB | Key-value | Most deployments; fastest |
+| **MongoDB** | `new MongoClient()` | Change Streams | Collection | Mongo-native stacks |
+| **PostgreSQL** | `new pg.Pool()` | LISTEN/NOTIFY | Table | SQL shops |
+| **Supabase** | `createClient()` | Realtime | Table | Supabase users |
+| **Firebase** | `getDatabase()` | Native push | JSON tree | Serverless/edge |
+
+### API Reference
+
+#### `ape.joinVia(client, options?)`
+
+Join the distributed mesh.
+
+```js
+ape.joinVia(redis);
+ape.joinVia(redis, { 
+  namespace: 'myapp',     // Key/table prefix (default: 'ape')
+  serverId: 'srv-west-1'  // Custom server ID (default: auto-generated)
+});
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `namespace` | `string` | `'ape'` | Prefix for all keys/tables |
+| `serverId` | `string` | Auto-generated | Unique ID for this server instance |
+
+#### `ape.leaveCluster()`
+
+Gracefully leave the mesh. Removes client mappings and unsubscribes from channels.
+
+```js
+await ape.leaveCluster();
+```
+
+### Namespacing
+
+Forest creates its own database objects with your namespace prefix:
+
+| Backend | Created Objects |
+|---------|----------------|
+| **Redis** | `ape:client:{id}`, `ape:channel:{serverId}`, `ape:channel:ALL` |
+| **MongoDB** | Database: `ape_cluster`, Collections: `clients`, `events` |
+| **PostgreSQL** | Tables: `ape_clients`, Channel: `ape_events` |
+| **Supabase** | Table: `ape_clients` (must create), Realtime channels |
+| **Firebase** | Paths: `/ape/clients/*`, `/ape/channels/*` |
+
+### Custom Adapters
+
+For unsupported databases or testing, implement the adapter interface:
+
+```js
+ape.joinVia({
+  async join(serverId) {
+    // Subscribe to channels, register this server
+  },
+  
+  async leave() {
+    // Unsubscribe, cleanup client mappings
+  },
+  
+  lookup: {
+    async add(clientId) {
+      // Map clientId → this server
+    },
+    async read(clientId) {
+      // Return serverId or null
+    },
+    async remove(clientId) {
+      // Delete mapping (must own it)
+    }
+  },
+  
+  channels: {
+    async push(serverId, message) {
+      // Send to server's channel ("" = broadcast)
+    },
+    async pull(serverId, handler) {
+      // Subscribe to channel
+      // handler(message, senderServerId)
+      return async () => { /* unsubscribe */ };
+    }
+  }
+});
+```
+
+### Lifecycle
+
+| Event | What Happens |
+|-------|-------------|
+| **Server joins** | `join(serverId)` — subscribe to channels |
+| **Client connects** | `lookup.add(clientId)` — register mapping |
+| **Message to remote client** | `lookup.read()` → `channels.push()` |
+| **Broadcast** | `channels.push('')` — to ALL channel |
+| **Client disconnects** | `lookup.remove(clientId)` |
+| **Server shuts down** | `leave()` — cleanup everything |
+
+### Crash Recovery
+
+`clientId` is ephemeral — generated fresh on each connection. If a server crashes:
+
+1. Orphaned client mappings remain (stale)
+2. Clients reconnect with new `clientId` to another server
+3. New mappings are created; old ones are harmless
+4. Optional: Use Redis `EXPIRE` or DB TTL indexes for cleanup
+
+### Example: Multi-Server Chat
+
+**Server A (port 3001):**
+```js
+const ape = require('api-ape');
+const redis = createClient();
+await redis.connect();
+
+ape(server, { where: 'api' });
+ape.joinVia(redis, { serverId: 'srv-a' });
+
+server.listen(3001);
+```
+
+**Server B (port 3002):**
+```js
+const ape = require('api-ape');
+const redis = createClient();
+await redis.connect();
+
+ape(server, { where: 'api' });
+ape.joinVia(redis, { serverId: 'srv-b' });
+
+server.listen(3002);
+```
+
+**Controller (`api/chat.js`):**
+```js
+module.exports = function(message) {
+  // Broadcasts across ALL servers automatically
+  this.broadcastOthers('chat', { 
+    from: this.clientId, 
+    message 
+  });
+  return { sent: true };
+};
+```
+
+Now clients connected to different servers can chat with each other seamlessly.
+
+### Performance Considerations
+
+| Concern | Recommendation |
+|---------|---------------|
+| **Lookup latency** | Use Redis for sub-ms lookups |
+| **Message throughput** | Redis PUB/SUB handles millions/sec |
+| **Stale mappings** | Set TTL/EXPIRE on client keys |
+| **Large payloads** | Postgres NOTIFY has 8KB limit |
+| **Change Stream lag** | MongoDB may have slight delay |
+
+### Debugging
+
+Forest logs key operations:
+
+```
+🔌 APE: Detected redis adapter (serverId: X7K9MWPA)
+✅ Redis adapter: joined as X7K9MWPA
+📍 Redis adapter: registered client abc123 -> X7K9MWPA
+📤 Redis adapter: pushed to server Y8M2ZPQR
+📢 Redis adapter: broadcast to all servers
+🔴 Redis adapter: leaving, cleaning up 3 clients
+```
+
+---
+
+## Adapter Files
+
+See detailed adapter implementations in [`server/adapters/`](adapters/):
+
+| File | Description |
+|------|-------------|
+| `index.js` | Auto-detects database type, creates adapter |
+| `redis.js` | Redis PUB/SUB adapter |
+| `mongo.js` | MongoDB Change Streams adapter |
+| `postgres.js` | PostgreSQL LISTEN/NOTIFY adapter |
+| `supabase.js` | Supabase Realtime adapter |
+| `firebase.js` | Firebase RTDB adapter |
+| `README.md` | Quick reference for all adapters |

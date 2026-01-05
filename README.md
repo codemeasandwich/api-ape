@@ -116,6 +116,57 @@ api.onConnectionChange((state) => {
 * **HTTP streaming fallback** — Automatically falls back to long polling when WebSockets are blocked
 * **JJS Encoding** — Extended JSON supporting Date, RegExp, Error, Set, Map, undefined, and circular refs
 * **Connection lifecycle hooks** — Customize behavior on connect, receive, send, error, and disconnect
+* **🌲 Forest** — Distributed mesh for horizontal scaling across multiple servers
+
+---
+
+## 🌲 Forest: Distributed Mesh
+
+**Forest** enables horizontal scaling by coordinating multiple api-ape servers through a shared database. Messages are routed directly to the server hosting the destination client — no broadcast spam.
+
+```js
+import { createClient } from 'redis';
+const redis = createClient();
+await redis.connect();
+
+// Join the mesh — that's it!
+ape.joinVia(redis);
+```
+
+### Supported Backends
+
+| Backend | Push Mechanism | Best For |
+|---------|---------------|----------|
+| **Redis** | PUB/SUB | Most deployments |
+| **MongoDB** | Change Streams | Mongo-native stacks |
+| **PostgreSQL** | LISTEN/NOTIFY | SQL shops |
+| **Supabase** | Realtime | Supabase users |
+| **Firebase** | Native push | Serverless/edge |
+
+### How It Works
+
+```
+┌─────────────┐                    ┌─────────────┐
+│  Server A   │                    │  Server B   │
+│  client-1   │                    │  client-2   │
+└──────┬──────┘                    └──────▲──────┘
+       │                                  │
+       │ 1. sendTo("client-2")            │
+       │    → lookup: client-2 → srv-B    │
+       │                                  │
+       │ 2. channels.push("srv-B", msg)   │
+       └──────────┬───────────────────────┘
+                  │
+           ┌──────▼──────┐
+           │   Database  │
+           │ (message    │
+           │   bus)      │
+           └─────────────┘
+```
+
+APE creates its own namespaced keys/tables (`ape:*` or `ape_*`). No schema conflicts with your data.
+
+👉 **[See detailed Forest documentation](server/README.md#forest-distributed-mesh)**
 
 ---
 
