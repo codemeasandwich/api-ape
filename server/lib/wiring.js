@@ -38,16 +38,16 @@ module.exports = function wiring(controllers, onConnent, fileTransfer) {
             }
         } // END sentBufferFn
 
-        const hostId = makeid(20)
+        const clientId = makeid(20)
         const agent = parseUserAgent(req.headers['user-agent'])
         const sharedValues = {
             socket, req, agent, send: (type, data, err) => sentBufferFn(false, type, data, err)
         }
-        sharedValues.send.toString = () => hostId
+        sharedValues.send.toString = () => clientId
 
         // Track this client for broadcast BEFORE calling onConnent
         // This ensures ape.online() returns the correct count when sending init
-        const clientInfo = { hostId, send: null, embed: null }
+        const clientInfo = { clientId, send: null, embed: null }
         addClient(clientInfo)
 
         // Remove client on disconnect (set up early, will work once send is assigned)
@@ -73,7 +73,7 @@ module.exports = function wiring(controllers, onConnent, fileTransfer) {
                 const ape = {
                     socket,
                     req,
-                    hostId,
+                    clientId,
                     checkReply,
                     events: { onReceive, onSend, onError, onDisconnent },
                     controllers,

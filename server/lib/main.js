@@ -83,6 +83,7 @@ function createApeCore({ where, onConnent, fileTransferOptions }) {
     const pollPath = `/${where}/ape/poll`
     const pingPath = `/${where}/ape/ping`
     const clientPath = `/${where}/ape.js`
+    const clientMapPath = `/${where}/ape.js.map`
     const downloadPattern = `/${where}/ape/data/:hash`
     const uploadPattern = `/${where}/ape/data/:queryId/:pathHash`
 
@@ -96,6 +97,7 @@ function createApeCore({ where, onConnent, fileTransferOptions }) {
         pollPath,
         pingPath,
         clientPath,
+        clientMapPath,
         downloadPattern,
         uploadPattern
     }
@@ -148,6 +150,20 @@ function initNodeServer(server, options) {
             return
         }
 
+        // Serve source map for debugging
+        if (pathname === core.clientMapPath) {
+            const filePath = path.join(__dirname, '../../dist/ape.js.map')
+            fs.readFile(filePath, (err, data) => {
+                if (err) {
+                    sendJson(res, 404, { error: 'Source map not found' })
+                    return
+                }
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(data)
+            })
+            return
+        }
+
         // Ping endpoint for captive portal detection
         if (pathname === core.pingPath && req.method === 'GET') {
             return sendJson(res, 200, { ok: true, ts: Date.now() })
@@ -169,9 +185,9 @@ function initNodeServer(server, options) {
         const downloadMatch = matchRoute(pathname, core.downloadPattern)
         if (req.method === 'GET' && downloadMatch) {
             const { hash } = downloadMatch
-            const hostId = getCookie(req.headers, 'apeHostId') || req.headers['x-ape-host-id']
+            const clientId = getCookie(req.headers, 'apeClientId') || req.headers['x-ape-client-id']
 
-            if (!hostId) {
+            if (!clientId) {
                 return sendJson(res, 401, { error: 'Missing session identifier' })
             }
 
@@ -179,7 +195,7 @@ function initNodeServer(server, options) {
                 return sendJson(res, 403, { error: 'HTTPS required for file transfers' })
             }
 
-            const result = core.fileTransfer.getDownload(hash, hostId)
+            const result = core.fileTransfer.getDownload(hash, clientId)
 
             if (!result) {
                 return sendJson(res, 404, { error: 'Download not found or unauthorized' })
@@ -197,9 +213,9 @@ function initNodeServer(server, options) {
         const uploadMatch = matchRoute(pathname, core.uploadPattern)
         if (req.method === 'PUT' && uploadMatch) {
             const { queryId, pathHash } = uploadMatch
-            const hostId = getCookie(req.headers, 'apeHostId') || req.headers['x-ape-host-id']
+            const clientId = getCookie(req.headers, 'apeClientId') || req.headers['x-ape-client-id']
 
-            if (!hostId) {
+            if (!clientId) {
                 return sendJson(res, 401, { error: 'Missing session identifier' })
             }
 
@@ -211,7 +227,7 @@ function initNodeServer(server, options) {
             req.on('data', chunk => chunks.push(chunk))
             req.on('end', () => {
                 const data = Buffer.concat(chunks)
-                const success = core.fileTransfer.receiveUpload(queryId, pathHash, data, hostId)
+                const success = core.fileTransfer.receiveUpload(queryId, pathHash, data, clientId)
 
                 if (success) {
                     sendJson(res, 200, { success: true })
@@ -271,6 +287,19 @@ function initBunServer(options) {
                 })
             } catch {
                 return new Response('Client bundle not found', { status: 500 })
+            }
+        }
+
+        // Serve source map for debugging
+        if (pathname === core.clientMapPath) {
+            try {
+                const filePath = path.join(__dirname, '../../dist/ape.js.map')
+                const data = fs.readFileSync(filePath)
+                return new Response(data, {
+                    headers: { 'Content-Type': 'application/json' }
+                })
+            } catch {
+                return new Response('Source map not found', { status: 404 })
             }
         }
 
@@ -391,6 +420,19 @@ If you only want HTTP long-polling (no WebSocket), pass:
                 })
             } catch {
                 return new Response('Client bundle not found', { status: 500 })
+            }
+        }
+
+        // Serve source map for debugging
+        if (pathname === core.clientMapPath) {
+            try {
+                const filePath = path.join(__dirname, '../../dist/ape.js.map')
+                const data = fs.readFileSync(filePath)
+                return new Response(data, {
+                    headers: { 'Content-Type': 'application/json' }
+                })
+            } catch {
+                return new Response('Source map not found', { status: 404 })
             }
         }
 

@@ -1,4 +1,9 @@
 #!/bin/sh
+set -e
+
+# Git hooks run with minimal PATH - add common Node.js locations
+export PATH="$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node 2>/dev/null | tail -1)/bin:$PATH" 2>/dev/null || true
+export PATH="/usr/local/bin:/opt/homebrew/bin:$HOME/.volta/bin:$PATH"
 
 # Rebuild the browser bundle (minified with source map)
 echo "🦍 Building dist/ape.js..."

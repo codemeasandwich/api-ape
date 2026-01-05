@@ -2,35 +2,35 @@ const { addClient, removeClient, broadcast } = require('./broadcast')
 const makeid = require('../utils/genId')
 const jss = require('../../utils/jss')
 
-// Active streaming connections: hostId -> { res, messageQueue, heartbeatTimer }
+// Active streaming connections: clientId -> { res, messageQueue, heartbeatTimer }
 const streamClients = new Map()
 
 // Pending message handlers for POST requests: queryId -> { resolve, reject, timer }
 const pendingRequests = new Map()
 
 /**
- * Set apeHostId cookie if not present
+ * Set apeClientId cookie if not present
  */
-function ensureHostId(req, res) {
+function ensureClientId(req, res) {
     const cookies = req.headers.cookie || ''
-    const match = cookies.match(/(?:^|;\s*)apeHostId=([^;]*)/)
+    const match = cookies.match(/(?:^|;\s*)apeClientId=([^;]*)/)
 
     if (match) {
         return match[1]
     }
 
-    // Generate new hostId and set cookie
-    const hostId = makeid(20)
-    res.setHeader('Set-Cookie', `apeHostId=${hostId}; Path=/; HttpOnly; SameSite=Strict`)
-    return hostId
+    // Generate new clientId and set cookie
+    const clientId = makeid(20)
+    res.setHeader('Set-Cookie', `apeClientId=${clientId}; Path=/; HttpOnly; SameSite=Strict`)
+    return clientId
 }
 
 /**
- * Get hostId from cookie
+ * Get clientId from cookie
  */
-function getHostId(req) {
+function getClientId(req) {
     const cookies = req.headers.cookie || ''
-    const match = cookies.match(/(?:^|;\s*)apeHostId=([^;]*)/)
+    const match = cookies.match(/(?:^|;\s*)apeClientId=([^;]*)/)
     return match ? match[1] : null
 }
 
@@ -52,7 +52,7 @@ function createLongPollingHandler(controllers, onConnent, fileTransfer) {
      * Keeps connection open and writes JSON messages as they arrive
      */
     function handleStreamGet(req, res) {
-        const hostId = ensureHostId(req, res)
+        const clientId = ensureClientId(req, res)
 
         // Set up streaming response headers
         res.writeHead(200, {
@@ -81,7 +81,7 @@ function createLongPollingHandler(controllers, onConnent, fileTransfer) {
                 cleanup()
             }
         }
-        send.toString = () => hostId
+        send.toString = () => clientId
 
         // Clean up on close
         const cleanup = () => {
@@ -92,8 +92,8 @@ function createLongPollingHandler(controllers, onConnent, fileTransfer) {
                 clearInterval(clientState.heartbeatTimer)
             }
 
-            streamClients.delete(hostId)
-            removeClient({ hostId })
+            streamClients.delete(clientId)
+            removeClient({ clientId })
 
             // Notify disconnect handler if registered
             if (clientState.onDisconnect) {
@@ -117,9 +117,9 @@ function createLongPollingHandler(controllers, onConnent, fileTransfer) {
         }, 20000)
 
         // Register client for broadcasts
-        const clientInfo = { hostId, send }
+        const clientInfo = { clientId, send }
         addClient(clientInfo)
-        streamClients.set(hostId, clientState)
+        streamClients.set(clientId, clientState)
 
         // Call onConnent hook if provided
         if (onConnent) {
@@ -154,9 +154,9 @@ function createLongPollingHandler(controllers, onConnent, fileTransfer) {
      * Process message through controllers, return response
      */
     function handleStreamPost(req, res, controllers) {
-        const hostId = getHostId(req)
+        const clientId = getClientId(req)
 
-        if (!hostId) {
+        if (!clientId) {
             return sendJson(res, 401, { error: 'Missing session. GET /api/ape/poll first.' })
         }
 
@@ -178,7 +178,7 @@ function createLongPollingHandler(controllers, onConnent, fileTransfer) {
                 }
 
                 // Get client state for embed values
-                const clientState = streamClients.get(hostId)
+                const clientState = streamClients.get(clientId)
                 const embedValues = clientState?.embed || {}
 
                 // Extract sessionId from cookies (set by outer framework)
@@ -188,11 +188,11 @@ function createLongPollingHandler(controllers, onConnent, fileTransfer) {
                 // Build controller context
                 const context = {
                     ...embedValues,
-                    hostId,
+                    clientId,
                     sessionId,  // Session ID from cookie (set by outer framework)
                     req,
                     broadcast: (t, d) => broadcast(t, d),
-                    broadcastOthers: (t, d) => broadcast(t, d, hostId),
+                    broadcastOthers: (t, d) => broadcast(t, d, clientId),
                     online: () => streamClients.size,
                     getClients: () => Array.from(streamClients.keys())
                 }
@@ -223,4 +223,4 @@ function createLongPollingHandler(controllers, onConnent, fileTransfer) {
     }
 }
 
-module.exports = { createLongPollingHandler, getHostId, ensureHostId }
+module.exports = { createLongPollingHandler, getClientId, ensureClientId }

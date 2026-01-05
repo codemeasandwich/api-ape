@@ -40,7 +40,7 @@ function detectContentType(data) {
  * Process data object, replacing binary values with L-tagged hashes
  * Returns { processedData, binaryEntries }
  */
-function processBinaryData(data, queryId, fileTransfer, hostId, path = '') {
+function processBinaryData(data, queryId, fileTransfer, clientId, path = '') {
   if (data === null || data === undefined) {
     return { processedData: data, binaryEntries: [] }
   }
@@ -49,7 +49,7 @@ function processBinaryData(data, queryId, fileTransfer, hostId, path = '') {
     // This is binary data - register and return hash
     const hash = FileTransferManager.generateHash(queryId, path || 'root')
     const contentType = detectContentType(data)
-    fileTransfer.registerDownload(hash, data, contentType, hostId)
+    fileTransfer.registerDownload(hash, data, contentType, clientId)
 
     return {
       processedData: { [`__ape_link__`]: hash },
@@ -64,7 +64,7 @@ function processBinaryData(data, queryId, fileTransfer, hostId, path = '') {
     for (let i = 0; i < data.length; i++) {
       const itemPath = path ? `${path}.${i}` : String(i)
       const { processedData, binaryEntries } = processBinaryData(
-        data[i], queryId, fileTransfer, hostId, itemPath
+        data[i], queryId, fileTransfer, clientId, itemPath
       )
       processedArray.push(processedData)
       allBinaryEntries.push(...binaryEntries)
@@ -80,7 +80,7 @@ function processBinaryData(data, queryId, fileTransfer, hostId, path = '') {
     for (const key of Object.keys(data)) {
       const itemPath = path ? `${path}.${key}` : key
       const { processedData, binaryEntries } = processBinaryData(
-        data[key], queryId, fileTransfer, hostId, itemPath
+        data[key], queryId, fileTransfer, clientId, itemPath
       )
 
       // If this was binary data, mark the key with <!L> tag
@@ -99,7 +99,7 @@ function processBinaryData(data, queryId, fileTransfer, hostId, path = '') {
   return { processedData: data, binaryEntries: [] }
 }
 
-module.exports = function sendHandler({ socket, events, hostId, fileTransfer }) {
+module.exports = function sendHandler({ socket, events, clientId, fileTransfer }) {
 
   return function send(queryId, type, data, err) {
     if (!type && !queryId) {
@@ -130,7 +130,7 @@ module.exports = function sendHandler({ socket, events, hostId, fileTransfer }) 
     let processedData = data
     if (fileTransfer && data && !err) {
       const { processedData: processed, binaryEntries } = processBinaryData(
-        data, queryId || type, fileTransfer, hostId
+        data, queryId || type, fileTransfer, clientId
       )
       processedData = processed
       if (binaryEntries.length > 0) {

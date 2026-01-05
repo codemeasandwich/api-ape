@@ -4,7 +4,7 @@ export default function Info() {
   return (
     <div className={styles.codeSection}>
       <h3 className={styles.codeTitle}>📚 How api-ape Works</h3>
-      
+
       <div className={styles.gridContainer}>
         <div className={styles.gridLayout}>
           {/* Top Left: Key Concepts */}
@@ -17,7 +17,7 @@ export default function Info() {
 • Auto-wiring: Drop files in api/ folder, they become endpoints
 • Promises: All calls return Promises automatically
 • Broadcasts: Use this.broadcast() or this.broadcastOthers()
-• Context: this.broadcast, this.hostId, this.req available in controllers
+• Context: this.broadcast, this.clientId, this.req available in controllers
 • Auto-reconnect: Client reconnects automatically on disconnect`}
             </pre>
           </div>

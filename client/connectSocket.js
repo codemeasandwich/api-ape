@@ -470,7 +470,7 @@ function cleanLinkedKeys(obj) {
 /**
  * Fetch binary resources and hydrate data object
  */
-async function fetchLinkedResources(data, hostId) {
+async function fetchLinkedResources(data, clientId) {
   const resources = findLinkedResources(data)
 
   if (resources.length === 0) {
@@ -494,7 +494,7 @@ async function fetchLinkedResources(data, hostId) {
       const response = await fetch(`${baseUrl}/api/ape/data/${hash}`, {
         credentials: 'include',
         headers: {
-          'X-Ape-Host-Id': hostId || ''
+          'X-Ape-Client-Id': clientId || ''
         }
       })
 

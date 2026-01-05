@@ -15,6 +15,15 @@
     "./server": "./server/index.js",
     "./server/*": "./server/*"
   },
+  "files": [
+    "dist/",
+    "client/",
+    "server/",
+    "utils/",
+    "index.js",
+    "index.d.ts",
+    "!**/*.test.js"
+  ],
   "scripts": {
     "prepare": "cp .hooks/* .git/hooks/ 2>/dev/null && chmod +x .git/hooks/* || true",
     "test": "jest --no-cache",

@@ -11,48 +11,48 @@ const connectedClients = new Set()
  */
 function addClient(clientInfo) {
     connectedClients.add(clientInfo)
-    console.log(`🟢 Client added: ${clientInfo.hostId} (total: ${connectedClients.size})`)
+    console.log(`🟢 Client added: ${clientInfo.clientId} (total: ${connectedClients.size})`)
 }
 
 /**
  * Remove a client from the connected set
- * Accepts either the client object or { hostId } for lookup
+ * Accepts either the client object or { clientId } for lookup
  */
 function removeClient(clientInfo) {
     const sizeBefore = connectedClients.size
     // If exact reference found, delete it
     if (connectedClients.has(clientInfo)) {
         connectedClients.delete(clientInfo)
-        console.log(`🔴 Client removed (ref): ${clientInfo.hostId} (total: ${connectedClients.size})`)
+        console.log(`🔴 Client removed (ref): ${clientInfo.clientId} (total: ${connectedClients.size})`)
         return
     }
-    // Otherwise search by hostId (needed for long polling cleanup)
+    // Otherwise search by clientId (needed for long polling cleanup)
     for (const client of connectedClients) {
-        if (client.hostId === clientInfo.hostId) {
+        if (client.clientId === clientInfo.clientId) {
             connectedClients.delete(client)
-            console.log(`🔴 Client removed (lookup): ${clientInfo.hostId} (total: ${connectedClients.size})`)
+            console.log(`🔴 Client removed (lookup): ${clientInfo.clientId} (total: ${connectedClients.size})`)
             return
         }
     }
-    console.log(`⚠️ Client not found for removal: ${clientInfo.hostId} (total: ${connectedClients.size})`)
+    console.log(`⚠️ Client not found for removal: ${clientInfo.clientId} (total: ${connectedClients.size})`)
 }
 
 /**
  * Broadcast to all connected clients
  * @param {string} type - Message type
  * @param {any} data - Data to send
- * @param {string} [excludeHostId] - Optional hostId to exclude (e.g., sender)
+ * @param {string} [excludeClientId] - Optional clientId to exclude (e.g., sender)
  */
-function broadcast(type, data, excludeHostId) {
-    console.log(`📢 Broadcasting "${type}" to ${connectedClients.size} clients`, excludeHostId ? `(excluding ${excludeHostId})` : '')
+function broadcast(type, data, excludeClientId) {
+    console.log(`📢 Broadcasting "${type}" to ${connectedClients.size} clients`, excludeClientId ? `(excluding ${excludeClientId})` : '')
     connectedClients.forEach(client => {
-        if (excludeHostId && client.hostId === excludeHostId) {
+        if (excludeClientId && client.clientId === excludeClientId) {
             return // Skip excluded client
         }
         try {
             client.send(false, type, data, false)
         } catch (e) {
-            console.error(`📢 Broadcast failed to ${client.hostId}:`, e.message)
+            console.error(`📢 Broadcast failed to ${client.clientId}:`, e.message)
         }
     })
 }
@@ -65,10 +65,10 @@ function online() {
 }
 
 /**
- * Get all connected client hostIds
+ * Get all connected client clientIds
  */
 function getClients() {
-    return Array.from(connectedClients).map(c => c.hostId)
+    return Array.from(connectedClients).map(c => c.clientId)
 }
 
 module.exports = {
