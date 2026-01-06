@@ -1,6 +1,7 @@
 const express = require('express')
 const path = require('path')
 const ape = require('api-ape')
+const scribbles = require('scribbles')
 
 const app = express()
 
@@ -19,7 +20,7 @@ const findPort = (port, cb) => {
 
 findPort(3000, port => {
   // Create HTTP server from Express app
-  const server = app.listen(port, () => console.log(`http://localhost:${port}`))
+  const server = app.listen(port, () => scribbles.log(`http://localhost:${port}`))
 
   // Initialize api-ape with the HTTP server
   ape(server, {
