@@ -185,26 +185,38 @@ declare -a TEST_COMMITS
 declare -a CHORE_COMMITS
 declare -a OTHER_COMMITS
 
+# Function to strip commit type prefix from message
+# e.g., "feat: Add feature" -> "Add feature"
+#       "fix(scope): Fix bug" -> "Fix bug"
+strip_prefix() {
+  local msg="$1"
+  # Remove type prefix like "feat:", "fix:", "feat(scope):", etc.
+  echo "$msg" | sed -E 's/^(feat|feature|fix|bugfix|refactor|docs|doc|style|test|tests|chore|build|ci)(\([^)]*\))?[!]?:[[:space:]]*//'
+}
+
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
   
-  # Extract the type and message
+  # Extract the message (without git hash)
+  msg="${line#* }"
+  
+  # Extract the type and store stripped message
   if [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(feat|feature)[:\(] ]]; then
-    FEAT_COMMITS+=("${line#* }")
+    FEAT_COMMITS+=("$(strip_prefix "$msg")")
   elif [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(fix|bugfix)[:\(] ]]; then
-    FIX_COMMITS+=("${line#* }")
+    FIX_COMMITS+=("$(strip_prefix "$msg")")
   elif [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(refactor)[:\(] ]]; then
-    REFACTOR_COMMITS+=("${line#* }")
+    REFACTOR_COMMITS+=("$(strip_prefix "$msg")")
   elif [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(docs|doc)[:\(] ]]; then
-    DOCS_COMMITS+=("${line#* }")
+    DOCS_COMMITS+=("$(strip_prefix "$msg")")
   elif [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(style)[:\(] ]]; then
-    STYLE_COMMITS+=("${line#* }")
+    STYLE_COMMITS+=("$(strip_prefix "$msg")")
   elif [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(test|tests)[:\(] ]]; then
-    TEST_COMMITS+=("${line#* }")
+    TEST_COMMITS+=("$(strip_prefix "$msg")")
   elif [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(chore|build|ci)[:\(] ]]; then
-    CHORE_COMMITS+=("${line#* }")
+    CHORE_COMMITS+=("$(strip_prefix "$msg")")
   else
-    OTHER_COMMITS+=("${line#* }")
+    OTHER_COMMITS+=("$msg")
   fi
 done < <(git log $COMMIT_RANGE --oneline)
 
