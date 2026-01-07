@@ -29,7 +29,7 @@ Bun/
 Uses the **same unified signature** as Node.js/Express:
 
 ```ts
-const ape = require('api-ape')
+const { ape } = require('api-ape')
 
 // Create Bun server
 const server = Bun.serve({
@@ -45,8 +45,8 @@ const server = Bun.serve({
 ape(server, {
   where: 'api',
   onConnect: (socket, req, send) => {
-    send('init', { history: [], users: ape.online() })
-    return { onDisconnect: () => ape.broadcast('users', { count: ape.online() }) }
+    send('init', { history: [], users: ape.clients.size })
+    return { onDisconnect: () => ape.broadcast('users', { count: ape.clients.size }) }
   }
 })
 ```

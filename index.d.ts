@@ -219,6 +219,10 @@ export interface ForestOptions {
 
 /**
  * Initialize api-ape on a Node.js HTTP/HTTPS server
+ * 
+ * V3 Breaking Change:
+ * Old: const ape = require('api-ape')
+ * New: const { ape } = require('api-ape')
  */
 declare function ape(server: HttpServer, options: ApeServerOptions): void
 
@@ -280,8 +284,48 @@ declare namespace ape {
     export function message<T = any, R = any>(data?: T): Promise<R>
 }
 
-// Server-side default export (also works as browser client proxy)
-export default ape
+// =============================================================================
+// SERVER-SIDE CLIENT (api - same interface as browser)
+// =============================================================================
+
+/**
+ * Server-side client for connecting to other api-ape servers
+ * 100% identical interface to the browser client
+ * 
+ * @example
+ * import api from 'api-ape'
+ * 
+ * // Configure connection (or set APE_SERVER env)
+ * api.connect('ws://other-server:3000/api/ape')
+ * 
+ * // Same usage as browser
+ * const result = await api.hello('World')
+ * api.on('message', (data) => console.log(data))
+ */
+export interface ApeServerClient extends ApeSender {
+    /** Subscribe to broadcasts from the remote server */
+    on<T = any>(type: string, handler: MessageHandler<T>): void
+    on(handler: MessageHandler): void
+    /** Subscribe to connection state changes */
+    onConnectionChange(handler: (state: ConnectionState) => void): () => void
+    /** Connect to a server (or set APE_SERVER env) */
+    connect(url: string): void
+    /** Close the connection */
+    close(): void
+    /** Current transport type (read-only) */
+    readonly transport: 'websocket' | null
+}
+
+/**
+ * The api client - works identically on browser and server
+ */
+declare const api: ApeServerClient
+
+// Named export for V3 (Server usage: const { ape } = require('api-ape'))
+export { ape, api }
+
+// Default export: api client (same interface on browser and server)
+export default api
 
 // =============================================================================
 // BROWSER CLIENT (Default export in browser context)

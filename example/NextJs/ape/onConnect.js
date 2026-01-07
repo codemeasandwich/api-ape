@@ -26,11 +26,11 @@ function onConnect(socket, req, send) {
     const embed = createEmbed(clientID, req.headers?.['x-session-id'])
 
     // Send init message with history and user count
-    console.log(`📤 Sending init to ${clientID}, users: ${ape.online()}`)
+    console.log(`📤 Sending init to ${clientID}, users: ${ape.clients.size}`)
     try {
         send('init', {
             history: getHistory(),
-            users: ape.online()
+            users: ape.clients.size
         })
         console.log(`✅ Init sent to ${clientID}`)
     } catch (e) {
@@ -38,7 +38,7 @@ function onConnect(socket, req, send) {
     }
 
     // Broadcast updated user count to all clients
-    ape.broadcast('users', { count: ape.online() })
+    ape.broadcast('users', { count: ape.clients.size })
 
     return {
         embed,
@@ -55,7 +55,7 @@ function onConnect(socket, req, send) {
         onDisconnect: () => {
             console.info(`👋 Disconnected [${clientID}]`)
             // Client is already removed from broadcast list, safe to broadcast new count
-            ape.broadcast('users', { count: ape.online() })
+            ape.broadcast('users', { count: ape.clients.size })
         }
     }
 }

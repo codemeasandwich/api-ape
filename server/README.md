@@ -49,7 +49,7 @@ npm i api-ape
 
 ```js
 const { createServer } = require('http')
-const ape = require('api-ape')
+const { ape } = require('api-ape')
 
 const server = createServer()
 
@@ -63,6 +63,32 @@ ape(server, {
 
 server.listen(3000)
 ```
+
+## Server-to-Server Connection
+
+Your server can connect to **another** api-ape server as a client. The API is 100% identical to browser usage:
+
+```js
+import api, { ape } from 'api-ape'
+
+// Start your own server
+ape(server, { where: 'api' })
+
+// Connect to another api-ape server
+api.connect('ws://other-server:3000/api/ape')
+
+// Now use it exactly like browser code!
+const result = await api.hello('World')
+api.on('message', ({ data }) => console.log(data))
+```
+
+**Or set the connection URL via environment variable:**
+
+```bash
+APE_SERVER=ws://other-server:3000/api/ape node app.js
+```
+
+This enables server-side microservice patterns while keeping the familiar api-ape interface.
 
 ## API
 
@@ -273,7 +299,7 @@ The built-in polyfill implements:
 ### Quick Start
 
 ```js
-const ape = require('api-ape');
+const { ape } = require('api-ape');
 const { createClient } = require('redis');
 
 const redis = createClient();
@@ -453,7 +479,7 @@ ape.joinVia({
 
 **Server A (port 3001):**
 ```js
-const ape = require('api-ape');
+const { ape } = require('api-ape');
 const redis = createClient();
 await redis.connect();
 
@@ -465,7 +491,7 @@ server.listen(3001);
 
 **Server B (port 3002):**
 ```js
-const ape = require('api-ape');
+const { ape } = require('api-ape');
 const redis = createClient();
 await redis.connect();
 

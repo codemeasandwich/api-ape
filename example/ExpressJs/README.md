@@ -32,7 +32,7 @@ npm i api-ape
 
 ```js
 const express = require('express')
-const ape = require('api-ape')
+const { ape } = require('api-ape')
 
 const app = express()
 const server = app.listen(3000)
@@ -42,11 +42,11 @@ ape(server, {
   onConnect: (socket, req, send) => {
     // Push history + user count on connect
     const { _messages } = require('./api/message')
-    send('init', { history: _messages, users: ape.online() })
-    ape.broadcast('users', { count: ape.online() })
+    send('init', { history: _messages, users: ape.clients.size })
+    ape.broadcast('users', { count: ape.clients.size })
 
     return {
-      onDisconnect: () => ape.broadcast('users', { count: ape.online() })
+      onDisconnect: () => ape.broadcast('users', { count: ape.clients.size })
     }
   }
 })

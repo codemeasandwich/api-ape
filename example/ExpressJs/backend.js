@@ -1,6 +1,6 @@
 const express = require('express')
 const path = require('path')
-const ape = require('api-ape')
+const { ape } = require('api-ape')
 const scribbles = require('scribbles')
 
 const app = express()
@@ -27,11 +27,11 @@ findPort(3000, port => {
     where: 'api',
     onConnect: (socket, req, send) => {
       const { _messages } = require('./api/message')
-      send('init', { history: _messages, users: ape.online() })
-      ape.broadcast('users', { count: ape.online() })
+      send('init', { history: _messages, users: ape.clients.size })
+      ape.broadcast('users', { count: ape.clients.size })
 
       return {
-        onDisconnect: () => ape.broadcast('users', { count: ape.online() })
+        onDisconnect: () => ape.broadcast('users', { count: ape.clients.size })
       }
     }
   })

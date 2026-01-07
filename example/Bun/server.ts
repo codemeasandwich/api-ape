@@ -7,7 +7,7 @@
 
 import path from 'path'
 
-const ape = require('api-ape')
+const { ape } = require('api-ape')
 
 const port = parseInt(process.env.PORT || '3000', 10)
 
@@ -41,11 +41,11 @@ const server = Bun.serve({
 ape(server, {
     where: 'api',
     onConnect: (socket: any, req: any, send: (type: string, data: any) => void) => {
-        send('init', { history: _messages, users: ape.online() })
-        ape.broadcast('users', { count: ape.online() })
+        send('init', { history: _messages, users: ape.clients.size })
+        ape.broadcast('users', { count: ape.clients.size })
 
         return {
-            onDisconnect: () => ape.broadcast('users', { count: ape.online() })
+            onDisconnect: () => ape.broadcast('users', { count: ape.clients.size })
         }
     }
 })

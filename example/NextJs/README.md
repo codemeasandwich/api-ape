@@ -25,14 +25,9 @@ NextJs/
 ├── api/
 │   └── message.js        # Message controller
 ├── ape/
-│   ├── index.js          # Ape exports
-│   ├── client.js         # Browser client wrapper
 │   ├── onConnect.js      # Connection lifecycle
-│   ├── onDisconnect.js   # Disconnect handler
-│   ├── onReceive.js      # Message logging
-│   ├── onSend.js         # Send logging
-│   ├── onError.js        # Error handling
-│   └── embed.js          # Embedded context values
+│   └── logic/
+│       └── chat.js       # Chat utilities
 ├── pages/
 │   └── index.tsx         # Chat UI
 └── styles/
@@ -41,11 +36,11 @@ NextJs/
 
 ## Features
 
-- **Custom Server** — Express + Next.js with api-ape integration
-- **Connection Lifecycle** — onConnect, onDisconnect, onReceive, onSend hooks
+- **Custom Server** — Node.js http server + Next.js with api-ape
+- **Connection Lifecycle** — onConnect, onDisconnect hooks
 - **User Presence** — Track online users count
 - **Message History** — New users receive chat history
-- **React Integration** — Hooks-based client usage
+- **React Integration** — Simple unified client API
 - **Docker Support** — Production-ready containerization
 
 ## How It Works
@@ -53,51 +48,56 @@ NextJs/
 ### Server (server.js)
 
 ```js
-const express = require('express')
+const { createServer } = require('http')
 const next = require('next')
-const ape = require('api-ape')
+const { ape } = require('api-ape')
 const { onConnect } = require('./ape/onConnect')
 
 const app = next({ dev: true })
-const server = express()
+const handle = app.getRequestHandler()
 
-ape(server, { where: 'api', onConnect: onConnect })
-server.all('*', app.getRequestHandler())
-server.listen(3000)
+app.prepare().then(() => {
+  const server = createServer((req, res) => handle(req, res))
+  
+  ape(server, { where: 'api', onConnect })
+  
+  server.listen(3000)
+})
 ```
 
 ### Connection Lifecycle (ape/onConnect.js)
 
 ```js
-module.exports.onConnect = (socket, req, send) => ({
-  embed: { userId: generateId() },
-  onReceive: (queryId, data, type) => { ... },
-  onSend: (data, type) => { ... },
-  onDisconnect: () => { ... }
-})
+module.exports.onConnect = (socket, req, send) => {
+  // Send initial data to new client
+  send('init', { history: messages, users: ape.clients.size })
+  ape.broadcast('users', { count: ape.clients.size })
+
+  return {
+    onDisconnect: () => {
+      ape.broadcast('users', { count: ape.clients.size })
+    }
+  }
+}
 ```
 
 ### React Client (pages/index.tsx)
 
-```bash
-npm i api-ape
-```
-
 ```jsx
-import ape from 'api-ape'
+import api from 'api-ape'
 
-// Connect
-const { sender, setOnReceiver } = ape()
-ape.autoReconnect()
+// Send message - just call the method!
+await api.message({ user: 'Alice', text: 'Hello!' })
 
-useEffect(() => {
-  setOnReceiver('message', ({ data }) => {
-    setMessages(prev => [...prev, data.message])
-  })
-}, [])
+// Listen for broadcasts
+api.on('message', ({ data }) => {
+  setMessages(prev => [...prev, data])
+})
 
-// Send message
-sender.message({ user, text }).then(response => { ... })
+// Track connection state
+api.onConnectionChange((state) => {
+  console.log('Connection:', state)
+})
 ```
 
 ## Key Concepts Demonstrated
@@ -106,7 +106,5 @@ sender.message({ user, text }).then(response => { ... })
 |---------|------|
 | Custom Next.js server | `server.js` |
 | Connection lifecycle hooks | `ape/onConnect.js` |
-| Embedded context values | `ape/embed.js` |
-| React hooks integration | `pages/index.tsx` |
-| Client wrapper | `ape/client.js` |
-| Message validation | `api/message.js` |
+| Chat message controller | `api/message.js` |
+| React client integration | `pages/index.tsx` |

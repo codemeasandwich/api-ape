@@ -20,11 +20,11 @@ export function onConnect(socket: any, req: any, send: any) {
     console.log(`🦍 Client connected: ${clientID}`)
 
     // Send init message with history and user count
-    console.log(`📤 Sending init to ${clientID}, users: ${ape.online()}`)
+    console.log(`📤 Sending init to ${clientID}, users: ${ape.clients.size}`)
     try {
         send('init', {
             history: getHistory(),
-            users: ape.online()
+            users: ape.clients.size
         })
         console.log(`✅ Init sent to ${clientID}`)
     } catch (e) {
@@ -32,7 +32,7 @@ export function onConnect(socket: any, req: any, send: any) {
     }
 
     // Broadcast updated user count to all clients
-    ape.broadcast('users', { count: ape.online() })
+    ape.broadcast('users', { count: ape.clients.size })
 
     return {
         onDisconnect: () => {
@@ -40,7 +40,7 @@ export function onConnect(socket: any, req: any, send: any) {
             // Broadcast updated user count after disconnect
             // Use setTimeout to ensure client is removed first
             setTimeout(() => {
-                ape.broadcast('users', { count: ape.online() })
+                ape.broadcast('users', { count: ape.clients.size })
             }, 50)
         }
     }

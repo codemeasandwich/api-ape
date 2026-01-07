@@ -4,7 +4,7 @@
 
 const { createServer } = require('http')
 const next = require('next')
-const ape = require('api-ape')
+const { ape } = require('api-ape')
 const { onConnect } = require('./ape/onConnect')
 
 const dev = process.env.NODE_ENV !== 'production'

@@ -3,6 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/api-ape.svg)](https://www.npmjs.com/package/api-ape)
 [![GitHub issues](https://img.shields.io/github/issues/codemeasandwich/api-ape)](https://github.com/codemeasandwich/api-ape/issues)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](#zero-dependencies)
+[![Dependabot](https://img.shields.io/dependabot/codemeasandwich/api-ape)](https://github.com/codemeasandwich/api-ape/security/dependabot)
 [![CSRF protected](https://img.shields.io/badge/CSRF%20🚷-protected-green.svg)](#csrf-protection)
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/api-ape)](https://bundlephobia.com/package/api-ape)
 [![JJS Encoding](https://img.shields.io/badge/encoding-JJS-blue.svg)](#jjs-encoding)
@@ -32,7 +33,7 @@ yarn add api-ape
 
 ```js
 const { createServer } = require('http')
-const ape = require('api-ape')
+const { ape } = require('api-ape')
 
 const server = createServer()
 
@@ -45,7 +46,7 @@ server.listen(3000)
 **With Express:**
 ```js
 const express = require('express')
-const ape = require('api-ape')
+const { ape } = require('api-ape')
 
 const app = express()
 const server = app.listen(3000)  // Get the HTTP server
@@ -344,7 +345,7 @@ module.exports = function(announcement) {
 ### Using ape.clients
 
 ```js
-const ape = require('api-ape')
+const { ape } = require('api-ape')
 
 // Get online count
 console.log('Online:', ape.clients.size)
