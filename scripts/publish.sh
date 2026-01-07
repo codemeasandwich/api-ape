@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-PACKAGE_NAME="api-ape"
+PACKAGE_NAME=$(node -p "require('./package.json').name")
 
 # Get local version from package.json
 LOCAL_VERSION=$(node -p "require('./package.json').version")
