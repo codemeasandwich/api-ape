@@ -582,3 +582,48 @@ See detailed adapter implementations in [`server/adapters/`](adapters/):
 | `supabase.js` | Supabase Realtime adapter |
 | `firebase.js` | Firebase RTDB adapter |
 | `README.md` | Quick reference for all adapters |
+
+---
+
+## Troubleshooting & FAQ
+
+### Controller Not Found
+
+* Check that your controller file is in the `where` directory (default: `api/`)
+* Ensure the file exports a function: `module.exports = function(...) { ... }`
+* File paths map directly: `api/users/list.js` → `api.users.list()`
+
+### Connection Drops Frequently
+
+The client automatically reconnects with exponential backoff. If connections drop often:
+* Check server WebSocket timeout settings
+* Verify network stability
+* Check server logs for errors
+
+### Binary Data / File Transfers
+
+Return `Buffer` data from controllers:
+
+```js
+// api/files/download.js
+module.exports = function(filename) {
+  return {
+    name: filename,
+    data: fs.readFileSync(`./uploads/${filename}`)  // Buffer
+  }
+}
+```
+
+Client receives `ArrayBuffer`:
+
+```js
+const result = await api.files.download('image.png')
+const blob = new Blob([result.data])
+img.src = URL.createObjectURL(blob)
+```
+
+### TypeScript Support
+
+Type definitions are included (`index.d.ts`). For full type safety:
+* Define interfaces for your controller parameters and return types
+* Use type assertions when calling `api.<path>.<method>()`
