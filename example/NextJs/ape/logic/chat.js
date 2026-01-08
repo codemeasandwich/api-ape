@@ -2,7 +2,7 @@
  * Chat controller for api-ape
  * Uses this.broadcastOthers from api-ape
  */
-const ape = require('api-ape')
+const { ape } = require('api-ape')
 
 // In-memory message store
 const messages = []

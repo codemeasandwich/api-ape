@@ -33,7 +33,8 @@ yarn add api-ape
 
 ```js
 const { createServer } = require('http')
-const { ape } = require('api-ape')
+const api = require('api-ape')           // Client proxy (default export)
+const { ape } = require('api-ape')       // Server initializer
 
 const server = createServer()
 

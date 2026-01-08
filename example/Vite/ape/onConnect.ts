@@ -3,7 +3,7 @@
  * Creates the handlers object returned from onConnect
  */
 
-import ape from 'api-ape'
+const { ape } = require('api-ape')
 
 // Get message history from the message controller
 function getHistory() {

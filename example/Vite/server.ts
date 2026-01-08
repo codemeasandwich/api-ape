@@ -6,7 +6,7 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http'
 import path from 'path'
 import fs from 'fs'
-import ape from 'api-ape'
+const { ape } = require('api-ape')
 import { onConnect } from './ape/onConnect'
 
 const port = parseInt(process.env.PORT || '3000', 10)

@@ -47,6 +47,19 @@ server/
 npm i api-ape
 ```
 
+### V3 Import Patterns
+
+```js
+// CommonJS
+const api = require('api-ape')           // Client proxy (default)
+const { ape } = require('api-ape')       // Server initializer
+
+// ESM
+import api, { ape } from 'api-ape'
+```
+
+### Basic Server Setup
+
 ```js
 const { createServer } = require('http')
 const { ape } = require('api-ape')
@@ -64,12 +77,28 @@ ape(server, {
 server.listen(3000)
 ```
 
+### Dual-Purpose `ape` Function
+
+The `ape` function intelligently detects how it's being used:
+
+```js
+// Called with HTTP server → Server setup
+ape(server, { where: 'api' })
+
+// Called with data → API call to /ape endpoint
+ape({ someData: 'value' })  // Calls /ape on connected server
+
+// Or via the proxy
+api.ape({ someData: 'value' })  // Same as above
+```
+
 ## Server-to-Server Connection
 
 Your server can connect to **another** api-ape server as a client. The API is 100% identical to browser usage:
 
 ```js
-import api, { ape } from 'api-ape'
+const api = require('api-ape')
+const { ape } = require('api-ape')
 
 // Start your own server
 ape(server, { where: 'api' })

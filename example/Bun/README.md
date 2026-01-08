@@ -29,7 +29,7 @@ Bun/
 Uses the **same unified signature** as Node.js/Express:
 
 ```ts
-const { ape } = require('api-ape')
+const { ape } = require('api-ape')  // Server initializer (named export)
 
 // Create Bun server
 const server = Bun.serve({
@@ -38,7 +38,7 @@ const server = Bun.serve({
     // Your static files
     return new Response(Bun.file('./index.html'))
   },
-  websocket: { message() {} }  // Placeholder
+  websocket: { message() {} }  // Placeholder - ape() replaces via server.reload()
 })
 
 // Same signature as Node.js/Express!

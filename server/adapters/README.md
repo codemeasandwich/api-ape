@@ -5,15 +5,15 @@ Connect multiple api-ape server instances via a shared database for horizontal s
 ## Quick Start
 
 ```js
-import ape from 'api-ape/server';
-import { createClient } from 'redis';
+const { ape } = require('api-ape')
+const { createClient } = require('redis')
 
 // Connect to your database
-const redis = createClient();
-await redis.connect();
+const redis = createClient()
+await redis.connect()
 
 // Join the cluster — APE creates its own namespace
-ape.joinVia(redis);
+ape.joinVia(redis)
 ```
 
 That's it. APE will:

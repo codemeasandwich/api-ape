@@ -32,7 +32,7 @@ npm i api-ape
 
 ```js
 const express = require('express')
-const { ape } = require('api-ape')
+const { ape } = require('api-ape')  // Server initializer (named export)
 
 const app = express()
 const server = app.listen(3000)

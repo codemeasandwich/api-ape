@@ -50,7 +50,8 @@ NextJs/
 ```js
 const { createServer } = require('http')
 const next = require('next')
-const { ape } = require('api-ape')
+const api = require('api-ape')           // Client proxy (for api.* calls)
+const { ape } = require('api-ape')       // Server initializer
 const { onConnect } = require('./ape/onConnect')
 
 const app = next({ dev: true })
@@ -68,6 +69,8 @@ app.prepare().then(() => {
 ### Connection Lifecycle (ape/onConnect.js)
 
 ```js
+const { ape } = require('api-ape')  // For ape.clients, ape.broadcast
+
 module.exports.onConnect = (socket, req, send) => {
   // Send initial data to new client
   send('init', { history: messages, users: ape.clients.size })

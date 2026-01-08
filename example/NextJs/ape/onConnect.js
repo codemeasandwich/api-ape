@@ -7,7 +7,7 @@ const { createEmbed } = require('./embed')
 const { onReceive } = require('./onReceive')
 const { onSend } = require('./onSend')
 const { onError } = require('./onError')
-const ape = require('api-ape')
+const { ape } = require('api-ape')
 
 // Get message history from the message controller
 function getHistory() {
