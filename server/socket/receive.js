@@ -1,5 +1,5 @@
 const messageHash = require('../../utils/messageHash')
-const { broadcast, online, getClients } = require('../lib/broadcast')
+const { broadcast, clients } = require('../lib/broadcast')
 const jss = require('../../utils/jss')
 
 /**
@@ -135,7 +135,7 @@ function getSessionId(req) {
 }
 
 module.exports = function receiveHandler(ape) {
-    const { send, checkReply, events, controllers, sharedValues, hostId, embedValues, fileTransfer } = ape
+    const { send, checkReply, events, controllers, sharedValues, clientId, embedValues, fileTransfer } = ape
 
     // Extract sessionId from request cookies (set by outer framework session management)
     const sessionId = getSessionId(sharedValues.req)
@@ -147,10 +147,9 @@ module.exports = function receiveHandler(ape) {
         ...embedValues,
         // api-ape utilities available via `this`
         broadcast: (type, data) => broadcast(type, data),
-        broadcastOthers: (type, data) => broadcast(type, data, hostId), // exclude self
-        online,
-        getClients,
-        hostId,
+        broadcastOthers: (type, data) => broadcast(type, data, clientId), // exclude self
+        clients,
+        clientId,
         sessionId  // Session ID from cookie (set by outer framework)
     }
 
@@ -181,7 +180,7 @@ module.exports = function receiveHandler(ape) {
                     // Wait for all uploads
                     try {
                         await Promise.all(uploadTags.map(async ({ path, hash }) => {
-                            const uploadData = await fileTransfer.registerUpload(queryId, hash, hostId)
+                            const uploadData = await fileTransfer.registerUpload(queryId, hash, clientId)
                             setValueAtPath(processedData, path, uploadData)
                         }))
                     } catch (uploadErr) {
@@ -200,7 +199,7 @@ module.exports = function receiveHandler(ape) {
                 if (fileTags.length > 0) {
                     console.log(`📁 Registering ${fileTags.length} streaming file(s) for ${type}`)
                     fileTags.forEach(({ hash }) => {
-                        fileTransfer.registerStreamingFile(hash, hostId)
+                        fileTransfer.registerStreamingFile(hash, clientId)
                     })
                 }
             }
@@ -233,7 +232,7 @@ module.exports = function receiveHandler(ape) {
 
         } catch (err) {
             const errMessage = err.message || err
-            events.onError(hostId, queryId, errMessage)
+            events.onError(clientId, queryId, errMessage)
         } // END catch
 
     } // END onReceive

@@ -201,9 +201,7 @@ function createLongPollingHandler(controllers, onConnect, fileTransfer) {
                     req,
                     broadcast: (t, d) => broadcast(t, d),
                     broadcastOthers: (t, d) => broadcast(t, d, clientId),
-                    // Use clients Map for count and list
-                    online: () => clients.size,
-                    getClients: () => Array.from(clients.keys())
+                    clients
                 }
 
                 // Execute controller

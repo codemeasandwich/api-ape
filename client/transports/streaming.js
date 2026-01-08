@@ -14,10 +14,11 @@ function getPollUrl() {
     const isLocal = localServers.includes(hostname)
     const isHttps = window.location.protocol === "https:"
 
-    const port = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
+    // Use window.location.port if available, otherwise fallback (9010 for local dev, 443/80 for prod)
+    const port = window.location.port || (isLocal ? 9010 : (isHttps ? 443 : 80))
 
     const protocol = isHttps ? "https" : "http"
-    const portSuffix = (isLocal || (port !== 80 && port !== 443)) ? `:${port}` : ""
+    const portSuffix = (port !== 80 && port !== 443) ? `:${port}` : ""
 
     return `${protocol}://${hostname}${portSuffix}/api/ape/poll`
 }

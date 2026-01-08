@@ -147,12 +147,12 @@ function getSocketUrl() {
   const isLocal = localServers.includes(hostname)
   const isHttps = window.location.protocol === "https:"
 
-  // Default port: 9010 for local dev, otherwise use window.location.port or implicit 443/80
-  const port = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
+  // Use window.location.port if available, otherwise fallback (9010 for local dev, 443/80 for prod)
+  const port = window.location.port || (isLocal ? 9010 : (isHttps ? 443 : 80))
 
   // Build URL - keep /api/ape path
   const protocol = isHttps ? "wss" : "ws"
-  const portSuffix = (isLocal || port !== 80 && port !== 443) ? `:${port}` : ""
+  const portSuffix = (port !== 80 && port !== 443) ? `:${port}` : ""
 
   return `${protocol}://${hostname}${portSuffix}/api/ape`
 }
@@ -517,9 +517,9 @@ async function fetchSharedFiles(data, maxRetries = 5) {
   const hostname = window.location.hostname
   const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
   const isHttps = window.location.protocol === "https:"
-  const port = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
+  const port = window.location.port || (isLocal ? 9010 : (isHttps ? 443 : 80))
   const protocol = isHttps ? "https" : "http"
-  const portSuffix = (isLocal || (port !== 80 && port !== 443)) ? `:${port}` : ""
+  const portSuffix = (port !== 80 && port !== 443) ? `:${port}` : ""
   const baseUrl = `${protocol}://${hostname}${portSuffix}`
 
   await Promise.all(files.map(async ({ path, hash }) => {
@@ -622,9 +622,9 @@ async function fetchLinkedResources(data, clientId) {
   const hostname = window.location.hostname
   const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
   const isHttps = window.location.protocol === "https:"
-  const port = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
+  const port = window.location.port || (isLocal ? 9010 : (isHttps ? 443 : 80))
   const protocol = isHttps ? "https" : "http"
-  const portSuffix = (isLocal || (port !== 80 && port !== 443)) ? `:${port}` : ""
+  const portSuffix = (port !== 80 && port !== 443) ? `:${port}` : ""
   const baseUrl = `${protocol}://${hostname}${portSuffix}`
 
   await Promise.all(resources.map(async ({ path, hash }) => {
@@ -871,9 +871,9 @@ async function uploadSharedFiles(shares) {
   const hostname = window.location.hostname
   const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
   const isHttps = window.location.protocol === "https:"
-  const port = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
+  const port = window.location.port || (isLocal ? 9010 : (isHttps ? 443 : 80))
   const protocol = isHttps ? "https" : "http"
-  const portSuffix = (isLocal || (port !== 80 && port !== 443)) ? `:${port}` : ""
+  const portSuffix = (port !== 80 && port !== 443) ? `:${port}` : ""
   const baseUrl = `${protocol}://${hostname}${portSuffix}`
 
   console.log(`🦍 Uploading ${shares.length} shared file(s)`)
@@ -910,9 +910,9 @@ async function uploadBinaryData(queryId, uploads) {
   const hostname = window.location.hostname
   const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
   const isHttps = window.location.protocol === "https:"
-  const port = isLocal ? 9010 : (window.location.port || (isHttps ? 443 : 80))
+  const port = window.location.port || (isLocal ? 9010 : (isHttps ? 443 : 80))
   const protocol = isHttps ? "https" : "http"
-  const portSuffix = (isLocal || (port !== 80 && port !== 443)) ? `:${port}` : ""
+  const portSuffix = (port !== 80 && port !== 443) ? `:${port}` : ""
   const baseUrl = `${protocol}://${hostname}${portSuffix}`
 
   console.log(`🦍 Uploading ${uploads.length} binary file(s)`)
