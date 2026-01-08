@@ -253,10 +253,14 @@ if git rev-parse "$TAG" >/dev/null 2>&1; then
     git tag -d "$TAG"
     echo "   ✅ Local tag deleted"
     
-    # Rebuild the client bundle
-    echo "   🔨 Rebuilding client bundle..."
+    # Rebuild the client bundle (validation only)
+    echo "   🔨 Rebuilding client bundle (validation)..."
     npx esbuild client/index.js --bundle --minify --sourcemap --outfile=dist/api-ape.min.js
     echo "   ✅ Client bundle rebuilt"
+    
+    # Cleanup: Remove validation build files (CI builds its own)
+    rm -f dist/api-ape.min.js dist/api-ape.min.js.map
+    echo "   🧹 Validation build files cleaned up"
     
     TAG_EXISTS=false
     echo "✅ Cleanup complete. Proceeding with fresh release..."
@@ -457,3 +461,5 @@ fi
 
 echo "✅ Release $TAG created! The GitHub Action will publish to npm with provenance."
 echo "   Watch the workflow at: https://github.com/$REPO_OWNER/$REPO_NAME/actions"
+
+
