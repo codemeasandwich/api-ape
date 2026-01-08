@@ -228,11 +228,19 @@ const handler = {
         // Return a function that either calls directly or buffers
         const wrapperFn = function (a, b) {
             let path = joinKey + prop, body
+            // Two args: first is path segment (string), second is body
+            // One arg: it's the body (unless it's a string, then it's a path segment with no body)
             if (arguments.length === 2) {
                 path += a
                 body = b
-            } else {
-                body = a
+            } else if (arguments.length === 1) {
+                // If first arg is a string, treat as path segment, otherwise as body
+                if (typeof a === 'string') {
+                    path += a
+                    body = undefined
+                } else {
+                    body = a
+                }
             }
             return queueOrSend(path, body)
         }
@@ -284,10 +292,10 @@ Object.defineProperty(api, 'close', {
     configurable: false
 })
 
-// Auto-connect if APE_SERVER is set
-if (serverUrl) {
-    connect()
-}
+// NOTE: We do NOT auto-connect on module load, even if APE_SERVER is set.
+// Connection only happens when:
+// 1. api.connect(url) is called explicitly
+// 2. A method is called and APE_SERVER env is set (lazy connection)
 
 // Export the same interface as browser
 module.exports = api
@@ -297,3 +305,4 @@ module.exports.onConnectionChange = onConnectionChange
 module.exports.connect = connect
 module.exports.close = close
 module.exports.ConnectionState = ConnectionState
+

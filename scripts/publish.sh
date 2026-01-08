@@ -3,6 +3,11 @@ set -e
 
 PACKAGE_NAME=$(node -p "require('./package.json').name")
 
+# Step 1: Push all committed changes to origin first
+echo "🔄 Step 1: Pushing all committed changes to origin..."
+git push origin HEAD
+echo "✅ Pushed committed changes to origin"
+
 # Get local version from package.json
 LOCAL_VERSION=$(node -p "require('./package.json').version")
 echo "📦 Local version: $LOCAL_VERSION"
@@ -10,6 +15,12 @@ echo "📦 Local version: $LOCAL_VERSION"
 # Get published version from npm
 NPM_VERSION=$(npm view "$PACKAGE_NAME" version 2>/dev/null || echo "0.0.0")
 echo "🌐 npm version: $NPM_VERSION"
+
+# Step 2: Get origin's version from GitHub
+echo "🔄 Step 2: Checking origin's package.json version..."
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+ORIGIN_VERSION=$(git show origin/$CURRENT_BRANCH:package.json 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin', 'utf8')).version" || echo "$LOCAL_VERSION")
+echo "🌍 Origin version: $ORIGIN_VERSION"
 
 # Function to compare semver versions
 # Echoes: 0 if equal, 1 if first > second, 2 if first < second
@@ -27,7 +38,47 @@ compare_versions() {
   echo 0
 }
 
-# Check version relationship
+# Step 3: Check if local has a manually higher version than origin
+ORIGIN_VERSION_CMP=$(compare_versions "$LOCAL_VERSION" "$ORIGIN_VERSION")
+
+if [[ $ORIGIN_VERSION_CMP -eq 1 ]]; then
+  echo "🔄 Step 3: Local version ($LOCAL_VERSION) is higher than origin ($ORIGIN_VERSION). Syncing version update..."
+  
+  # Update package-lock.json to match
+  echo "   📝 Updating package-lock.json version..."
+  if [[ -f "package-lock.json" ]]; then
+    node -e "
+      const fs = require('fs');
+      const lockfile = require('./package-lock.json');
+      lockfile.version = '$LOCAL_VERSION';
+      if (lockfile.packages && lockfile.packages['']) {
+        lockfile.packages[''].version = '$LOCAL_VERSION';
+      }
+      fs.writeFileSync('./package-lock.json', JSON.stringify(lockfile, null, 2) + '\n');
+    "
+    echo "   ✅ package-lock.json updated"
+  fi
+  
+  # Amend the last commit with both files
+  echo "   📝 Amending last commit with version files..."
+  git add package.json
+  if [[ -f "package-lock.json" ]]; then
+    git add package-lock.json
+  fi
+  git commit --amend --no-edit
+  echo "   ✅ Commit amended"
+  
+  # Force push to origin
+  echo "   🚀 Force pushing to origin..."
+  git push --force-with-lease origin HEAD
+  echo "   ✅ Force pushed to origin"
+  
+  echo "✅ Step 3 complete: Version $LOCAL_VERSION synced to origin"
+else
+  echo "✅ Step 3: Local version matches origin, no sync needed"
+fi
+
+# Check version relationship against npm
 VERSION_CMP=$(compare_versions "$LOCAL_VERSION" "$NPM_VERSION")
 
 if [[ $VERSION_CMP -eq 1 ]]; then
@@ -103,8 +154,24 @@ elif [[ $VERSION_CMP -eq 0 ]]; then
     fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
   "
   
+  # Update package-lock.json if it exists
+  if [[ -f "package-lock.json" ]]; then
+    node -e "
+      const fs = require('fs');
+      const lockfile = require('./package-lock.json');
+      lockfile.version = '$NEW_VERSION';
+      if (lockfile.packages && lockfile.packages['']) {
+        lockfile.packages[''].version = '$NEW_VERSION';
+      }
+      fs.writeFileSync('./package-lock.json', JSON.stringify(lockfile, null, 2) + '\n');
+    "
+  fi
+  
   # Amend the last commit with the version bump
   git add package.json
+  if [[ -f "package-lock.json" ]]; then
+    git add package-lock.json
+  fi
   git commit --amend --no-edit
   git push --force-with-lease
   
@@ -128,8 +195,24 @@ else
     fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
   "
   
+  # Update package-lock.json if it exists
+  if [[ -f "package-lock.json" ]]; then
+    node -e "
+      const fs = require('fs');
+      const lockfile = require('./package-lock.json');
+      lockfile.version = '$NEW_VERSION';
+      if (lockfile.packages && lockfile.packages['']) {
+        lockfile.packages[''].version = '$NEW_VERSION';
+      }
+      fs.writeFileSync('./package-lock.json', JSON.stringify(lockfile, null, 2) + '\n');
+    "
+  fi
+  
   # Amend the last commit with the version bump
   git add package.json
+  if [[ -f "package-lock.json" ]]; then
+    git add package-lock.json
+  fi
   git commit --amend --no-edit
   git push --force-with-lease
   
@@ -139,18 +222,52 @@ fi
 
 TAG="v$LOCAL_VERSION"
 
-# Check if tag already exists
+# Check if tag already exists but npm doesn't have this version
+# This means a previous release attempt failed - we need to clean up and retry
 TAG_EXISTS=false
 if git rev-parse "$TAG" >/dev/null 2>&1; then
   TAG_EXISTS=true
   echo "🏷️  Tag $TAG already exists."
   
-  # Check if release already exists for this tag
-  if command -v gh &> /dev/null && gh release view "$TAG" &> /dev/null; then
-    echo "❌ Error: Release $TAG already exists. Nothing to do."
-    exit 1
+  # Check if npm has this version
+  TAG_VERSION="${TAG#v}"  # Remove 'v' prefix
+  if [[ $(compare_versions "$TAG_VERSION" "$NPM_VERSION") -eq 1 ]]; then
+    # Tag version is higher than npm - previous release likely failed
+    echo "⚠️  Tag $TAG exists but npm only has $NPM_VERSION. Previous release may have failed."
+    echo "🔄 Cleaning up and retrying..."
+    
+    # Delete the GitHub release if it exists
+    if command -v gh &> /dev/null && gh release view "$TAG" &> /dev/null; then
+      echo "   🗑️  Deleting existing GitHub release $TAG..."
+      gh release delete "$TAG" --yes
+      echo "   ✅ Release deleted"
+    fi
+    
+    # Delete the remote tag
+    echo "   🗑️  Deleting remote tag $TAG..."
+    git push origin --delete "$TAG" 2>/dev/null || true
+    echo "   ✅ Remote tag deleted"
+    
+    # Delete the local tag
+    echo "   🗑️  Deleting local tag $TAG..."
+    git tag -d "$TAG"
+    echo "   ✅ Local tag deleted"
+    
+    # Rebuild the client bundle
+    echo "   🔨 Rebuilding client bundle..."
+    npx esbuild client/index.js --bundle --minify --sourcemap --outfile=dist/api-ape.min.js
+    echo "   ✅ Client bundle rebuilt"
+    
+    TAG_EXISTS=false
+    echo "✅ Cleanup complete. Proceeding with fresh release..."
   else
-    echo "📝 No release found for $TAG. Creating release..."
+    # npm has this version or higher - release already completed
+    if command -v gh &> /dev/null && gh release view "$TAG" &> /dev/null; then
+      echo "❌ Error: Release $TAG already exists and npm has version $NPM_VERSION. Nothing to do."
+      exit 1
+    else
+      echo "📝 No release found for $TAG. Creating release..."
+    fi
   fi
 fi
 
