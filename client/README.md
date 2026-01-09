@@ -8,7 +8,7 @@ WebSocket client library with auto-reconnection and proxy-based API calls.
 |------|-------------|
 | `index.js` | **Unified entry** — auto-initializing client with call buffering |
 | `browser.js` | Browser entry point — exposes `window.ape` |
-| `connectSocket.js` | WebSocket client with auto-reconnect, queuing, and JJS encoding |
+| `connectSocket.js` | WebSocket client with auto-reconnect, queuing, and JSS encoding |
 
 ## Usage
 
@@ -61,7 +61,7 @@ api.onConnectionChange((state) => {
 - **Proxy-based API** — `ape.path.method(data)` converts to WebSocket calls
 - **Auto-reconnect** — Reconnects on disconnect with queued messages
 - **Promise-based** — All calls return promises with matched responses via queryId
-- **JJS encoding** — Supports Date, RegExp, Error, Set, Map, undefined over the wire
+- **JSS encoding** — Supports Date, RegExp, Error, Set, Map, undefined over the wire
 - **Request timeout** — Configurable timeout (default: 10s)
 
 ## File Transfers

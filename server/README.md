@@ -276,8 +276,8 @@ Long-lived HTTP streaming connection for receiving server messages.
 Send messages to server when using HTTP streaming transport.
 
 - **Session**: Cookie-based (`apeClientId`)
-- **Body**: JJS-encoded message
-- **Response**: JJS-encoded result
+- **Body**: JSS-encoded message
+- **Response**: JSS-encoded result
 
 ### How It Works
 

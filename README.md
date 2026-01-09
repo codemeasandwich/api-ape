@@ -6,7 +6,7 @@
 [![Dependabot](https://img.shields.io/dependabot/codemeasandwich/api-ape)](https://github.com/codemeasandwich/api-ape/security/dependabot)
 [![CSRF protected](https://img.shields.io/badge/CSRF%20🚷-protected-green.svg)](client/README.md#security)
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/api-ape)](https://bundlephobia.com/package/api-ape)
-[![JJS Encoding](https://img.shields.io/badge/encoding-JJS-blue.svg)](server/README.md)
+[![JSS Encoding](https://img.shields.io/badge/encoding-JSS-blue.svg)](server/README.md)
 [![license](https://img.shields.io/npm/l/api-ape.svg)](https://github.com/codemeasandwich/api-ape/blob/main/LICENSE)
 
 **Remote Procedure Events (RPE)** — A lightweight WebSocket framework for building real-time APIs. Call server functions from the browser like local methods. Get real-time broadcasts with zero setup.
@@ -82,7 +82,7 @@ api.on('message', ({ data }) => console.log(data))
 * **Promise-based calls** — `api.users.list()` maps to `api/users/list.js`
 * **Automatic reconnection** — Client reconnects with exponential backoff
 * **HTTP fallback** — Falls back to long polling when WebSockets are blocked
-* **JJS Encoding** — Supports Date, RegExp, Error, Set, Map over the wire
+* **JSS Encoding** — Supports Date, RegExp, Error, Set, Map over the wire
 * **🌲 Forest** — Distributed mesh for horizontal scaling
 
 ---

@@ -422,7 +422,7 @@ function findLinkedResources(obj, path = '') {
   }
 
   for (const key of Object.keys(obj)) {
-    // Check for L-tag in key (from JJS encoding: key<!L>)
+    // Check for L-tag in key (from JSS encoding: key<!L>)
     if (key.endsWith('<!L>')) {
       const cleanKey = key.slice(0, -4)
       const hash = obj[key]

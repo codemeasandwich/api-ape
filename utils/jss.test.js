@@ -1,6 +1,6 @@
 const jss = require('./jss')
 
-describe('JJS - JSON SuperSet', () => {
+describe('JSS - JSON SuperSet', () => {
 
     describe('Primitives', () => {
         test('handles strings', () => {
