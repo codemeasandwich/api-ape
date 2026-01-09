@@ -77,13 +77,13 @@ api.on('message', ({ data }) => console.log(data))
 
 ## Key Concepts
 
-* **Auto-wiring** — Drop JS files in a folder, they become API endpoints
-* **Real-time broadcasts** — Built-in `broadcast()` and `broadcastOthers()` methods
-* **Promise-based calls** — `api.users.list()` maps to `api/users/list.js`
-* **Automatic reconnection** — Client reconnects with exponential backoff
-* **HTTP fallback** — Falls back to long polling when WebSockets are blocked
-* **JSS Encoding** — Supports Date, RegExp, Error, Set, Map over the wire
-* **🌲 Forest** — Distributed mesh for horizontal scaling
+* **[Auto-wiring](server/README.md#auto-routing)** — Drop JS files in a folder, they become API endpoints
+* **[Real-time broadcasts](server/README.md#controller-context-this)** — Built-in `broadcast()` and `broadcastOthers()` methods
+* **[Promise-based calls](client/README.md#usage)** — `api.users.list()` maps to `api/users/list.js`
+* **[Automatic reconnection](client/README.md#features)** — Client reconnects with exponential backoff
+* **[HTTP fallback](server/README.md#http-streaming-endpoints)** — Falls back to long polling when WebSockets are blocked
+* **[JSS Encoding](server/README.md#troubleshooting--faq)** — Supports Date, RegExp, Error, Set, Map over the wire
+* **[🌲 Forest](server/README.md#-forest-distributed-mesh)** — Distributed mesh for horizontal scaling
 
 ---
 
