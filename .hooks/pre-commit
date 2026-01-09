@@ -1,18 +1,40 @@
-#!/bin/sh
-set -e
+#!/usr/bin/env bash
+# .git/hooks/commit-msg - enforce conventional header + max 80 chars
+set -euo pipefail
 
-# Git hooks run with minimal PATH - add common Node.js locations
-export PATH="$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node 2>/dev/null | tail -1)/bin:$PATH" 2>/dev/null || true
-export PATH="/usr/local/bin:/opt/homebrew/bin:$HOME/.volta/bin:$PATH"
-
-# Rebuild the browser bundle (minified with source map)
-echo "🦍 Building dist/ape.js..."
-npx esbuild client/browser.js --bundle --minify --sourcemap --outfile=dist/ape.js
-
-# Check if the bundle or map changed and stage them
-if git diff --quiet dist/ape.js dist/ape.js.map 2>/dev/null; then
-    echo "🦍 dist/ape.js unchanged"
-else
-    echo "🦍 dist/ape.js changed, adding to commit"
-    git add dist/ape.js dist/ape.js.map
+MSG_FILE="$1"
+if [ ! -f "$MSG_FILE" ]; then
+  echo "ERROR: commit-msg hook expects path to commit message file." >&2
+  exit 1
 fi
+
+# read first non-empty line (strip CR)
+FIRST_LINE=$(sed -n '1p' "$MSG_FILE" | tr -d '\r')
+
+TYPES="build|ci|docs|feat|fix|perf|refactor|style|test"
+
+# Must match: ^(type)(optional !)?: <message-with-at-least-one-non-space-char>
+if ! printf '%s\n' "$FIRST_LINE" | grep -Eqi "^(${TYPES})(!)?:[[:space:]]*[^[:space:]]"; then
+  cat >&2 <<'ERR'
+ERROR: Commit message header invalid.
+Required format: <type><!optional>: <message>
+Where <type> is one of: build, ci, docs, feat, fix, perf, refactor, style, test
+Examples:
+  feat: add user profile
+  feat!: change authentication API (breaking)
+
+Make sure there's a non-empty message after ": ".
+ERR
+  exit 1
+fi
+
+# Enforce max 80 chars for the first line
+LENGTH=${#FIRST_LINE}
+MAX=80
+if [ "$LENGTH" -gt "$MAX" ]; then
+  echo "ERROR: Commit message first line is ${LENGTH} chars (max ${MAX})." >&2
+  exit 1
+fi
+
+# Passed
+exit 0

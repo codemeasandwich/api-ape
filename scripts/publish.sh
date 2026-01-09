@@ -98,33 +98,38 @@ elif [[ $VERSION_CMP -eq 0 ]]; then
   fi
   
   # Analyze commits to determine bump type
+  # Semantic Versioning Rules:
+  #   Major (X.0.0): Any commit with ! (breaking change) - e.g., feat!:, fix!:, refactor!:
+  #   Minor (x.Y.0): feat - new backward-compatible functionality
+  #   Patch (x.y.Z): fix, perf, refactor, docs, build, ci, style, test
   HAS_BREAKING=false
   HAS_FEAT=false
-  HAS_FIX=false
+  HAS_PATCH=false
   
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     
-    # Check for breaking changes (BREAKING CHANGE in message or ! after type)
-    if [[ "$line" =~ BREAKING[[:space:]]CHANGE ]] || [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(feat|fix|refactor|chore)![:\(] ]]; then
+    # Check for breaking changes: any type with ! (e.g., feat!:, fix!:, refactor!:, perf!:, build!:, ci!:)
+    # Also check for BREAKING CHANGE in body (though oneline won't show body)
+    if [[ "$line" =~ BREAKING[[:space:]]CHANGE ]] || [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(feat|fix|perf|refactor|docs|build|ci|style|test)![:\(] ]]; then
       HAS_BREAKING=true
     fi
     
-    # Check for features
-    if [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(feat|feature)[:\(] ]]; then
+    # Check for features (minor bump) - only if not breaking
+    if [[ "$line" =~ ^[a-f0-9]+[[:space:]]+feat[:\(] ]] && [[ ! "$line" =~ ^[a-f0-9]+[[:space:]]+feat![:\(] ]]; then
       HAS_FEAT=true
     fi
     
-    # Check for fixes
-    if [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(fix|bugfix)[:\(] ]]; then
-      HAS_FIX=true
+    # Check for patch-level commits: fix, perf, refactor, docs, build, ci, style, test
+    if [[ "$line" =~ ^[a-f0-9]+[[:space:]]+(fix|perf|refactor|docs|build|ci|style|test)[:\(] ]] && [[ ! "$line" =~ ^[a-f0-9]+[[:space:]]+(fix|perf|refactor|docs|build|ci|style|test)![:\(] ]]; then
+      HAS_PATCH=true
     fi
   done < <(git log $COMMIT_RANGE --oneline)
   
   # Parse current version
   IFS='.' read -r MAJOR MINOR PATCH <<< "$LOCAL_VERSION"
   
-  # Determine new version based on commit types
+  # Determine new version based on commit types (priority: breaking > feat > patch)
   if [[ "$HAS_BREAKING" == true ]]; then
     NEW_MAJOR=$((MAJOR + 1))
     NEW_VERSION="$NEW_MAJOR.0.0"
@@ -133,10 +138,10 @@ elif [[ $VERSION_CMP -eq 0 ]]; then
     NEW_MINOR=$((MINOR + 1))
     NEW_VERSION="$MAJOR.$NEW_MINOR.0"
     BUMP_TYPE="minor (new feature)"
-  elif [[ "$HAS_FIX" == true ]]; then
+  elif [[ "$HAS_PATCH" == true ]]; then
     NEW_PATCH=$((PATCH + 1))
     NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-    BUMP_TYPE="patch (bug fix)"
+    BUMP_TYPE="patch (fix/perf/refactor/docs/build/ci/style/test)"
   else
     # Default to patch if no recognized commit types
     NEW_PATCH=$((PATCH + 1))
