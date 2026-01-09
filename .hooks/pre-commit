@@ -1,40 +1,20 @@
 #!/usr/bin/env bash
-# .git/hooks/commit-msg - enforce conventional header + max 80 chars
+# .hooks/pre-commit - Validate browser bundle builds correctly
 set -euo pipefail
 
-MSG_FILE="$1"
-if [ ! -f "$MSG_FILE" ]; then
-  echo "ERROR: commit-msg hook expects path to commit message file." >&2
+echo "🦍 Validating dist/ape.js build..."
+
+# Build the browser bundle to validate it compiles
+npx esbuild client/browser.js --bundle --minify --sourcemap --outfile=dist/ape.js
+
+# Verify the build succeeded
+if [[ -f "dist/ape.js" ]]; then
+  echo "✅ Build validation passed"
+  
+  # Clean up - dist is only created by GitHub Actions for release
+  rm -rf dist/
+  echo "🧹 Cleaned up dist/ (created by CI during release)"
+else
+  echo "❌ Build validation failed"
   exit 1
 fi
-
-# read first non-empty line (strip CR)
-FIRST_LINE=$(sed -n '1p' "$MSG_FILE" | tr -d '\r')
-
-TYPES="build|ci|docs|feat|fix|perf|refactor|style|test"
-
-# Must match: ^(type)(optional !)?: <message-with-at-least-one-non-space-char>
-if ! printf '%s\n' "$FIRST_LINE" | grep -Eqi "^(${TYPES})(!)?:[[:space:]]*[^[:space:]]"; then
-  cat >&2 <<'ERR'
-ERROR: Commit message header invalid.
-Required format: <type><!optional>: <message>
-Where <type> is one of: build, ci, docs, feat, fix, perf, refactor, style, test
-Examples:
-  feat: add user profile
-  feat!: change authentication API (breaking)
-
-Make sure there's a non-empty message after ": ".
-ERR
-  exit 1
-fi
-
-# Enforce max 80 chars for the first line
-LENGTH=${#FIRST_LINE}
-MAX=80
-if [ "$LENGTH" -gt "$MAX" ]; then
-  echo "ERROR: Commit message first line is ${LENGTH} chars (max ${MAX})." >&2
-  exit 1
-fi
-
-# Passed
-exit 0

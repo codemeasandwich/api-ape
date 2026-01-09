@@ -26,8 +26,8 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Build client
-        run: npx esbuild client/index.js --bundle --minify --sourcemap --outfile=dist/api-ape.min.js
+      - name: Build browser bundle
+        run: npx esbuild client/browser.js --bundle --minify --sourcemap --outfile=dist/ape.js
 
       - name: Publish to npm with provenance
         run: npm publish --provenance --access public

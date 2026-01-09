@@ -33,7 +33,8 @@
     "demo:nextjs": "cd example/NextJs && docker-compose up --build",
     "demo:vite": "cd example/Vite && npm install && npm run dev",
     "demo:bun": "cd example/Bun && npm install && npm start",
-    "release": "bash scripts/publish.sh"
+    "release": "bash scripts/publish.sh",
+    "prepublishOnly": "npx esbuild client/browser.js --bundle --minify --sourcemap --outfile=dist/ape.js"
   },
   "repository": {
     "type": "git",
