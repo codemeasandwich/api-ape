@@ -1,10 +1,20 @@
-//JsonSuperSet
+/**
+ * JSON Super Set (JSS) - Extended JSON serialization
+ * Supports Date, RegExp, Error, undefined, Map, Set, and circular references
+ * 
+ * @module utils/jss
+ */
 
 // TODO: add tests
 // check for any repeated ref not just cyclical references
 // support nasted array a<![,,[D]]>:["a","b",[Date]]
 // support array for the same type a<![*D]>:[Date,Date,Date]
 
+/**
+ * Encode an object to JSS format (adds type tags to keys)
+ * @param {Object} obj - Object to encode
+ * @returns {Object} Encoded object with type-tagged keys
+ */
 function encode(obj) {
     const tagLookup = {
         '[object RegExp]': 'R',
@@ -128,15 +138,29 @@ function encode(obj) {
     return result;
 } // END encode
 
+/**
+ * Stringify an object to JSS format string
+ * @param {Object} obj - Object to stringify
+ * @returns {string} JSON string with JSS encoding
+ */
 function stringify(obj) {
     return JSON.stringify(encode(obj))
 }
 
-
+/**
+ * Parse a JSS format string back to object
+ * @param {string} encoded - JSS encoded JSON string
+ * @returns {Object} Decoded object with original types restored
+ */
 function parse(encoded) {
     return decode(JSON.parse(encoded))
 }
 
+/**
+ * Decode a JSS encoded object back to original types
+ * @param {Object} data - JSS encoded object
+ * @returns {Object} Decoded object with original types restored
+ */
 function decode(data) {
     const result = {};
     const pointers2Res = [];
@@ -247,6 +271,13 @@ function decode(data) {
     return result;
 } // END decode
 
+/**
+ * Resolve pointer references after decoding
+ * @param {Object} obj - Root decoded object
+ * @param {Array} pathPair - [refPath, attrPath] arrays
+ * @returns {Object} Object with references resolved
+ * @private
+ */
 function changeAttributeReference(obj, [refPath, attrPath]) {
     // refPath and attrPath are now arrays, no splitting needed
     const refKeys = refPath || [];

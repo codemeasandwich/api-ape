@@ -1,3 +1,9 @@
+/**
+ * Browser entry point for api-ape client
+ * Sets up the global `api` object on window for browser usage
+ * @module client/browser
+ */
+
 import connectSocket from './connectSocket.js'
 
 const client = connectSocket()

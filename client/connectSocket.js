@@ -1,13 +1,36 @@
+/**
+ * Core client socket connection module for api-ape
+ * Handles WebSocket connections with automatic fallback to HTTP streaming
+ * 
+ * Features:
+ * - Auto-reconnection with exponential backoff
+ * - Captive portal detection
+ * - Offline/online state tracking
+ * - Binary data upload/download
+ * - Client-to-client file sharing
+ * 
+ * @module client/connectSocket
+ */
+
 import messageHash from '../utils/messageHash'
 import jss from '../utils/jss'
 import { createStreamingTransport } from './transports/streaming'
 
 let connect;
 
-// Connection state enum
+/**
+ * @typedef {'offline'|'walled'|'disconnected'|'connecting'|'connected'|'closing'} ConnectionStateValue
+ */
+
+/**
+ * Connection state enum
+ * @enum {ConnectionStateValue}
+ */
 const ConnectionState = {
-  Offline: 'offline',         // navigator.onLine = false
-  Walled: 'walled',           // Captive portal detected (ping failed)
+  /** navigator.onLine = false */
+  Offline: 'offline',
+  /** Captive portal detected (ping failed) */
+  Walled: 'walled',
   Disconnected: 'disconnected',
   Connecting: 'connecting',
   Connected: 'connected',
@@ -20,6 +43,11 @@ let connectionState = (typeof navigator !== 'undefined' && !navigator.onLine)
   : ConnectionState.Disconnected
 const connectionChangeListeners = []
 
+/**
+ * Notify all listeners of connection state change
+ * @param {ConnectionStateValue} newState - The new connection state
+ * @returns {void}
+ */
 function notifyConnectionChange(newState) {
   if (connectionState !== newState) {
     connectionState = newState
@@ -42,6 +70,7 @@ const MAX_PING_CLOCK_SKEW = 60000 // Max allowed time difference (60s)
 
 /**
  * Check if running in dev/local mode
+ * @returns {boolean} True if running on localhost
  */
 function isDevMode() {
   if (typeof window === 'undefined') return false
@@ -50,6 +79,7 @@ function isDevMode() {
 
 /**
  * Build ping URL for captive portal detection
+ * @returns {string} Full URL to the ping endpoint
  */
 function getPingUrl() {
   const hostname = window.location.hostname
@@ -62,7 +92,7 @@ function getPingUrl() {
 
 /**
  * Check for captive portal by pinging /api/ape/ping
- * Returns 'ok' if real internet, 'walled' if captive portal detected
+ * @returns {Promise<'ok'|'walled'>} 'ok' if real internet, 'walled' if captive portal detected
  */
 async function checkCaptivePortal() {
   try {
@@ -114,7 +144,8 @@ async function checkCaptivePortal() {
 }
 
 /**
- * Setup navigator.onLine event listeners
+ * Setup navigator.onLine event listeners for offline/online detection
+ * @returns {void}
  */
 function setupOnlineListeners() {
   if (typeof window === 'undefined') return
@@ -139,7 +170,8 @@ if (typeof window !== 'undefined') {
 
 
 /**
- * Get WebSocket URL - auto-detects from window.location, keeps /api/ape path
+ * Get WebSocket URL - auto-detects from window.location
+ * @returns {string} WebSocket URL (ws:// or wss://)
  */
 function getSocketUrl() {
   const hostname = window.location.hostname
@@ -185,6 +217,11 @@ const handler = {
   } // END get
 }
 
+/**
+ * Wrap API function in a Proxy for path building
+ * @param {Function} api - The sender function to wrap
+ * @returns {Proxy} Proxied API object
+ */
 function wrap(api) {
   return new Proxy(api, handler)
 }
@@ -198,6 +235,7 @@ const ofTypesOb = {};
 
 /**
  * Switch to streaming transport (HTTP long polling fallback)
+ * @returns {void}
  */
 function switchToStreaming() {
   console.log('🦍 Switching to HTTP streaming transport')
@@ -262,7 +300,11 @@ function switchToStreaming() {
 }
 
 /**
- * Send via streaming transport
+ * Send message via streaming transport
+ * @param {string} type - Message type/path
+ * @param {*} data - Message payload
+ * @param {number} createdAt - Timestamp when message was created
+ * @returns {Promise<*>} Response from server
  */
 function streamingSend(type, data, createdAt) {
   return streamingTransport.send(type, data, createdAt)
@@ -270,6 +312,7 @@ function streamingSend(type, data, createdAt) {
 
 /**
  * Start background retry for WebSocket (while in polling mode)
+ * @returns {void}
  */
 function startWsRetry() {
   if (wsRetryTimer) return
@@ -404,8 +447,17 @@ function tryWebSocket(isRetry = false) {
 }
 
 /**
+ * @typedef {Object} LinkedResource
+ * @property {string} path - Dot-notation path to the resource
+ * @property {string} hash - Resource hash identifier
+ * @property {string} originalKey - Original key in the object
+ */
+
+/**
  * Find all L-tagged (binary link) properties in data
- * Returns array of { path, hash }
+ * @param {Object} obj - Object to search
+ * @param {string} [path=''] - Current path (for recursion)
+ * @returns {LinkedResource[]} Array of linked resource descriptors
  */
 function findLinkedResources(obj, path = '') {
   const resources = []
@@ -440,8 +492,17 @@ function findLinkedResources(obj, path = '') {
 }
 
 /**
+ * @typedef {Object} FileTag
+ * @property {string} path - Dot-notation path to the file
+ * @property {string} hash - File hash identifier
+ * @property {string} originalKey - Original key in the object
+ */
+
+/**
  * Find all F-tagged (shared file) properties in data
- * Returns array of { path, hash, originalKey }
+ * @param {Object} obj - Object to search
+ * @param {string} [path=''] - Current path (for recursion)
+ * @returns {FileTag[]} Array of file tag descriptors
  */
 function findFileTags(obj, path = '') {
   const files = []
@@ -477,6 +538,8 @@ function findFileTags(obj, path = '') {
 
 /**
  * Clean up F-tagged keys (rename key<!F> to key)
+ * @param {Object} obj - Object to clean
+ * @returns {Object} Object with cleaned keys
  */
 function cleanFileTags(obj) {
   if (obj === null || obj === undefined || typeof obj !== 'object') {
@@ -500,8 +563,10 @@ function cleanFileTags(obj) {
 }
 
 /**
- * Fetch shared files (client-to-client transfers)
- * Retries if upload is still in progress
+ * Fetch shared files (client-to-client transfers) with retry logic
+ * @param {Object} data - Data object potentially containing F-tagged files
+ * @param {number} [maxRetries=5] - Maximum retry attempts per file
+ * @returns {Promise<Object>} Data with F-tagged files replaced with ArrayBuffer content
  */
 async function fetchSharedFiles(data, maxRetries = 5) {
   const files = findFileTags(data)
@@ -568,7 +633,11 @@ async function fetchSharedFiles(data, maxRetries = 5) {
 }
 
 /**
- * Set a value at a nested path in an object
+ * Set a value at a nested dot-notation path in an object
+ * @param {Object} obj - Object to modify
+ * @param {string} path - Dot-notation path (e.g., 'foo.bar.baz')
+ * @param {*} value - Value to set
+ * @returns {void}
  */
 function setValueAtPath(obj, path, value) {
   const parts = path.split('.')
@@ -583,6 +652,8 @@ function setValueAtPath(obj, path, value) {
 
 /**
  * Clean up L-tagged keys (rename key<!L> to key)
+ * @param {Object} obj - Object to clean
+ * @returns {Object} Object with cleaned keys
  */
 function cleanLinkedKeys(obj) {
   if (obj === null || obj === undefined || typeof obj !== 'object') {
@@ -606,7 +677,10 @@ function cleanLinkedKeys(obj) {
 }
 
 /**
- * Fetch binary resources and hydrate data object
+ * Fetch binary resources from server and hydrate data object
+ * @param {Object} data - Data object with L-tagged binary links
+ * @param {string} [clientId] - Optional client ID for authentication
+ * @returns {Promise<Object>} Data with L-tagged links replaced with ArrayBuffer content
  */
 async function fetchLinkedResources(data, clientId) {
   const resources = findLinkedResources(data)
@@ -653,6 +727,8 @@ async function fetchLinkedResources(data, clientId) {
 
 /**
  * Attempt to establish connection with network pre-checks
+ * Performs captive portal detection before connecting
+ * @returns {Promise<void>}
  */
 async function attemptConnection() {
   // Check if browser is online
@@ -678,6 +754,7 @@ async function attemptConnection() {
 
 /**
  * Schedule a retry of network check (for walled/offline states)
+ * @returns {void}
  */
 function scheduleNetworkRetry() {
   if (networkCheckTimer) return
@@ -689,6 +766,7 @@ function scheduleNetworkRetry() {
 
 /**
  * Proceed with WebSocket/polling connection after network checks pass
+ * @returns {void}
  */
 function proceedWithConnection() {
   // Determine which transport to use
@@ -699,7 +777,10 @@ function proceedWithConnection() {
     tryWebSocket(false)
   }
 }
-
+/**
+ * Main socket connection factory function
+ * @returns {Object} Client interface with sender, setOnReceiver, onConnectionChange, and transport
+ */
 function connectSocket() {
   // Skip if already connected or connecting
   if (__socket && __socket.readyState !== WebSocket.CLOSED) {
@@ -720,6 +801,8 @@ function connectSocket() {
 
 /**
  * Check if value is binary data (ArrayBuffer, typed array, or Blob)
+ * @param {*} value - Value to check
+ * @returns {boolean} True if value is binary data
  */
 function isBinaryData(value) {
   if (value === null || value === undefined) return false
@@ -730,6 +813,8 @@ function isBinaryData(value) {
 
 /**
  * Get binary type tag (A for ArrayBuffer, B for Blob)
+ * @param {ArrayBuffer|Blob} value - Binary value
+ * @returns {'A'|'B'} Tag character for the binary type
  */
 function getBinaryTag(value) {
   if (typeof Blob !== 'undefined' && value instanceof Blob) return 'B'
@@ -737,7 +822,9 @@ function getBinaryTag(value) {
 }
 
 /**
- * Generate a simple hash for binary upload
+ * Generate a simple hash for binary upload path identification
+ * @param {string} path - Property path to hash
+ * @returns {string} Base-36 hash string
  */
 function generateUploadHash(path) {
   let hash = 0
@@ -750,8 +837,18 @@ function generateUploadHash(path) {
 }
 
 /**
- * Find and extract binary data from payload
- * Returns { processedData, uploads: [{ path, hash, data, tag }] }
+ * @typedef {Object} BinaryUpload
+ * @property {string} path - Property path
+ * @property {string} hash - Upload hash
+ * @property {ArrayBuffer|Blob} data - Binary data
+ * @property {'A'|'B'} tag - Binary type tag
+ */
+
+/**
+ * Find and extract binary data from payload for upload
+ * @param {*} data - Data to process
+ * @param {string} [path=''] - Current path (for recursion)
+ * @returns {{processedData: *, uploads: BinaryUpload[]}} Processed data with binary replaced by hashes, and upload descriptors
  */
 function processBinaryForUpload(data, path = '') {
   if (data === null || data === undefined) {
@@ -806,9 +903,18 @@ function processBinaryForUpload(data, path = '') {
 }
 
 /**
+ * @typedef {Object} BinaryShare
+ * @property {string} path - Property path
+ * @property {string} hash - Share hash
+ * @property {ArrayBuffer|Blob} data - Binary data
+ */
+
+/**
  * Find and extract binary data for SHARING (client-to-client)
  * Uses <!F> tag instead of <!A>/<!B>
- * Returns { processedData, shares: [{ path, hash, data }] }
+ * @param {*} data - Data to process
+ * @param {string} [path=''] - Current path (for recursion)
+ * @returns {{processedData: *, shares: BinaryShare[]}} Processed data and share descriptors
  */
 function processBinaryForSharing(data, path = '') {
   if (data === null || data === undefined) {
@@ -861,8 +967,9 @@ function processBinaryForSharing(data, path = '') {
 }
 
 /**
- * Upload shared files via HTTP PUT
- * Uses different endpoint pattern for streaming files
+ * Upload shared files via HTTP PUT for client-to-client transfer
+ * @param {BinaryShare[]} shares - Array of share descriptors
+ * @returns {Promise<void>}
  */
 async function uploadSharedFiles(shares) {
   if (shares.length === 0) return
@@ -902,6 +1009,9 @@ async function uploadSharedFiles(shares) {
 
 /**
  * Upload binary data via HTTP PUT
+ * @param {string} queryId - Query ID for the associated WebSocket message
+ * @param {BinaryUpload[]} uploads - Array of upload descriptors
+ * @returns {Promise<void>}
  */
 async function uploadBinaryData(queryId, uploads) {
   if (uploads.length === 0) return
@@ -936,8 +1046,14 @@ async function uploadBinaryData(queryId, uploads) {
       throw err
     }
   }))
-}
-
+}/**
+ * Send message via WebSocket with binary upload support
+ * @param {string} type - Message type/path
+ * @param {*} data - Message payload (may contain binary data)
+ * @param {number} createdAt - Timestamp when message was created
+ * @param {boolean} [dirctCall] - True if called directly (not queued)
+ * @returns {Promise<*>} Promise resolving to server response
+ */
 wsSend = function (type, data, createdAt, dirctCall) {
   let rej, promiseIsLive = false;
   const timeLetForReqToBeMade = (createdAt + totalRequestTimeout) - Date.now()
@@ -999,8 +1115,12 @@ wsSend = function (type, data, createdAt, dirctCall) {
   }
   return replyPromise
 } // END wsSend
-
-
+/**
+ * Main sender function - queues messages or sends immediately based on connection state
+ * @param {string} type - Message type/path
+ * @param {*} data - Message payload
+ * @returns {Promise<*>} Promise resolving to server response
+ */
 const sender = (type, data) => {
   if ("string" !== typeof type) {
     throw new Error("Missing Path vaule")
@@ -1050,7 +1170,8 @@ const sender = (type, data) => {
 } // END sender
 
 /**
- * Build the client interface object
+ * Build the client interface object with sender, receiver, and connection methods
+ * @returns {{sender: Proxy, setOnReceiver: Function, onConnectionChange: Function, transport: string}} Client interface
  */
 function buildClientInterface() {
   return {

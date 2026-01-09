@@ -1,20 +1,21 @@
 /**
  * Unified api-ape export for browser
- * 
  * Auto-detects browser environment, initializes client, and buffers
- * calls until the connection is ready. No more getApeClient().then()!
+ * calls until the connection is ready.
  * 
- * Usage:
- *   import api from 'api-ape'
- *   
- *   // Properties are proxied - calls buffer until connected
- *   api.message({ user: 'Bob', text: 'Hello!' })
- *   
- *   // Subscribe to broadcasts
- *   api.on('message', (data) => console.log(data))
- *   
- *   // Check connection state
- *   api.onConnectionChange((state) => console.log(state))
+ * @module client/index
+ * 
+ * @example
+ * import api from 'api-ape'
+ * 
+ * // Properties are proxied - calls buffer until connected
+ * api.message({ user: 'Bob', text: 'Hello!' })
+ * 
+ * // Subscribe to broadcasts
+ * api.on('message', (data) => console.log(data))
+ * 
+ * // Check connection state
+ * api.onConnectionChange((state) => console.log(state))
  */
 
 // Only run this in browser environments
@@ -29,6 +30,7 @@ let currentConnectionState = 'disconnected'
 
 /**
  * Initialize the client (called once on first use)
+ * @returns {Promise<Object|null>} The client interface or null for SSR
  */
 function getClient() {
     if (clientPromise) return clientPromise

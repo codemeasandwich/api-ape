@@ -1,12 +1,14 @@
+/**
+ * HTTP Streaming transport for api-ape
+ * Fallback when WebSocket is blocked - uses fetch + ReadableStream for receiving, POST for sending
+ * @module client/transports/streaming
+ */
+
 import jss from '../../utils/jss'
 
 /**
- * HTTP Streaming transport - fallback when WebSocket is blocked
- * Uses fetch + ReadableStream for receiving, POST for sending
- */
-
-/**
  * Get base URL for polling endpoints
+ * @returns {string} Full URL to the polling endpoint
  */
 function getPollUrl() {
     const hostname = window.location.hostname
@@ -26,6 +28,8 @@ function getPollUrl() {
 /**
  * Parse JSON objects from a streaming buffer by counting braces
  * Handles strings containing braces correctly
+ * @param {string} buffer - Raw streaming buffer content
+ * @returns {{messages: Object[], remaining: string}} Parsed messages and remaining unparsed buffer
  */
 function parseStreamBuffer(buffer) {
     const messages = []
@@ -79,7 +83,20 @@ function parseStreamBuffer(buffer) {
 }
 
 /**
+ * @typedef {Object} StreamingTransport
+ * @property {Function} connect - Start the streaming connection
+ * @property {Function} send - Send a message via POST
+ * @property {Function} close - Close the streaming connection
+ * @property {Function} isConnected - Check if transport is active
+ * @property {Function} onMessage - Setter for message handler
+ * @property {Function} onOpen - Setter for open handler
+ * @property {Function} onClose - Setter for close handler
+ * @property {Function} onError - Setter for error handler
+ */
+
+/**
  * Create streaming transport instance
+ * @returns {StreamingTransport} Streaming transport interface
  */
 function createStreamingTransport() {
     let isActive = false
@@ -95,6 +112,7 @@ function createStreamingTransport() {
 
     /**
      * Start the streaming connection
+     * @returns {Promise<void>}
      */
     async function connect() {
         if (isActive) return
@@ -163,6 +181,7 @@ function createStreamingTransport() {
 
     /**
      * Schedule reconnection with small delay
+     * @returns {void}
      */
     function scheduleReconnect() {
         if (!isActive) return
@@ -180,6 +199,10 @@ function createStreamingTransport() {
 
     /**
      * Send a message via POST
+     * @param {string} type - Message type/path
+     * @param {*} data - Message payload
+     * @param {number} createdAt - Timestamp when message was created
+     * @returns {Promise<*>} Server response data
      */
     async function send(type, data, createdAt) {
         const payload = {
@@ -208,6 +231,7 @@ function createStreamingTransport() {
 
     /**
      * Close the streaming connection
+     * @returns {void}
      */
     function close() {
         isActive = false
