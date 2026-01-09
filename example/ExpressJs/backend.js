@@ -6,6 +6,7 @@ const scribbles = require('scribbles')
 const app = express()
 
 // Serve static files
+// NOTE: For production, consider adding rate limiting middleware (e.g., express-rate-limit)
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')))
 app.get('/styles.css', (req, res) => res.sendFile(path.join(__dirname, 'styles.css')))
 
