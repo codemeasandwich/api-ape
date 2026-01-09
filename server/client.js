@@ -61,11 +61,21 @@ function generateQueryId() {
     return `q${Date.now().toString(36)}_${(queryCounter++).toString(36)}`
 }
 
-function connect(url) {
-    if (url) serverUrl = url
+function connect(host, port) {
+    // Validate inputs
+    if (typeof host !== 'string' || !host.trim()) {
+        console.warn('🦍 api-ape: connect() requires a valid host string')
+        return
+    }
+    if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
+        console.warn('🦍 api-ape: connect() requires a valid port number (1-65535)')
+        return
+    }
+
+    serverUrl = `ws://${host}:${port}/api/ape`
 
     if (!serverUrl) {
-        console.warn('🦍 api-ape: No server URL configured. Set APE_SERVER env or call api.connect(url)')
+        console.warn('🦍 api-ape: No server URL configured. Call api.connect(host, port)')
         return
     }
 

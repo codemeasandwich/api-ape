@@ -211,7 +211,7 @@ export interface ForestCustomAdapter {
  * Options for joinVia()
  */
 export interface ForestOptions {
-    /** Prefix for keys/tables (default: 'ape') */
+    /** Prefix for keys/tables (default: 'apes') */
     namespace?: string
     /** Custom server ID (default: auto-generated) */
     serverId?: string
@@ -296,7 +296,7 @@ declare namespace ape {
  * import api from 'api-ape'
  * 
  * // Configure connection (or set APE_SERVER env)
- * api.connect('ws://other-server:3000/api/ape')
+ * api.connect('other-server', 3000)  // → ws://other-server:3000/api/ape
  * 
  * // Same usage as browser
  * const result = await api.hello('World')
@@ -308,8 +308,8 @@ export interface ApeServerClient extends ApeSender {
     on(handler: MessageHandler): void
     /** Subscribe to connection state changes */
     onConnectionChange(handler: (state: ConnectionState) => void): () => void
-    /** Connect to a server (or set APE_SERVER env) */
-    connect(url: string): void
+    /** Connect to a server using host and port */
+    connect(host: string, port: number): void
     /** Close the connection */
     close(): void
     /** Current transport type (read-only) */
