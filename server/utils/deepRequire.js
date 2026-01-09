@@ -1,14 +1,22 @@
-if (!global.process) {//(!!process && typeof process !== 'object'){
+/**
+ * Deep require utility for api-ape
+ * Recursively loads all JS files from a directory into a flat object
+ * @module server/utils/deepRequire
+ */
+
+if (!global.process) {
   throw new Error("deepRequire need to be run on Node server")
 }
 
 var fs = require('fs');
 var path = require('path');
 
-// Return a list of files of the specified fileTypes in the provided dir,
-// with the file path relative to the given dir
-// dir: path of the directory you want to search the files for
-// fileTypes: array of file types you are search files, ex: ['.txt', '.jpg']
+/**
+ * Recursively get all files of specified types from a directory
+ * @param {string} dir - Directory path to search
+ * @param {string[]} fileTypes - Array of file extensions (e.g., ['.js', '.ts'])
+ * @returns {string[]} Array of file paths relative to dir
+ */
 function getFilesFromDir(dir, fileTypes) {
   var filesToReturn = [];
   function walkDir(currentPath) {
@@ -27,6 +35,13 @@ function getFilesFromDir(dir, fileTypes) {
 }
 const re = /(?:\.([^.]+))?$/;
 
+/**
+ * Load all modules from a directory into a flat object keyed by path
+ * @param {string} dirname - Directory path to load from
+ * @param {string[]} [selector=['js']] - File extensions to include
+ * @returns {object} Object mapping endpoint paths to loaded modules
+ * @throws {Error} If duplicate endpoints are detected
+ */
 module.exports = function (dirname, selector) {
   selector = selector || ["js"]
   const endpointSources = {} // Track which file defines each endpoint

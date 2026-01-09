@@ -1,6 +1,17 @@
+/**
+ * Origin security check for api-ape WebSocket connections
+ * Prevents CSRF attacks by validating Origin against Host header
+ * @module server/security/origin
+ */
+
 const extractRootDomain = require('./extractRootDomain')
 
-// Helper to get header that works with both Express and raw Node http
+/**
+ * Get header value (works with both Express and raw Node.js)
+ * @param {object} req - HTTP request object
+ * @param {string} name - Header name
+ * @returns {string|undefined} Header value
+ */
 function getHeader(req, name) {
   // Express-style
   if (typeof req.header === 'function') {
@@ -10,6 +21,13 @@ function getHeader(req, name) {
   return req.headers[name.toLowerCase()]
 }
 
+/**
+ * Verify that request origin matches host to prevent CSRF attacks
+ * @param {object} socket - WebSocket instance
+ * @param {object} req - HTTP request object
+ * @param {function} [onError] - Error callback (defaults to console.error)
+ * @returns {boolean} True if origin is valid, false if connection was rejected
+ */
 module.exports = function (socket, req, onError) {
   onError = onError || console.error
   const origin = extractRootDomain(getHeader(req, 'Origin') || "")

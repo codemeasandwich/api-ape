@@ -1,3 +1,9 @@
+/**
+ * WebSocket connection wiring for api-ape
+ * Handles client connections, message routing, and lifecycle events
+ * @module server/lib/wiring
+ */
+
 const replySecurity = require('../security/reply')
 const socketOpen = require('../socket/open')
 const socketReceive = require('../socket/receive')
@@ -6,9 +12,11 @@ const makeid = require('../utils/genId')
 const parseUserAgent = require('../utils/parseUserAgent');
 const { addClient, removeClient, updateClientEmbed, updateClientSend } = require('./broadcast')
 
-// connect, beforeSend, beforeReceive, error, afterSend, afterReceive, disconnect
-
-
+/**
+ * Merge user-provided event handlers with defaults
+ * @param {object} [events] - User-provided event handlers
+ * @returns {object} Merged event handlers with defaults
+ */
 function defaultEvents(events = {}) {
     const fallBackEvents = {
         embed: {},
@@ -16,14 +24,17 @@ function defaultEvents(events = {}) {
         onSend: () => { },
         onError: (errSt) => console.error(errSt),
         onDisconnect: () => { },
-    } // END fallBackEvents
+    }
     return Object.assign({}, fallBackEvents, events)
-} // END defaultEvents
+}
 
-//=====================================================
-//============================================== wiring
-//=====================================================
-
+/**
+ * Create a WebSocket handler for api-ape connections
+ * @param {object} controllers - Loaded controller functions
+ * @param {function} [onConnect] - Connection lifecycle callback
+ * @param {object} [fileTransfer] - File transfer manager instance
+ * @returns {function} WebSocket connection handler (socket, req) => void
+ */
 module.exports = function wiring(controllers, onConnect, fileTransfer) {
     onConnect = onConnect || (() => { });
     return function webSocketHandler(socket, req) {

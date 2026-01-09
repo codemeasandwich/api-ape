@@ -1,5 +1,17 @@
+/**
+ * Socket send handler for api-ape
+ * Handles outgoing WebSocket messages with binary data processing
+ * @module server/socket/send
+ */
+
 const jss = require('../../utils/jss')
 const { FileTransferManager } = require('../lib/fileTransfer')
+
+/**
+ * Check if socket is in a valid state to send
+ * @param {object} socket - WebSocket instance
+ * @throws {string} Error message if socket is not open
+ */
 
 function checkSocketState(socket) {
   if (socket.readyState !== socket.OPEN) {

@@ -1,3 +1,9 @@
+/**
+ * Socket receive handler for api-ape
+ * Processes incoming WebSocket messages and routes to controllers
+ * @module server/socket/receive
+ */
+
 const messageHash = require('../../utils/messageHash')
 const { broadcast, clients } = require('../lib/broadcast')
 const jss = require('../../utils/jss')
