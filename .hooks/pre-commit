@@ -1,20 +1,3 @@
 #!/usr/bin/env bash
-# .hooks/pre-commit - Validate browser bundle builds correctly
-set -euo pipefail
-
-echo "🦍 Validating dist/ape.js build..."
-
-# Build the browser bundle to validate it compiles
-npx esbuild client/browser.js --bundle --minify --sourcemap --outfile=dist/ape.js
-
-# Verify the build succeeded
-if [[ -f "dist/ape.js" ]]; then
-  echo "✅ Build validation passed"
-  
-  # Clean up - dist is only created by GitHub Actions for release
-  rm -rf dist/
-  echo "🧹 Cleaned up dist/ (created by CI during release)"
-else
-  echo "❌ Build validation failed"
-  exit 1
-fi
+# .hooks/pre-commit - No-op (build happens during release only)
+exit 0
