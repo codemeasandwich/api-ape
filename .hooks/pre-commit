@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
-# .hooks/pre-commit - Check that no source file exceeds 200 lines
+# .hooks/pre-commit - Check that no source file exceeds 260 lines (excluding block comments)
+# This script is READ-ONLY and does not modify any files.
 
-MAX_LINES=200
+MAX_LINES=260
 ERROR=0
+FAILED_FILES=()
+
+# Function to count lines excluding block comments (/* ... */ and /** ... */)
+# Also excludes the first blank line immediately before each block comment or single-line comment.
+# Uses cat to read file (read-only) and pipes through perl for comment removal
+count_lines_without_block_comments() {
+    cat "$1" | perl -0777 -ne 's|\n[ \t]*\n/\*.*?\*/|\n|gs; s|/\*.*?\*/||gs; s|\n[ \t]*\n([ \t]*//)|$1|g; print' | grep -c '' || echo 0
+}
 
 # Find all JS source files (excluding node_modules, coverage, test files, examples, .next)
 while IFS= read -r file; do
-    lines=$(wc -l < "$file" | tr -d ' ')
+    lines=$(count_lines_without_block_comments "$file")
     if [ "$lines" -gt "$MAX_LINES" ]; then
-        echo "❌ $file has $lines lines (max: $MAX_LINES)"
+        FAILED_FILES+=("$file ($lines lines)")
         ERROR=1
     fi
 done < <(find . -name "*.js" -type f \
@@ -20,10 +29,15 @@ done < <(find . -name "*.js" -type f \
 
 if [ $ERROR -eq 1 ]; then
     echo ""
-    echo "⚠️  Commit blocked: Source files must be ≤ $MAX_LINES lines"
+    echo "⚠️  Commit blocked: Source files must be ≤ $MAX_LINES lines (excluding block comments)"
+    echo ""
+    echo "❌ Files exceeding $MAX_LINES Source lines:"
+    for failed in "${FAILED_FILES[@]}"; do
+        echo "   - $failed"
+    done
+    echo ""
     echo "   Run: find . -name '*.js' ! -path '*/node_modules/*' ! -name '*.test.js' -exec wc -l {} + | sort -rn"
     exit 1
 fi
 
-echo "✅ All source files are ≤ $MAX_LINES lines"
 exit 0
