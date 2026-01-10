@@ -15,8 +15,7 @@ This module provides the backend infrastructure for api-ape's WebSocket-based Re
 ```
 server/
 ├── index.js      # Entry point (exports lib/main)
-├── client.js     # Server-to-server WebSocket client
-├── client/       # Server-side client connection management
+├── client/       # Server-side client (index.js + connection management)
 ├── lib/          # Core server implementation
 ├── adapters/     # 🌲 Forest distributed mesh adapters
 ├── socket/       # WebSocket message handlers
@@ -30,13 +29,9 @@ server/
 
 Main entry point that re-exports the `ape` initializer from `lib/main.js`. This is what users get when they `require('api-ape')` or `import { ape } from 'api-ape'`.
 
-### `client.js`
-
-Server-to-server WebSocket client that allows api-ape servers to connect outbound to other api-ape servers or WebSocket endpoints. Uses the same proxy-based API as the browser client.
-
 ### `client/`
 
-Server-side client connection management for outbound connections. See [`client/files.md`](./client/files.md).
+Server-side WebSocket client module for outbound connections. Contains the main client (`index.js`) and connection management. See [`client/files.md`](./client/files.md).
 
 ### `lib/`
 

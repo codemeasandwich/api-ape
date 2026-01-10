@@ -14,10 +14,19 @@ This module enables api-ape servers to act as WebSocket clients, connecting outb
 
 ```
 client/
+├── index.js        # Main entry point (proxy-based API client)
 └── connection.js   # Client connection management
 ```
 
 ## Files
+
+### `index.js`
+
+Main entry point for the server-side WebSocket client. Provides the proxy-based API that mirrors the browser client:
+
+- **Proxy handler** — Intercepts property access to build API paths dynamically (`api.users.list()`)
+- **Reserved methods** — Exposes `connect`, `close`, `on`, `onConnectionChange`, and `transport`
+- **Module exports** — Exports the proxy client, individual methods, and `ConnectionState` enum
 
 ### `connection.js`
 

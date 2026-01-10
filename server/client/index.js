@@ -63,7 +63,7 @@ const {
   on,
   onConnectionChange,
   isReady,
-} = require("./client/connection");
+} = require("./connection");
 
 /**
  * Path separator used when building API paths.
