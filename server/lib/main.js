@@ -128,6 +128,17 @@ const { isBunServer, initBunServerWithReload } = require("./runtimes/bun");
 let created = false;
 
 /**
+ * Reset the singleton state for testing purposes.
+ * This allows creating multiple server instances in test environments.
+ *
+ * @private
+ * @function _resetForTesting
+ */
+function _resetForTesting() {
+  created = false;
+}
+
+/**
  * Create the core api-ape handlers shared between all runtimes
  *
  * This function initializes the components needed regardless of the
@@ -343,6 +354,12 @@ module.exports = function (server, options) {
  * }
  */
 module.exports.isBun = isBun;
+
+/**
+ * Reset singleton state (for testing only)
+ * @private
+ */
+module.exports._resetForTesting = _resetForTesting;
 
 /**
  * Check if running in Deno runtime
