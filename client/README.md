@@ -1,14 +1,22 @@
 # 🦍 api-ape Client
 
-WebSocket client library with auto-reconnection and proxy-based API calls.
+## Overview
 
-## Files
+The client module provides the browser-side WebSocket client for api-ape. It enables seamless communication with api-ape servers through a proxy-based API that converts method calls like `api.users.list()` into WebSocket messages.
 
-| File | Description |
-|------|-------------|
-| `index.js` | **Unified entry** — auto-initializing client with call buffering |
-| `browser.js` | Browser entry point — exposes `window.ape` |
-| `connectSocket.js` | WebSocket client with auto-reconnect, queuing, and JSS encoding |
+**Key capabilities:**
+
+- **Proxy-based API** — Call server endpoints like local methods (`api.path.method(data)`)
+- **Auto-reconnection** — Automatically reconnects with exponential backoff on disconnection
+- **Call buffering** — Queues calls made before connection is established
+- **JSS encoding** — Supports Date, RegExp, Error, Set, Map, and undefined over the wire
+- **HTTP fallback** — Falls back to long-polling when WebSocket is blocked
+- **Binary transfers** — Transparent file upload/download handling
+- **Connection state** — Track connection status (offline, connecting, connected, disconnected)
+
+The client works in both browser environments (via `<script>` tag) and bundled applications (React, Vue, etc.).
+
+> **Contributing?** See [`files.md`](./files.md) for directory structure and file descriptions.
 
 ## Usage
 

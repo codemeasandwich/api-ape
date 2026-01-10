@@ -1,0 +1,43 @@
+# Server Client Module
+
+## Overview
+
+The server client module enables api-ape servers to act as WebSocket clients, connecting outbound to other api-ape servers or WebSocket endpoints. This is essential for server-to-server communication in distributed architectures.
+
+**Key capabilities:**
+
+- **Outbound connections** — Connect to other api-ape servers or WebSocket endpoints
+- **Proxy-based API** — Same `api.users.list()` syntax as the browser client
+- **Auto-reconnection** — Automatic reconnection with exponential backoff
+- **Message queuing** — Queues messages during disconnection periods
+- **JSS encoding** — Full support for Date, Set, Map, and other extended types
+
+The client provides the same proxy-based API as the browser client (`api.users.list()`), making server-to-server calls feel like local function calls.
+
+> **Contributing?** See [`files.md`](./files.md) for directory structure and file descriptions.
+
+## Usage
+
+```js
+const { api } = require('api-ape/server/client')
+
+// Connect to another api-ape server
+const remote = api('ws://other-server:3000/api/ape')
+
+// Call remote endpoints (returns Promise)
+const users = await remote.users.list({ limit: 10 })
+
+// Listen for broadcasts from remote server
+remote.on('notification', ({ data }) => {
+  console.log('Remote notification:', data)
+})
+
+// Disconnect when done
+remote.disconnect()
+```
+
+## See Also
+
+- [`../README.md`](../README.md) — Main server documentation
+- [`../../client/README.md`](../../client/README.md) — Browser client documentation
+- [`../adapters/README.md`](../adapters/README.md) — Forest distributed mesh (alternative for multi-server)

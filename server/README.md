@@ -1,45 +1,23 @@
 # 🦍 api-ape Server
 
-Express.js integration for WebSocket-based Remote Procedure Events (RPE).
+## Overview
 
-## Directory Structure
+The server module provides the backend infrastructure for api-ape's WebSocket-based Remote Procedure Events (RPE) system. It transforms a standard Node.js or Bun HTTP server into a real-time API server where client function calls are automatically routed to controller files.
 
-```
-server/
-├── index.js          # Entry point (exports lib/main)
-├── lib/
-│   ├── main.js       # HTTP server integration & setup
-│   ├── loader.js     # Auto-loads controller files from folder
-│   ├── broadcast.js  # Client tracking & broadcast utilities
-│   ├── fileTransfer.js # Binary file transfer manager
-│   ├── longPolling.js  # HTTP streaming fallback handler
-│   ├── wiring.js     # WebSocket handler setup
-│   ├── wsProvider.js # Runtime detection (Node 24+ native / polyfill)
-│   └── ws/           # RFC 6455 WebSocket polyfill (zero dependencies)
-│       ├── index.js  # Module entry point
-│       ├── frames.js # Frame encoding/decoding
-│       ├── socket.js # WebSocket connection class
-│       ├── server.js # WebSocketServer class
-│       └── adapters/ # Runtime-specific adapters
-│           ├── bun.js  # Bun native WebSocket
-│           └── deno.js # Deno native WebSocket
-├── adapters/         # 🌲 Forest - Distributed mesh adapters
-│   ├── index.js      # Auto-detection & factory
-│   ├── redis.js      # Redis PUB/SUB adapter
-│   ├── mongo.js      # MongoDB Change Streams adapter
-│   ├── postgres.js   # PostgreSQL LISTEN/NOTIFY adapter
-│   ├── supabase.js   # Supabase Realtime adapter
-│   ├── firebase.js   # Firebase RTDB adapter
-│   └── README.md     # Adapter documentation
-├── socket/
-│   ├── receive.js    # Incoming message handler
-│   └── send.js       # Outgoing message handler
-├── security/
-│   ├── origin.js     # Origin verification (works with Express & raw Node.js)
-│   └── reply.js      # Duplicate request protection
-└── utils/
-    └── ...           # Server utilities
-```
+**Key capabilities:**
+
+- **Auto-routing** — Drop JavaScript files in a folder, they become API endpoints automatically
+- **Real-time broadcasts** — Built-in `broadcast()` and `broadcastOthers()` for pushing events to clients
+- **Connection lifecycle** — Hooks for `onConnect`, `onDisconnect`, `onReceive`, `onSend`, `onError`
+- **Binary transfers** — Transparent file upload/download with streaming support
+- **HTTP fallback** — Long-polling transport when WebSocket is blocked
+- **Multi-runtime** — Works on Node.js, Bun, and Deno
+- **Zero dependencies** — Built-in RFC 6455 WebSocket implementation (or uses native when available)
+- **🌲 Forest** — Distributed mesh for horizontal scaling across multiple servers
+
+The server integrates with Express.js, raw Node.js HTTP servers, and Bun's native server.
+
+> **Contributing?** See [`files.md`](./files.md) for directory structure and file descriptions.
 
 ## Usage
 

@@ -19,7 +19,9 @@ Bun/
 ├── api/
 │   └── message.ts    # Broadcast to other clients
 ├── index.html        # Chat UI
-└── styles.css        # Styling
+├── styles.css        # Styling
+├── tsconfig.json     # TypeScript configuration
+└── package.json      # Dependencies
 ```
 
 ## How It Works
