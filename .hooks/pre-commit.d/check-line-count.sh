@@ -12,19 +12,26 @@ count_lines_without_block_comments() {
     cat "$1" | perl -0777 -ne 's|\n[ \t]*\n/\*.*?\*/|\n|gs; s|/\*.*?\*/||gs; s|\n[ \t]*\n([ \t]*//)|$1|g; print' | grep -c '' || echo 0
 }
 
-# Find all JS source files (excluding node_modules, coverage, test files, examples, .next)
+# Find all STAGED JS source files (excluding node_modules, coverage, test files, examples, .next)
 while IFS= read -r file; do
+    # Skip if file doesn't exist (e.g., deleted in index)
+    [ -f "$file" ] || continue
+    
+    # Apply exclusion filters
+    if [[ "$file" =~ node_modules/ ]] || \
+       [[ "$file" =~ ^coverage/ ]] || \
+       [[ "$file" =~ \.next/ ]] || \
+       [[ "$file" =~ ^example/ ]] || \
+       [[ "$file" =~ \.test\.js$ ]]; then
+        continue
+    fi
+
     lines=$(count_lines_without_block_comments "$file")
     if [ "$lines" -gt "$MAX_LINES" ]; then
         FAILED_FILES+=("$file ($lines lines)")
         ERROR=1
     fi
-done < <(find . -name "*.js" -type f \
-    ! -path "*/node_modules/*" \
-    ! -path "./coverage/*" \
-    ! -path "*/.next/*" \
-    ! -path "*/example/*" \
-    ! -name "*.test.js")
+done < <(git diff --cached --name-only --diff-filter=ACM | grep '\.js$')
 
 if [ $ERROR -eq 1 ]; then
     echo ""

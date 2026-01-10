@@ -25,7 +25,7 @@
     "!**/*.test.js"
   ],
   "scripts": {
-    "prepare": "cp .hooks/* .git/hooks/ 2>/dev/null && chmod +x .git/hooks/* || true",
+    "prepare": "rm -rf .git/hooks/* && cp -R .hooks/* .git/hooks/ && chmod +x .git/hooks/* .git/hooks/pre-commit.d/* 2>/dev/null || true",
     "test": "jest --no-cache",
     "test:watch": "jest --watch --runInBand",
     "test:cover": "jest --coverage --no-cache --detectOpenHandles",
