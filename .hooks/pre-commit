@@ -1,3 +1,29 @@
 #!/usr/bin/env bash
-# .hooks/pre-commit - No-op (build happens during release only)
+# .hooks/pre-commit - Check that no source file exceeds 200 lines
+
+MAX_LINES=200
+ERROR=0
+
+# Find all JS source files (excluding node_modules, coverage, test files, examples, .next)
+while IFS= read -r file; do
+    lines=$(wc -l < "$file" | tr -d ' ')
+    if [ "$lines" -gt "$MAX_LINES" ]; then
+        echo "❌ $file has $lines lines (max: $MAX_LINES)"
+        ERROR=1
+    fi
+done < <(find . -name "*.js" -type f \
+    ! -path "*/node_modules/*" \
+    ! -path "./coverage/*" \
+    ! -path "*/.next/*" \
+    ! -path "*/example/*" \
+    ! -name "*.test.js")
+
+if [ $ERROR -eq 1 ]; then
+    echo ""
+    echo "⚠️  Commit blocked: Source files must be ≤ $MAX_LINES lines"
+    echo "   Run: find . -name '*.js' ! -path '*/node_modules/*' ! -name '*.test.js' -exec wc -l {} + | sort -rn"
+    exit 1
+fi
+
+echo "✅ All source files are ≤ $MAX_LINES lines"
 exit 0

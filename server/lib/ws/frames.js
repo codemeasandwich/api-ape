@@ -1,21 +1,6 @@
 /**
  * RFC 6455 WebSocket Frame Encoding/Decoding
- * 
- * Frame format:
- *  0                   1                   2                   3
- *  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
- * +-+-+-+-+-------+-+-------------+-------------------------------+
- * |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
- * |I|S|S|S|  (4)  |A|     (7)     |            (16/64)            |
- * |N|V|V|V|       |S|             |   (if payload len==126/127)   |
- * | |1|2|3|       |K|             |                               |
- * +-+-+-+-+-------+-+-------------+-------------------------------+
- * |     Extended payload length continued, if payload len == 127  |
- * +-------------------------------+-------------------------------+
- * |                               | Masking-key, if MASK set to 1 |
- * +-------------------------------+-------------------------------+
- * | Masking-key (continued)       |          Payload Data         |
- * +-------------------------------+-------------------------------+
+ * @module server/lib/ws/frames
  */
 
 const crypto = require('crypto')
@@ -33,16 +18,9 @@ const OPCODES = {
     PONG: 0x0A
 }
 
-/**
- * Generate the Sec-WebSocket-Accept header value from client key
- * @param {string} clientKey - The Sec-WebSocket-Key from client
- * @returns {string} Base64 encoded accept key
- */
+/** Generate Sec-WebSocket-Accept header value from client key */
 function generateAcceptKey(clientKey) {
-    return crypto
-        .createHash('sha1')
-        .update(clientKey + WS_GUID)
-        .digest('base64')
+    return crypto.createHash('sha1').update(clientKey + WS_GUID).digest('base64')
 }
 
 /**
