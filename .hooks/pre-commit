@@ -1,43 +1,55 @@
 #!/usr/bin/env bash
-# .hooks/pre-commit - Check that no source file exceeds 260 lines (excluding block comments)
-# This script is READ-ONLY and does not modify any files.
+# .hooks/pre-commit - Pre-commit validation orchestrator for api-ape
+# This script runs all check scripts in .hooks/pre-commit.d/
+# Each check script must exit 0 on success, non-zero on failure.
 
-MAX_LINES=260
+HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
+CHECKS_DIR="$HOOKS_DIR/pre-commit.d"
+
 ERROR=0
-FAILED_FILES=()
 
-# Function to count lines excluding block comments (/* ... */ and /** ... */)
-# Also excludes the first blank line immediately before each block comment or single-line comment.
-# Uses cat to read file (read-only) and pipes through perl for comment removal
-count_lines_without_block_comments() {
-    cat "$1" | perl -0777 -ne 's|\n[ \t]*\n/\*.*?\*/|\n|gs; s|/\*.*?\*/||gs; s|\n[ \t]*\n([ \t]*//)|$1|g; print' | grep -c '' || echo 0
+# Run each check script
+run_check() {
+    local script="$1"
+    local name=$(basename "$script" .sh)
+
+    if [ -x "$script" ]; then
+        if ! "$script"; then
+            ERROR=1
+        fi
+    else
+        # Try running with bash if not executable
+        if ! bash "$script"; then
+            ERROR=1
+        fi
+    fi
 }
 
-# Find all JS source files (excluding node_modules, coverage, test files, examples, .next)
-while IFS= read -r file; do
-    lines=$(count_lines_without_block_comments "$file")
-    if [ "$lines" -gt "$MAX_LINES" ]; then
-        FAILED_FILES+=("$file ($lines lines)")
-        ERROR=1
-    fi
-done < <(find . -name "*.js" -type f \
-    ! -path "*/node_modules/*" \
-    ! -path "./coverage/*" \
-    ! -path "*/.next/*" \
-    ! -path "*/example/*" \
-    ! -name "*.test.js")
+# Header
+echo "🦍 Running pre-commit checks..."
+echo ""
 
+# Run check-line-count.sh
+if [ -f "$CHECKS_DIR/check-line-count.sh" ]; then
+    run_check "$CHECKS_DIR/check-line-count.sh"
+fi
+
+# Run check-docs.sh
+if [ -f "$CHECKS_DIR/check-docs.sh" ]; then
+    run_check "$CHECKS_DIR/check-docs.sh"
+fi
+
+# Run check-jsdoc.sh
+if [ -f "$CHECKS_DIR/check-jsdoc.sh" ]; then
+    run_check "$CHECKS_DIR/check-jsdoc.sh"
+fi
+
+# Final result
 if [ $ERROR -eq 1 ]; then
     echo ""
-    echo "⚠️  Commit blocked: Source files must be ≤ $MAX_LINES lines (excluding block comments)"
-    echo ""
-    echo "❌ Files exceeding $MAX_LINES Source lines:"
-    for failed in "${FAILED_FILES[@]}"; do
-        echo "   - $failed"
-    done
-    echo ""
-    echo "   Run: find . -name '*.js' ! -path '*/node_modules/*' ! -name '*.test.js' -exec wc -l {} + | sort -rn"
+    echo "⚠️  Commit blocked: One or more checks failed"
     exit 1
 fi
 
+echo "✅ All pre-commit checks passed"
 exit 0
