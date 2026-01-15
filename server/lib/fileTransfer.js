@@ -720,6 +720,19 @@ function getFileTransferManager(options) {
   return instance;
 }
 
+/**
+ * Reset the singleton FileTransferManager instance (for test cleanup)
+ *
+ * Calls destroy() on the existing instance to clear intervals and pending
+ * transfers, then sets the singleton to null so a new instance can be created.
+ */
+function resetFileTransferManager() {
+  if (instance) {
+    instance.destroy();
+    instance = null;
+  }
+}
+
 module.exports = {
   /**
    * FileTransferManager class
@@ -737,4 +750,11 @@ module.exports = {
    * @type {function(FileTransferOptions=): FileTransferManager}
    */
   getFileTransferManager,
+
+  /**
+   * Reset the singleton instance (for test cleanup)
+   *
+   * @type {function(): void}
+   */
+  resetFileTransferManager,
 };

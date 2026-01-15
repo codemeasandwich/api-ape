@@ -28,7 +28,7 @@
  * // Create long polling handlers for api-ape server
  * const { createLongPollingHandler } = require('./longPolling')
  *
- * const { handleStreamGet, handleStreamPost, getStreamClients } = createLongPollingHandler(
+ * const { handleStreamGet, handleStreamPost } = createLongPollingHandler(
  *     controllers,
  *     onConnect,
  *     fileTransfer
@@ -42,14 +42,6 @@
  *         handleStreamPost(req, res, controllers)
  *     }
  * })
- *
- * @example
- * // Monitor connected clients
- * const { getStreamClients } = createLongPollingHandler(controllers, onConnect, fileTransfer)
- *
- * setInterval(() => {
- *     console.log(`Long polling clients: ${getStreamClients().size}`)
- * }, 10000)
  */
 
 const {
@@ -82,8 +74,6 @@ const streamClients = new Map();
  *     Creates a long-lived HTTP response that streams events to the client.
  * @property {Function} handleStreamPost - POST request handler for client messages.
  *     Processes messages sent by clients and routes to controllers.
- * @property {Function} getStreamClients - Returns the Map of active stream clients.
- *     Useful for monitoring and debugging.
  */
 
 /**
@@ -110,7 +100,10 @@ const streamClients = new Map();
  * @param {Function} [onConnect] - Optional callback when a client connects.
  *     Receives (socket, req, send) and can return { onDisconnect, embed }.
  * @param {import('./fileTransfer').FileTransferManager} fileTransfer - File transfer manager
- * @returns {LongPollingHandlers} Object with handleStreamGet, handleStreamPost, and getStreamClients
+ * @param {Object} [options] - Optional configuration options
+ * @param {number} [options.heartbeatInterval=20000] - Interval in ms for heartbeat pings
+ * @param {number} [options.recycleTimeout=25000] - Timeout in ms before recycling connection
+ * @returns {LongPollingHandlers} Object with handleStreamGet and handleStreamPost
  *
  * @example
  * // Basic setup
@@ -145,26 +138,14 @@ const streamClients = new Map();
  *     },
  *     fileTransfer
  * )
- *
- * @example
- * // Monitoring active connections
- * const { getStreamClients } = createLongPollingHandler(controllers, onConnect, fileTransfer)
- *
- * // Get count of active long-polling clients
- * const activeCount = getStreamClients().size
- *
- * // Iterate over clients
- * for (const [clientId, state] of getStreamClients()) {
- *     console.log(`Client ${clientId}: active=${state.isActive}`)
- * }
  */
-function createLongPollingHandler(controllers, onConnect, fileTransfer) {
+function createLongPollingHandler(controllers, onConnect, fileTransfer, options = {}) {
   /**
    * GET handler for streaming responses.
    * Creates a long-lived HTTP response that streams events to the client.
    * @type {Function}
    */
-  const handleStreamGet = createGetHandler(streamClients, onConnect);
+  const handleStreamGet = createGetHandler(streamClients, onConnect, options);
 
   /**
    * POST handler for client messages.
@@ -176,11 +157,6 @@ function createLongPollingHandler(controllers, onConnect, fileTransfer) {
   return {
     handleStreamGet,
     handleStreamPost,
-    /**
-     * Returns the Map of active stream clients.
-     * @returns {Map<string, Object>} The stream clients Map
-     */
-    getStreamClients: () => streamClients,
   };
 }
 

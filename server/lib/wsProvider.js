@@ -60,6 +60,31 @@
  */
 
 /**
+ * Runtime override for testing. Set to mock runtime detection.
+ * @private
+ * @type {{deno?: boolean, bun?: boolean, node24?: boolean}|null}
+ */
+let _runtimeOverride = null;
+
+/**
+ * Set runtime override for testing purposes.
+ * @param {{deno?: boolean, bun?: boolean, node24?: boolean}|null} override
+ */
+function _setRuntimeOverride(override) {
+  _runtimeOverride = override;
+  // Clear cached provider when runtime changes
+  cachedProvider = null;
+}
+
+/**
+ * Get current runtime override (for testing).
+ * @returns {{deno?: boolean, bun?: boolean, node24?: boolean}|null}
+ */
+function _getRuntimeOverride() {
+  return _runtimeOverride;
+}
+
+/**
  * Checks if the code is running in the Deno runtime.
  *
  * Detection method: Checks for the global `Deno` object and its
@@ -75,6 +100,11 @@
  * }
  */
 function isDeno() {
+  // Check test override first
+  if (_runtimeOverride?.deno !== undefined) {
+    return _runtimeOverride.deno;
+  }
+  // Actual runtime detection
   return (
     typeof Deno !== "undefined" && typeof Deno.upgradeWebSocket === "function"
   );
@@ -99,6 +129,11 @@ function isDeno() {
  * }
  */
 function isBun() {
+  // Check test override first
+  if (_runtimeOverride?.bun !== undefined) {
+    return _runtimeOverride.bun;
+  }
+  // Actual runtime detection
   return typeof process !== "undefined" && !!process.versions?.bun;
 }
 
@@ -127,6 +162,13 @@ function isBun() {
  * }
  */
 function isNode24Stable() {
+  // Check test override first
+  if (_runtimeOverride?.node24 !== undefined) {
+    return _runtimeOverride.node24;
+  }
+
+  // Actual runtime detection
+  /* istanbul ignore next 6 - only reachable in browser/non-Node environments */
   if (
     typeof process === "undefined" ||
     !process.versions ||
@@ -150,10 +192,12 @@ function isNode24Stable() {
 
   // Check if this is a stable release (not RC, alpha, beta)
   // Pre-release versions contain hyphens like "24.0.0-rc.1"
+  /* istanbul ignore next 3 - only reachable on Node 24+ */
   if (versionStr.includes("-")) {
     return false;
   }
 
+  /* istanbul ignore next - only reachable on Node 24+ */
   return true;
 }
 
@@ -189,6 +233,7 @@ function getRuntime() {
   if (isDeno()) return "deno";
   if (isBun()) return "bun";
   if (typeof process !== "undefined" && process.versions?.node) return "node";
+  /* istanbul ignore next - only reachable in non-Node/Bun/Deno environments */
   return "unknown";
 }
 
@@ -264,6 +309,7 @@ function getWebSocketProvider() {
   }
 
   // 3. Try Node.js 24+ native WebSocketServer
+  /* istanbul ignore next 9 - only reachable on Node 24+ with native WebSocket */
   if (isNode24Stable()) {
     try {
       const { WebSocketServer } = require("node:ws");
@@ -346,4 +392,18 @@ module.exports = {
    * @function
    */
   isNode24Stable,
+
+  /**
+   * Set runtime override for testing purposes.
+   * @function
+   * @private
+   */
+  _setRuntimeOverride,
+
+  /**
+   * Get current runtime override (for testing).
+   * @function
+   * @private
+   */
+  _getRuntimeOverride,
 };

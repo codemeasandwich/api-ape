@@ -155,6 +155,9 @@ function _resetForTesting() {
  * @param {Object} [options.fileTransferOptions] - File transfer configuration
  * @param {number} [options.fileTransferOptions.startTimeout=60000] - Timeout before upload starts
  * @param {number} [options.fileTransferOptions.completeTimeout=60000] - Timeout for upload completion
+ * @param {Object} [options.longPollingOptions] - Long polling configuration
+ * @param {number} [options.longPollingOptions.heartbeatInterval=20000] - Interval in ms for heartbeat pings
+ * @param {number} [options.longPollingOptions.recycleTimeout=25000] - Timeout in ms before recycling connection
  * @returns {ApeCore} Core handlers and path patterns
  *
  * @typedef {Object} ApeCore
@@ -183,7 +186,7 @@ function _resetForTesting() {
  * // core.controllers = { 'users': [Function], 'chat': [Function], ... }
  * // core.wsPath = '/api/ape'
  */
-function createApeCore({ where, onConnect, fileTransferOptions }) {
+function createApeCore({ where, onConnect, fileTransferOptions, longPollingOptions }) {
   const controllers = loader(where);
   const fileTransfer = getFileTransferManager(fileTransferOptions);
   const wiringHandler = wiring(controllers, onConnect, fileTransfer);
@@ -191,6 +194,7 @@ function createApeCore({ where, onConnect, fileTransferOptions }) {
     controllers,
     onConnect,
     fileTransfer,
+    longPollingOptions,
   );
 
   return {
@@ -316,6 +320,7 @@ function createApeCore({ where, onConnect, fileTransferOptions }) {
  * }
  */
 module.exports = function (server, options) {
+  /* istanbul ignore next 3 - would break test isolation to test "already started" */
   if (created) {
     throw new Error("Api-Ape already started");
   }
@@ -324,6 +329,7 @@ module.exports = function (server, options) {
   const core = createApeCore(options);
 
   // Check for Bun server first
+  /* istanbul ignore next 3 - only reachable in Bun runtime */
   if (isBunServer(server)) {
     return initBunServerWithReload(server, options, core);
   }
@@ -333,6 +339,7 @@ module.exports = function (server, options) {
     return initNodeServer(server, options, core);
   }
 
+  /* istanbul ignore next 3 - requires passing invalid server type */
   throw new Error(
     "Unsupported server type. Expected http.Server (Node.js) or Bun.serve() server.",
   );
