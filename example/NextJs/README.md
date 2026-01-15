@@ -85,7 +85,7 @@ app.prepare().then(() => {
 ### Connection Lifecycle (ape/onConnect.js)
 
 ```js
-const { ape } = require('api-ape')  // For ape.clients, ape.broadcast
+const { ape } = require('api-ape')  // For ape.clients, ape.broadcast, ape.publish
 
 module.exports.onConnect = (socket, req, send) => {
   // Send initial data to new client

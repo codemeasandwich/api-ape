@@ -92,6 +92,7 @@ module.exports = function (data) {
 | Push on connect | `send('init', { history, users })` |
 | Broadcast all | `broadcast('users', { count })` |
 | Broadcast others | `this.broadcastOthers('message', data)` |
+| Publish to channel | `ape.publish('/health', { status: 'ok' })` |
 | Listen | `api.on('init', handler)` |
 
 > **Zero dependencies**: api-ape uses Node.js 24+ native WebSocket when available, otherwise a built-in RFC 6455 polyfill.

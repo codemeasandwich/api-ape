@@ -36,6 +36,7 @@ Connection open handler called when a new WebSocket connection is established:
 Incoming message handler that processes client requests:
 
 - Parses incoming WebSocket messages (JSS encoded JSON)
+- Handles `subscribe` and `unsubscribe` messages for pub/sub channels
 - Extracts `type`, `data`, and `queryId` from the message
 - Detects binary upload tags (`<!B>`, `<!A>`, `<!F>`) in the message
 - Coordinates with `fileTransfer` to wait for HTTP uploads

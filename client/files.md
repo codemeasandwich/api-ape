@@ -38,6 +38,7 @@ Core WebSocket client implementation with:
 - JSS encoding/decoding for extended types
 - Event emission for messages and connection state
 - Request/response correlation via queryId
+- Pub/sub channel subscriptions via `api.send({ subscribe: '/channel' })`
 
 ### `connectSocket.test.js`
 

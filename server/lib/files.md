@@ -49,6 +49,9 @@ Recursively loads controller files from a directory, mapping file paths to endpo
 Manages connected clients and provides messaging utilities:
 - `broadcast(type, data)` — Send to all clients
 - `broadcastOthers(type, data, excludeClientId)` — Send to all except one
+- `publish(channel, data)` — Send to all subscribers of a channel
+- `subscribe(clientId, channel)` — Subscribe a client to a channel
+- `unsubscribe(clientId, channel)` — Unsubscribe a client from a channel
 - `clients` — Read-only Map of connected clients with `sendTo()` method
 
 ### `bun.js`

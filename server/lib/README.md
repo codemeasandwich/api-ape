@@ -9,7 +9,7 @@ The lib module is the core implementation of api-ape's server functionality. It 
 - **Server initialization** — Detect runtime (Node.js, Bun, Deno) and configure appropriate handlers
 - **Controller loading** — Recursively load JavaScript files from a folder and map them to API endpoints
 - **WebSocket management** — Handle connections, message routing, and client lifecycle
-- **Client tracking** — Maintain registry of connected clients with broadcast capabilities
+- **Client tracking** — Maintain registry of connected clients with broadcast and pub/sub capabilities
 - **HTTP fallback** — Provide long-polling transport when WebSocket is unavailable
 - **File transfers** — Manage binary upload/download with streaming support
 - **Runtime abstraction** — Unified API across Node.js, Bun, and Deno

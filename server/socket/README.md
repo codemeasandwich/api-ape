@@ -9,6 +9,7 @@ The socket module handles WebSocket message processing for api-ape servers. It m
 - **Connection validation** — Verify origin headers and enforce security policies before accepting connections
 - **Message parsing** — Deserialize incoming WebSocket messages with JSS encoding support
 - **Controller routing** — Route messages to the appropriate controller based on the `type` field
+- **Pub/sub handling** — Process `subscribe` and `unsubscribe` messages for channel subscriptions
 - **Binary data coordination** — Detect upload tags, wait for HTTP uploads, and inject binary data into messages
 - **Response serialization** — Serialize controller responses and handle binary data with download links
 - **Request correlation** — Match responses to requests via `queryId` for Promise resolution on the client

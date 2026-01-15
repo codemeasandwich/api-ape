@@ -13,6 +13,7 @@ The client module provides the browser-side WebSocket client for api-ape. It ena
 - **HTTP fallback** — Falls back to long-polling when WebSocket is blocked
 - **Binary transfers** — Transparent file upload/download handling
 - **Connection state** — Track connection status (offline, connecting, connected, disconnected)
+- **Pub/sub subscriptions** — Subscribe to channels and receive targeted updates
 
 The client works in both browser environments (via `<script>` tag) and bundled applications (React, Vue, etc.).
 
@@ -102,6 +103,33 @@ await api.files.upload({
 ```
 
 Binary transfers use `/api/ape/data/:hash` endpoints with session verification.
+
+## Pub/Sub Subscriptions
+
+Subscribe to channels to receive targeted updates from the server:
+
+```js
+// Subscribe to a channel
+api.send({ subscribe: '/health' })
+api.send({ subscribe: '/stock/AAPL' })
+
+// Listen for published messages (same as broadcast)
+api.on('/health', ({ data }) => {
+  console.log('Health update:', data)
+})
+
+api.on('/stock/AAPL', ({ data }) => {
+  console.log('AAPL:', data.price)
+})
+
+// Unsubscribe when done
+api.send({ unsubscribe: '/health' })
+```
+
+**Behavior:**
+- On subscribe, you receive the last published message immediately (if any)
+- Messages arrive in the same format as broadcasts: `{ type: channel, data: payload }`
+- Subscriptions are automatically cleaned up on disconnect
 
 ## Security
 

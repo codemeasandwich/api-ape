@@ -81,6 +81,7 @@ api.on('message', ({ data }) => console.log(data))
 
 * **[Auto-wiring](server/README.md#auto-routing)** — Drop JS files in a folder, they become API endpoints
 * **[Real-time broadcasts](server/README.md#controller-context-this)** — Built-in `broadcast()` and `broadcastOthers()` methods
+* **[Pub/Sub channels](server/README.md#pubsub-channels)** — Clients subscribe to channels, server publishes updates
 * **[Promise-based calls](client/README.md#usage)** — `api.users.list()` maps to `api/users/list.js`
 * **[Automatic reconnection](client/README.md#features)** — Client reconnects with exponential backoff
 * **[HTTP fallback](server/README.md#http-streaming-endpoints)** — Falls back to long polling when WebSockets are blocked
