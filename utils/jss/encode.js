@@ -204,7 +204,6 @@ function encode(obj) {
       if ("U" === tag) return [tag, null];
       if ("S" === tag) return [tag, Array.from(value)];
       if ("M" === tag) return [tag, Object.fromEntries(value)];
-      return [tag, JSON.stringify(value)];
     }
     // Handle objects and arrays (potential circular references)
     else if (type === "object" && value !== null) {

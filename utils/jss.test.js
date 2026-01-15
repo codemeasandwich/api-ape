@@ -258,4 +258,72 @@ describe('JSS - JSON SuperSet', () => {
             expect(result.meta).toBeInstanceOf(Map)
         })
     })
+
+    describe('Error Type Reconstruction', () => {
+        test('preserves TypeError', () => {
+            const error = new TypeError('Not a function')
+            const input = { err: error }
+            const result = jss.parse(jss.stringify(input))
+            expect(result.err).toBeInstanceOf(TypeError)
+            expect(result.err.message).toBe('Not a function')
+        })
+
+        test('preserves RangeError', () => {
+            const error = new RangeError('Out of bounds')
+            const input = { err: error }
+            const result = jss.parse(jss.stringify(input))
+            expect(result.err).toBeInstanceOf(RangeError)
+            expect(result.err.message).toBe('Out of bounds')
+        })
+
+        test('falls back for custom error name not in global', () => {
+            // Manually create encoded error with non-existent error type
+            const encoded = { 'err<!E>': ['NonExistentError', 'test message', 'stack trace'] }
+            const decoded = jss.decode(encoded)
+            expect(decoded.err).toBeInstanceOf(Error)
+            expect(decoded.err.name).toBe('NonExistentError')
+            expect(decoded.err.message).toBe('test message')
+            expect(decoded.err.stack).toBe('stack trace')
+        })
+
+        test('falls back when global name exists but is not an Error constructor (line 153)', () => {
+            // Use a global that exists but doesn't produce Error: like Array, Object, String
+            // global['String']('test') produces 'test' (a string), not an Error
+            const encoded = { 'err<!E>': ['String', 'test message', 'stack trace'] }
+            const decoded = jss.decode(encoded)
+            // Should fall back to generic Error
+            expect(decoded.err).toBeInstanceOf(Error)
+            expect(decoded.err.name).toBe('String')
+            expect(decoded.err.message).toBe('test message')
+        })
+
+        test('falls back when global name is a non-constructor (line 153)', () => {
+            // Use something that exists but new X() doesn't produce an Error
+            const encoded = { 'err<!E>': ['Object', 'test message', 'stack trace'] }
+            const decoded = jss.decode(encoded)
+            expect(decoded.err).toBeInstanceOf(Error)
+            expect(decoded.err.name).toBe('Object')
+        })
+    })
+
+    describe('Array Type Tags', () => {
+        test('handles array of dates', () => {
+            const dates = [new Date('2025-01-01'), new Date('2025-06-15')]
+            const input = { dates }
+            const result = jss.parse(jss.stringify(input))
+            expect(result.dates[0]).toBeInstanceOf(Date)
+            expect(result.dates[1]).toBeInstanceOf(Date)
+        })
+
+        test('handles incomplete array type tag (missing closing bracket)', () => {
+            // The tag format is <!...> - if tag starts with [ but lacks ]
+            // The regex matches <!...> so we need 'dates<![D,D,D>' where tag is '[D,D,D'
+            const encoded = { 'dates<![D,D,D>': [1735689600000, 1750032000000, 1750118400000] }
+            const decoded = jss.decode(encoded)
+            // Should still decode dates properly after tag reconstruction (adds the missing ])
+            expect(decoded.dates[0]).toBeInstanceOf(Date)
+            expect(decoded.dates[1]).toBeInstanceOf(Date)
+            expect(decoded.dates[2]).toBeInstanceOf(Date)
+        })
+    })
 })

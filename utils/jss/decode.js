@@ -105,7 +105,15 @@ const tagLookup = {
    * @param {string} s - RegExp string (e.g., '/pattern/flags')
    * @returns {RegExp} Reconstructed RegExp instance
    */
-  R: (s) => new RegExp(s),
+  R: (s) => {
+    // Parse /pattern/flags format
+    const match = s.match(/^\/(.*)\/([gimsuy]*)$/);
+    if (match) {
+      return new RegExp(match[1], match[2]);
+    }
+    // Fallback: treat as raw pattern with no flags
+    return new RegExp(s);
+  },
 
   /**
    * Decode Date from timestamp
