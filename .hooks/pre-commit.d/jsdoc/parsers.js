@@ -28,13 +28,33 @@ function extractJSDocBefore(lines, endLine) {
  */
 function parseParams(jsdoc) {
   const params = [];
-  // Require type annotation in braces: @param {type} name
-  const paramRegex = /@param\s+\{[^}]*\}\s+(\[?\w+\]?)/g;
-  let match;
-  while ((match = paramRegex.exec(jsdoc)) !== null) {
-    // Remove brackets for optional params [param] -> param
-    params.push(match[1].replace(/^\[|\]$/g, ""));
+  const lines = jsdoc.split("\n");
+
+  for (const line of lines) {
+    const paramMatch = line.match(/@param\s+\{/);
+    if (!paramMatch) continue;
+
+    // Find the matching closing brace by tracking depth
+    const startIdx = line.indexOf("{", paramMatch.index);
+    let depth = 1;
+    let i = startIdx + 1;
+
+    while (i < line.length && depth > 0) {
+      if (line[i] === "{") depth++;
+      else if (line[i] === "}") depth--;
+      i++;
+    }
+
+    if (depth !== 0) continue;
+
+    // Extract param name after the type
+    const afterType = line.slice(i).trim();
+    const nameMatch = afterType.match(/^(\[?\w+\]?)/);
+    if (nameMatch && nameMatch[1]) {
+      params.push(nameMatch[1].replace(/^\[|\]$/g, ""));
+    }
   }
+
   return params;
 }
 
