@@ -1,6 +1,6 @@
 # 🦍 api-ape Server
 
-![api-ape logo](../assets/apiApeLogo.png)
+![api-ape logo](../assets/apiApeLogo.jpg)
 
 ## Overview
 
@@ -157,6 +157,17 @@ api/
    - /users.js
    Remove one of these files to fix this conflict.
 ```
+
+### Hot-Reload
+
+Controllers are automatically hot-reloaded when files are added or changed. No server restart required during development:
+
+```
+🦍 Hot-loaded: users/profile    # New file added
+🦍 Reloaded: users/list         # Existing file changed
+```
+
+This works for both new controllers and updates to existing ones. The file watcher monitors the `where` directory recursively.
 
 ## Pub/Sub Channels
 

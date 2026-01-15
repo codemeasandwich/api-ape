@@ -62,6 +62,7 @@ api.onConnectionChange((state) => {
 - `disconnected` — Had connection, lost it
 - `connecting` — Actively connecting
 - `connected` — Ready to use
+- `closing` — Connection is closing
 
 **No async setup needed!** The client auto-initializes and buffers calls until connected.
 

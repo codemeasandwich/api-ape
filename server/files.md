@@ -8,7 +8,7 @@ This module provides the backend infrastructure for api-ape's WebSocket-based Re
 - **Zero dependencies** — Avoid external packages; use built-in WebSocket polyfill when native unavailable
 - **JSS encoding** — Always use `utils/jss` for message serialization to preserve extended types
 - **Controller context** — Controllers receive `this` context with `clientId`, `broadcast`, `sendTo`, and embedded data
-- **Binary transfers** — Use the tag system (`<!B>`, `<!A>`, `<!L>`, `<!F>`) for file handling
+- **Binary transfers** — Use the tag system (`<!B>`, `<!A>`, `<!F>`) for file handling
 
 ## Directory Structure
 
