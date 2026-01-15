@@ -15,7 +15,7 @@
  * - **Convention-based routing**: File paths become endpoint paths
  * - **Index file support**: `index.js` files map to their parent directory
  * - **Duplicate detection**: Throws an error if two files map to the same endpoint
- * - **Case normalization**: All endpoint paths are lowercased
+ * - **Case preservation**: Endpoint paths preserve original file name casing
  * - **Private file exclusion**: Files/directories starting with `_` are ignored
  *
  * @module server/utils/deepRequire
@@ -198,7 +198,7 @@ module.exports = function (dirname, selector) {
     // 2. Split into path parts
     // 3. Remove leading empty string from split
     // 4. If last part is 'index', remove it (index.js maps to parent)
-    // 5. Join with '/' and lowercase
+    // 5. Join with '/'
     const pathParts = file
       .replace(re.exec(file)[0], "") // Remove extension
       .split("/")
@@ -209,8 +209,8 @@ module.exports = function (dirname, selector) {
       pathParts.pop();
     }
 
-    // Create the endpoint path (lowercase for consistency)
-    const endpoint = pathParts.join("/").toLowerCase();
+    // Create the endpoint path
+    const endpoint = pathParts.join("/");
 
     // Check for duplicate endpoints
     /* istanbul ignore next 8 - startup error, would break all tests if triggered */

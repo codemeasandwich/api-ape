@@ -34,7 +34,7 @@
  * Built-in type tags that cannot be overridden
  * @constant {string[]}
  */
-const builtInTags = ["D", "R", "E", "U", "M", "S", "P"];
+const builtInTags = ["D", "R", "E", "U", "M", "S", "P", "I"];
 
 /**
  * Registry of custom plugins

@@ -182,6 +182,25 @@ const tagLookup = {
    * @returns {Map} Reconstructed Map instance
    */
   M: (o) => new Map(Object.entries(o)),
+
+  /**
+   * Decode inline base64 binary data
+   * @param {string} s - Base64 encoded string
+   * @returns {Buffer|ArrayBuffer} Decoded binary data (Buffer in Node, ArrayBuffer in browser)
+   */
+  I: (s) => {
+    // In Node.js, return Buffer
+    if (typeof Buffer !== "undefined") {
+      return Buffer.from(s, "base64");
+    }
+    // In browser, return ArrayBuffer
+    const binaryStr = atob(s);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    return bytes.buffer;
+  },
 };
 
 /**

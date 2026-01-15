@@ -36,7 +36,7 @@
  *         ▼
  * ┌───────────────────────────────────────────────────────────────┐
  * │  Route to Controller                                          │
- * │  - Normalize type to lowercase endpoint path                  │
+ * │  - Normalize type (remove leading slash)                      │
  * │  - Find matching controller function                          │
  * │  - Validate request (replay protection)                       │
  * │  - Call controller with processed data                        │
@@ -308,10 +308,9 @@ module.exports = function receiveHandler(ape) {
       /**
        * Normalize the type/endpoint path
        * - Remove leading slash
-       * - Convert to lowercase
        * @type {string}
        */
-      const type = rawType.replace(/^\//, "").toLowerCase();
+      const type = rawType.replace(/^\//, "");
 
       /**
        * Call onReceive event handler

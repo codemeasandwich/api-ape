@@ -110,7 +110,7 @@ export function createWsSend(getSocket, waitingOn) {
    * @param {string} type - Message type/endpoint path (e.g., '/chat', '/users')
    * @param {any} data - Payload data to send (will be serialized with JSS)
    * @param {number} createdAt - Timestamp when the request was initiated
-   * @param {boolean} [directCall] - If true, omits requestedAt timestamp (direct send vs queued)
+   * @param {boolean} [directCall] - Reserved for future use (previously controlled requestedAt)
    * @returns {Promise<any>} Promise resolving to the server's response data
    * @throws {Error} If request times out or server returns an error
    */
@@ -135,7 +135,7 @@ export function createWsSend(getSocket, waitingOn) {
       type,
       data: processedData,
       createdAt: new Date(createdAt),
-      requestedAt: directCall ? undefined : new Date(),
+      requestedAt: new Date(),
     };
 
     // Serialize and generate query ID for response correlation

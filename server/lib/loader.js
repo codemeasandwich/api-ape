@@ -196,7 +196,7 @@ const currentDir = process.cwd();
  * const controllers = loader('api')
  *
  * async function handleRequest(endpoint, data, context) {
- *   const handler = controllers[endpoint.toLowerCase()]
+ *   const handler = controllers[endpoint]
  *
  *   if (!handler) {
  *     throw new Error(`Endpoint not found: ${endpoint}`)

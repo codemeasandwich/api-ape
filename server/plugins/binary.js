@@ -9,7 +9,8 @@
  *
  * | Tag | Direction       | Description                                    |
  * |-----|-----------------|------------------------------------------------|
- * | `L` | Server→Client   | Link to downloadable binary data               |
+ * | `I` | Server→Client   | Inline base64 for small binary (<=100 chars)   |
+ * | `L` | Server→Client   | Link to downloadable binary data (large)       |
  * | `B` | Client→Server   | Buffer upload (resolves to Buffer)             |
  * | `A` | Client→Server   | ArrayBuffer upload (resolves to ArrayBuffer)   |
  * | `F` | Client→Client   | Streaming file transfer                        |
@@ -31,6 +32,16 @@
 const jss = require("../../utils/jss");
 
 /**
+ * Maximum size in base64 characters for inline binary encoding
+ * Data up to this size will be inlined as base64 in the message.
+ * Larger data will use HTTP transfer (L tag).
+ *
+ * 100 base64 chars ≈ 75 raw bytes
+ * @constant {number}
+ */
+const INLINE_BASE64_THRESHOLD = 100;
+
+/**
  * Check if a value is binary data
  *
  * @param {any} value - Value to check
@@ -44,6 +55,28 @@ function isBinaryData(value) {
     value instanceof ArrayBuffer ||
     ArrayBuffer.isView(value)
   );
+}
+
+/**
+ * Get the base64 encoded length for binary data
+ *
+ * @param {Buffer|ArrayBuffer|ArrayBufferView} value - Binary data
+ * @returns {number} Length when encoded as base64
+ * @private
+ */
+function getBase64Length(value) {
+  let byteLength;
+  if (Buffer.isBuffer(value)) {
+    byteLength = value.length;
+  } else if (value instanceof ArrayBuffer) {
+    byteLength = value.byteLength;
+  } else if (ArrayBuffer.isView(value)) {
+    byteLength = value.byteLength;
+  } else {
+    return Infinity; // Unknown type, use HTTP transfer
+  }
+  // Base64 encoding increases size by ~33%
+  return Math.ceil((byteLength * 4) / 3);
 }
 
 /**
@@ -64,17 +97,59 @@ function registerBinaryPlugins() {
   const { FileTransferManager } = require("../lib/fileTransfer");
 
   /**
+   * I tag: Inline base64 for small binary data
+   *
+   * For small binary data (<=100 base64 chars / ~75 bytes):
+   * 1. Converts to base64 inline in the message
+   * 2. No HTTP transfer required - reduces latency
+   *
+   * NOTE: Must be registered BEFORE L tag so it's checked first
+   */
+  jss.custom("I", {
+    // Check if value is SMALL binary data that should be inlined
+    check: (key, value) => {
+      if (!isBinaryData(value)) return false;
+      return getBase64Length(value) <= INLINE_BASE64_THRESHOLD;
+    },
+
+    // Encode: convert to base64 string
+    encode: (path, key, value, context) => {
+      const buffer = Buffer.isBuffer(value)
+        ? value
+        : Buffer.from(
+            value instanceof ArrayBuffer
+              ? value
+              : value.buffer.slice(
+                  value.byteOffset,
+                  value.byteOffset + value.byteLength,
+                ),
+          );
+      return buffer.toString("base64");
+    },
+
+    // Decode: handled by built-in I decoder in decode.js
+    decode: (value, path, context) => Buffer.from(value, "base64"),
+
+    // No onSend needed - data is inlined, no HTTP transfer
+  });
+
+  /**
    * L tag: Server → Client downloads
    *
-   * When a controller returns binary data (Buffer, ArrayBuffer, TypedArray),
+   * When a controller returns LARGE binary data (Buffer, ArrayBuffer, TypedArray),
    * this plugin:
    * 1. Registers the data as a pending download
    * 2. Replaces the value with a hash reference
    * 3. Client fetches via HTTP GET /api/ape/data/{hash}
+   *
+   * NOTE: Small binary data is handled by I tag (inline base64)
    */
   jss.custom("L", {
-    // Check if value is binary data that should be sent as download
-    check: (key, value) => isBinaryData(value),
+    // Check if value is LARGE binary data that should be sent as download
+    check: (key, value) => {
+      if (!isBinaryData(value)) return false;
+      return getBase64Length(value) > INLINE_BASE64_THRESHOLD;
+    },
 
     // Encode: return placeholder (actual value set by onSend)
     encode: (path, key, value, context) => "__pending__",
@@ -203,4 +278,5 @@ module.exports = {
   registerBinaryPlugins,
   areBinaryPluginsRegistered,
   isBinaryData,
+  INLINE_BASE64_THRESHOLD,
 };

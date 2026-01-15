@@ -242,8 +242,8 @@ function createPostHandler(streamClients) {
         // Parse request body using JSS for rich type support
         const { type: rawType, data } = jss.parse(body);
 
-        // Normalize the type (remove leading slash, lowercase)
-        const type = rawType.replace(/^\//, "").toLowerCase();
+        // Normalize the type (remove leading slash)
+        const type = rawType.replace(/^\//, "");
 
         // Look up the controller
         const controller = controllers[type];
