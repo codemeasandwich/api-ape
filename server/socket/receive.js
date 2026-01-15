@@ -130,6 +130,11 @@ const {
   cleanUploadTags,
   setValueAtPath,
 } = require("./tagUtils");
+const {
+  processPluginReceive,
+  findPluginTags,
+} = require("./pluginHooks");
+const { getAllPlugins } = require("../../utils/jss/plugins");
 
 /**
  * Extract session ID from request cookies
@@ -325,58 +330,85 @@ module.exports = function receiveHandler(ape) {
       let processedData = data;
 
       if (fileTransfer && rawData) {
-        /**
-         * Find all upload-tagged properties from raw JSON
-         * @type {Array<{path: string, hash: string, tag: string}>}
-         */
-        const uploadTags = findUploadTags(rawData);
+        // Check if any plugins are registered - if so, use plugin-based processing
+        const pluginTags = findPluginTags(rawData);
 
-        if (uploadTags.length > 0) {
-          // Clean the tags from keys (rename 'file<!A>' to 'file')
-          processedData = cleanUploadTags(data);
+        if (getAllPlugins().size > 0 && pluginTags.length > 0) {
+          // Use plugin-based receive processing
+          const context = {
+            queryId,
+            clientId,
+            fileTransfer,
+            direction: "receive",
+          };
 
           try {
-            /**
-             * Wait for all binary uploads to complete
-             *
-             * For each tagged property:
-             * 1. Register an upload expectation
-             * 2. Wait for client to HTTP PUT the data
-             * 3. Set the actual binary data at the property path
-             */
-            await Promise.all(
-              uploadTags.map(async ({ path, hash }) => {
-                const uploadData = await fileTransfer.registerUpload(
-                  queryId,
-                  hash,
-                  clientId,
-                );
-                setValueAtPath(processedData, path, uploadData);
-              }),
-            );
-          } catch (uploadErr) {
-            // Upload failed (timeout or error) - send error response
+            processedData = await processPluginReceive(data, rawData, context);
+          } catch (pluginErr) {
+            // Plugin processing failed - send error response
             try {
-              send(queryId, false, false, uploadErr);
+              send(queryId, false, false, pluginErr);
             } catch (sendErr) {
               // Socket likely closed - ignore
             }
-            if (typeof onFinish === "function") onFinish(uploadErr, true);
+            if (typeof onFinish === "function") onFinish(pluginErr, true);
             return;
           }
-        }
+        } else {
+          // Fallback to legacy tag handling for backwards compatibility
+          /**
+           * Find all upload-tagged properties from raw JSON
+           * @type {Array<{path: string, hash: string, tag: string}>}
+           */
+          const uploadTags = findUploadTags(rawData);
 
-        /**
-         * Process file sharing tags (<!F>)
-         *
-         * These indicate files that will be shared between clients.
-         * Register the streaming file so it can receive the upload.
-         */
-        const fileTags = findFileTags(rawData);
-        if (fileTags.length > 0) {
-          fileTags.forEach(({ hash }) =>
-            fileTransfer.registerStreamingFile(hash, clientId),
-          );
+          if (uploadTags.length > 0) {
+            // Clean the tags from keys (rename 'file<!A>' to 'file')
+            processedData = cleanUploadTags(data);
+
+            try {
+              /**
+               * Wait for all binary uploads to complete
+               *
+               * For each tagged property:
+               * 1. Register an upload expectation
+               * 2. Wait for client to HTTP PUT the data
+               * 3. Set the actual binary data at the property path
+               */
+              await Promise.all(
+                uploadTags.map(async ({ path, hash }) => {
+                  const uploadData = await fileTransfer.registerUpload(
+                    queryId,
+                    hash,
+                    clientId,
+                  );
+                  setValueAtPath(processedData, path, uploadData);
+                }),
+              );
+            } catch (uploadErr) {
+              // Upload failed (timeout or error) - send error response
+              try {
+                send(queryId, false, false, uploadErr);
+              } catch (sendErr) {
+                // Socket likely closed - ignore
+              }
+              if (typeof onFinish === "function") onFinish(uploadErr, true);
+              return;
+            }
+          }
+
+          /**
+           * Process file sharing tags (<!F>)
+           *
+           * These indicate files that will be shared between clients.
+           * Register the streaming file so it can receive the upload.
+           */
+          const fileTags = findFileTags(rawData);
+          if (fileTags.length > 0) {
+            fileTags.forEach(({ hash }) =>
+              fileTransfer.registerStreamingFile(hash, clientId),
+            );
+          }
         }
       }
 

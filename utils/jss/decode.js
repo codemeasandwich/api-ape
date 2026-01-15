@@ -80,6 +80,8 @@
  * @type {Array<[string[], string[]]>}
  * @private
  */
+const { getPlugin } = require("./plugins");
+
 let pointers2Res = [];
 
 /**
@@ -255,6 +257,12 @@ function decodeValue(val, tag, path = []) {
   // If we have a known tag, use the appropriate decoder
   if (tag in tagLookup) {
     return tagLookup[tag](val, path);
+  }
+
+  // Check custom plugins
+  const plugin = getPlugin(tag);
+  if (plugin) {
+    return plugin.decode(val, path, {});
   }
 
   // Handle arrays

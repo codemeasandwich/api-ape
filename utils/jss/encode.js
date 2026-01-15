@@ -74,6 +74,8 @@
  * Object.prototype.toString.call(new Date())  // '[object Date]'
  * tagLookup['[object Date]']                  // 'D'
  */
+const { getAllPlugins } = require("./plugins");
+
 const tagLookup = {
   /**
    * RegExp objects - serialized as string pattern
@@ -205,8 +207,17 @@ function encode(obj) {
       if ("S" === tag) return [tag, Array.from(value)];
       if ("M" === tag) return [tag, Object.fromEntries(value)];
     }
+
+    // Check custom plugins
+    for (const [customTag, plugin] of getAllPlugins()) {
+      const key = path.length > 0 ? path[path.length - 1] : undefined;
+      if (plugin.check(key, value)) {
+        return [customTag, plugin.encode(path, key, value, {})];
+      }
+    }
+
     // Handle objects and arrays (potential circular references)
-    else if (type === "object" && value !== null) {
+    if (type === "object" && value !== null) {
       // Check for circular reference
       if (visitedEncode.has(value)) return ["P", visitedEncode.get(value)];
 

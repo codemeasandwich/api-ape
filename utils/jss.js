@@ -122,6 +122,7 @@
 
 const { encode, stringify } = require("./jss/encode");
 const { decode, parse } = require("./jss/decode");
+const { register: custom, clearPlugins } = require("./jss/plugins");
 
 /**
  * Parse a JSS-encoded string back into an object with restored types
@@ -189,4 +190,30 @@ const { decode, parse } = require("./jss/decode");
  * console.log(decoded.date instanceof Date)  // true
  */
 
-module.exports = { parse, stringify, encode, decode };
+/**
+ * Register a custom type handler plugin
+ *
+ * Plugins extend JSS to handle custom types beyond the built-in set.
+ * Each plugin is identified by a single-character tag that appears in
+ * the serialized format (e.g., `"key<!X>": value`).
+ *
+ * @function custom
+ * @param {string} tag - Single character tag identifier (e.g., 'X', 'Z')
+ * @param {Object} config - Plugin configuration object
+ * @param {function(string|number, any): boolean} config.check - Determines if plugin handles value
+ * @param {function(string[], string|number, any, Object): any} config.encode - Transform for serialization
+ * @param {function(any, string[], Object): any} config.decode - Restore from serialization
+ * @param {function=} config.onSend - Optional send lifecycle hook
+ * @param {function=} config.onReceive - Optional receive lifecycle hook
+ * @throws {Error} If tag conflicts with built-in or existing custom type
+ *
+ * @example
+ * // Register a custom BigInt handler
+ * jss.custom('B', {
+ *   check: (key, value) => typeof value === 'bigint',
+ *   encode: (path, key, value) => value.toString(),
+ *   decode: (value) => BigInt(value)
+ * })
+ */
+
+module.exports = { parse, stringify, encode, decode, custom, clearPlugins };

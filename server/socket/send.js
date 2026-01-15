@@ -82,6 +82,8 @@
 
 const jss = require("../../utils/jss");
 const { FileTransferManager } = require("../lib/fileTransfer");
+const { processPluginSend } = require("./pluginHooks");
+const { getAllPlugins } = require("../../utils/jss/plugins");
 
 /**
  * Check if the WebSocket is in a valid state to send messages
@@ -434,18 +436,40 @@ module.exports = function sendHandler({
     // Process binary data if fileTransfer is available and we have data (not error)
     let processedData = data;
     if (fileTransfer && data && !err) {
-      const { processedData: processed, binaryEntries } = processBinaryData(
-        data,
-        queryId || type,
-        fileTransfer,
-        clientId,
-      );
-      processedData = processed;
-
-      if (binaryEntries.length > 0) {
-        console.log(
-          `📦 Registered ${binaryEntries.length} binary download(s) for ${queryId || type}`,
+      // Check if any plugins are registered - if so, use plugin-based processing
+      if (getAllPlugins().size > 0) {
+        const context = {
+          queryId: queryId || type,
+          clientId,
+          fileTransfer,
+          direction: "send",
+        };
+        const { data: processed, binaryCount } = processPluginSend(
+          data,
+          context,
         );
+        processedData = processed;
+
+        if (binaryCount > 0) {
+          console.log(
+            `📦 Registered ${binaryCount} binary download(s) for ${queryId || type}`,
+          );
+        }
+      } else {
+        // Fallback to legacy processBinaryData for backwards compatibility
+        const { processedData: processed, binaryEntries } = processBinaryData(
+          data,
+          queryId || type,
+          fileTransfer,
+          clientId,
+        );
+        processedData = processed;
+
+        if (binaryEntries.length > 0) {
+          console.log(
+            `📦 Registered ${binaryEntries.length} binary download(s) for ${queryId || type}`,
+          );
+        }
       }
     }
 
