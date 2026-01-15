@@ -19,6 +19,8 @@ const {
 const { processPluginReceive, findPluginTags } = require("./pluginHooks");
 const { getAllPlugins } = require("../../utils/jss/plugins");
 const { getSessionId, createControllerContext } = require("./receiveContext");
+const { createAuthMessageHandler } = require("../security/auth/handlers/auth-messages");
+const { isAuthMessage } = require("../security/auth");
 
 /**
  * Create a message receive handler for a WebSocket connection
@@ -36,10 +38,17 @@ module.exports = function receiveHandler(ape) {
     clientId,
     embedValues,
     fileTransfer,
+    socketAuth,
+    authMiddleware,
   } = ape;
 
   const sessionId = getSessionId(sharedValues.req);
-  const that = createControllerContext({ sharedValues, embedValues, clientId, sessionId });
+  const that = createControllerContext({ sharedValues, embedValues, clientId, sessionId, socketAuth });
+
+  // Create auth message handler if auth is configured
+  const handleAuthMessage = socketAuth
+    ? createAuthMessageHandler(socketAuth, send)
+    : null;
 
   return async function onReceive(msg) {
     const msgString = typeof msg === "string" ? msg : msg.toString("utf8");
@@ -70,7 +79,31 @@ module.exports = function receiveHandler(ape) {
 
       const { type: rawType, data, createdAt } = jss.parse(msgString);
       const type = rawType.replace(/^\//, "");
+
+      // Handle authentication messages first (before any other processing)
+      if (handleAuthMessage && isAuthMessage(type)) {
+        const handled = await handleAuthMessage(queryId, type, data);
+        if (handled) {
+          return; // Auth message was handled, don't route to controllers
+        }
+      }
+
       const onFinish = events.onReceive(queryId, data, type) || (() => {});
+
+      // Check authorization if middleware is configured
+      if (authMiddleware && socketAuth) {
+        const authzResult = authMiddleware.check(socketAuth, type, { queryId, data });
+        if (!authzResult.allowed) {
+          const failResponse = authMiddleware.createFailResponse(authzResult);
+          try {
+            send(queryId, failResponse.type, failResponse, null);
+          } catch (sendErr) {
+            // Socket likely closed
+          }
+          if (typeof onFinish === "function") onFinish(failResponse, true);
+          return;
+        }
+      }
 
       let processedData = data;
 

@@ -16,6 +16,7 @@ const {
   removeClient: _removeClient,
   updateClientEmbed,
   updateClientSend,
+  updateClientAuth,
 } = require("./clients");
 
 const {
@@ -36,7 +37,7 @@ function addClient(clientInfo) {
 
 /**
  * Remove a client and clean up subscriptions
- * @param {string|{clientId: string}} clientIdOrInfo - Client ID or info object
+ * @param {string|Object} clientIdOrInfo - Client ID or info object with clientId
  * @private
  */
 function removeClient(clientIdOrInfo) {
@@ -74,4 +75,5 @@ module.exports = {
   removeClient,
   updateClientEmbed,
   updateClientSend,
+  updateClientAuth,
 };

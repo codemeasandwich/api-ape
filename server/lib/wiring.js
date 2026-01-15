@@ -148,6 +148,7 @@ const {
   removeClient,
   updateClientEmbed,
   updateClientSend,
+  updateClientAuth,
 } = require("./broadcast");
 
 /**
@@ -247,6 +248,9 @@ function defaultEvents(events = {}) {
  * @param {Object} controllers - Loaded controller functions keyed by endpoint path
  * @param {Function} [onConnect] - Async callback for connection setup
  * @param {Object} [fileTransfer] - File transfer manager instance for binary data
+ * @param {Object} [options] - Additional options
+ * @param {Object} [options.authFramework] - Auth framework instance for authentication
+ * @param {Object} [options.authMiddleware] - Authorization middleware instance
  * @returns {Function} WebSocket connection handler `(socket, req) => void`
  *
  * @example <caption>Minimal Setup</caption>
@@ -295,9 +299,12 @@ function defaultEvents(events = {}) {
  *   return { embed: {} }
  * })
  */
-module.exports = function wiring(controllers, onConnect, fileTransfer) {
+module.exports = function wiring(controllers, onConnect, fileTransfer, options = {}) {
   // Default onConnect to no-op if not provided
   onConnect = onConnect || (() => {});
+
+  // Extract auth framework and middleware from options
+  const { authFramework = null, authMiddleware = null } = options;
 
   /**
    * WebSocket connection handler
@@ -439,6 +446,16 @@ module.exports = function wiring(controllers, onConnect, fileTransfer) {
         const checkReply = replySecurity();
 
         /**
+         * Create socket auth manager if auth framework is configured
+         *
+         * This tracks authentication state for this connection and
+         * handles auth message routing.
+         */
+        const socketAuth = authFramework
+          ? authFramework.createSocketAuth(clientId)
+          : null;
+
+        /**
          * Ape context object
          *
          * Contains all the information needed by the socket handlers
@@ -456,6 +473,9 @@ module.exports = function wiring(controllers, onConnect, fileTransfer) {
           sharedValues,
           embedValues: embed,
           fileTransfer,
+          socketAuth,
+          authFramework,
+          authMiddleware,
         };
 
         /**
@@ -475,12 +495,26 @@ module.exports = function wiring(controllers, onConnect, fileTransfer) {
         updateClientEmbed(clientId, embed);
 
         /**
+         * Update client record with auth state manager
+         *
+         * This allows querying auth state for any connected client
+         * via ape.clients.get(clientId).authState
+         */
+        if (socketAuth) {
+          updateClientAuth(clientId, socketAuth);
+        }
+
+        /**
          * Register disconnect handler with user callback
          *
          * When the socket closes, call the user's onDisconnect handler.
          * The removeClient call was already set up above.
          */
         socket.on("close", () => {
+          // Clean up auth resources
+          if (socketAuth) {
+            socketAuth.cleanup();
+          }
           onDisconnect();
         });
 

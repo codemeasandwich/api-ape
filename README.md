@@ -87,6 +87,7 @@ api.on('message', ({ data }) => console.log(data))
 * **[HTTP fallback](server/README.md#http-streaming-endpoints)** — Falls back to long polling when WebSockets are blocked
 * **[JSS Encoding](server/README.md#troubleshooting--faq)** — Supports Date, RegExp, Error, Set, Map over the wire
 * **[🌲 Forest](server/README.md#-forest-distributed-mesh)** — Distributed mesh for horizontal scaling
+* **[🔐 Authentication](server/README.md#authentication)** — OPAQUE/PAKE auth with tiered access control
 
 ---
 
@@ -109,6 +110,7 @@ cd example/ExpressJs && npm install && npm start
 |------|-------------|
 | **[Server README](server/README.md)** | API reference, lifecycle hooks, auto-routing, file transfers, 🌲 Forest |
 | **[Client README](client/README.md)** | Client usage, connection states, file transfers, security |
+| **[Auth README](server/security/auth/README.md)** | OPAQUE authentication, tiered access, authorization |
 | **[Adapters README](server/adapters/README.md)** | Database adapters for Forest |
 
 ---

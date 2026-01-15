@@ -15,13 +15,25 @@ This module handles WebSocket message processing for api-ape servers. It manages
 
 ```
 socket/
-├── open.js       # Connection validation & security check
-├── receive.js    # Incoming message handler
-├── send.js       # Outgoing message handler
-└── tagUtils.js   # Binary data tag parsing utilities
+├── authMiddleware.js  # Authorization middleware for endpoint access control
+├── open.js            # Connection validation & security check
+├── receive.js         # Incoming message handler
+├── receiveContext.js  # Controller context factory
+├── send.js            # Outgoing message handler
+└── tagUtils.js        # Binary data tag parsing utilities
 ```
 
 ## Files
+
+### `authMiddleware.js`
+
+Authorization middleware for endpoint access control:
+
+- Checks auth tier requirements before controller invocation
+- Supports wildcard endpoint patterns (`admin/*`, `*`)
+- Permission and role-based authorization with `requireAll` option
+- Configurable per-endpoint requirements via `setRequirement()`
+- Creates standard `authz_fail` responses for unauthorized requests
 
 ### `open.js`
 
@@ -53,6 +65,16 @@ Outgoing message handler that serializes and sends responses:
 - Replaces binary data with `<!L>` (link) tags for client download
 - Registers binary data with `fileTransfer` for HTTP download
 - Sends the serialized response with matching `queryId`
+
+### `receiveContext.js`
+
+Controller context factory that creates the `this` binding for controllers:
+
+- Extracts session ID from request cookies
+- Provides `broadcast()` and `broadcastOthers()` for messaging all clients
+- Provides `publish()` for pub/sub channel messaging
+- Exposes `clientId`, `sessionId`, and `clients` Map
+- When auth is configured, adds `isAuthenticated`, `authTier`, `principal`, and `requiresTier()`
 
 ### `tagUtils.js`
 

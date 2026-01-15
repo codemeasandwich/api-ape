@@ -94,6 +94,8 @@ This enables server-side microservice patterns while keeping the familiar api-ap
 | `where` | `string` | Directory containing controller files |
 | `onConnect` | `function` | Connection lifecycle hook |
 | `fileTransferOptions` | `object` | Binary transfer settings (see below) |
+| `authFramework` | `object` | Authentication framework instance (see below) |
+| `authMiddleware` | `object` | Authorization middleware instance (see below) |
 
 ### File Transfer Options
 
@@ -119,6 +121,10 @@ ape(app, {
 | `this.req` | Original HTTP request |
 | `this.socket` | WebSocket instance |
 | `this.agent` | Parsed user-agent |
+| `this.isAuthenticated` | Whether socket is authenticated (requires auth config) |
+| `this.authTier` | Current authentication tier 0-3 (requires auth config) |
+| `this.principal` | User info: `{ userId, roles, permissions }` (requires auth config) |
+| `this.requiresTier(n)` | Check if socket meets minimum tier (requires auth config) |
 
 ### Connection Lifecycle Hooks
 
@@ -232,6 +238,63 @@ api.on('/health', ({ data }) => {
 | `broadcast(type, data)` | ALL connected clients | Server announcements, global events |
 | `broadcastOthers(type, data)` | All EXCEPT caller | Chat messages (don't echo back) |
 | `publish(channel, data)` | Only subscribers of that channel | Targeted updates, topics |
+
+## Authentication
+
+api-ape includes a tiered authentication system with OPAQUE/PAKE support (server never learns raw passwords).
+
+### Quick Setup
+
+```js
+const { createAuthFramework } = require('api-ape/server/security/auth');
+const { createAuthMiddleware } = require('api-ape/server/socket/authMiddleware');
+
+const authFramework = createAuthFramework({
+  opaque: {
+    getUser: async (username) => db.users.findOne({ username }),
+    saveUser: async (username, data) => db.users.insertOne({ username, ...data })
+  }
+});
+
+const authMiddleware = createAuthMiddleware({
+  requirements: {
+    'admin/*': { tier: 2 },  // Admin requires MFA
+    'user/*': { tier: 1 },   // User requires auth
+    'public/*': { tier: 0 }  // Public allows guests
+  }
+});
+
+ape(server, { where: 'api', authFramework, authMiddleware });
+```
+
+### Authentication Tiers
+
+| Tier | Name | Description |
+|------|------|-------------|
+| 0 | GUEST | Unauthenticated, public endpoints only |
+| 1 | BASIC | Identity verified via OPAQUE or enterprise SSO |
+| 2 | ELEVATED | Tier 1 + MFA (WebAuthn or TOTP) |
+| 3 | HIGH_SECURITY | Full 2-of-3 scheme for client-side key reconstruction |
+
+### Using Auth in Controllers
+
+```js
+// api/protected/data.js
+module.exports = function(query) {
+  if (!this.isAuthenticated) {
+    throw new Error('Authentication required');
+  }
+
+  console.log('User:', this.principal.userId);
+  console.log('Tier:', this.authTier);
+
+  return { data: 'sensitive info' };
+};
+```
+
+See [`security/auth/README.md`](security/auth/README.md) for full documentation.
+
+---
 
 ## File Transfers
 

@@ -48,8 +48,45 @@ Without origin validation, malicious websites could:
 
 Origin validation ensures only your own frontend can establish WebSocket connections.
 
+## Authentication
+
+The security module includes a complete authentication system with:
+
+- **OPAQUE/PAKE authentication** — Password-authenticated key exchange (server never sees raw password)
+- **Tiered security model** — Guest → Basic → Elevated → High Security
+- **State machine enforcement** — No-downgrade rule, timeout handling, rate limiting
+- **Authorization middleware** — Per-endpoint tier and permission checks
+- **Adapter pattern** — Pluggable authentication methods
+
+See [`auth/README.md`](auth/README.md) for full documentation.
+
+### Quick Example
+
+```js
+const { createAuthFramework } = require('api-ape/server/security/auth');
+const { createAuthMiddleware } = require('api-ape/server/socket/authMiddleware');
+
+const authFramework = createAuthFramework({
+  opaque: {
+    getUser: async (username) => db.users.findOne({ username }),
+    saveUser: async (username, data) => db.users.insertOne({ username, ...data })
+  }
+});
+
+const authMiddleware = createAuthMiddleware({
+  requirements: {
+    'admin/*': { tier: 2 },  // Admin requires MFA
+    'user/*': { tier: 1 },   // User requires auth
+    'public/*': { tier: 0 }  // Public allows guests
+  }
+});
+
+ape(server, { where: 'api', authFramework, authMiddleware });
+```
+
 ## See Also
 
+- [`auth/README.md`](auth/README.md) — Authentication module documentation
 - [`../socket/open.js`](../socket/open.js) — Connection open handler using security
 - [`../lib/wiring.js`](../lib/wiring.js) — WebSocket connection setup
 - [OWASP CSRF Prevention](https://owasp.org/www-community/attacks/csrf) — CSRF attack documentation

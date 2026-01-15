@@ -35,6 +35,41 @@ function createClientWrapper(clientInfo) {
     get agent() {
       return clientInfo.agent || {};
     },
+    /**
+     * Get current auth state for this client
+     * @returns {Object|null} Auth state or null if not tracked
+     */
+    get authState() {
+      if (clientInfo.socketAuth) {
+        return clientInfo.socketAuth.getState();
+      }
+      return null;
+    },
+    /**
+     * Check if client is authenticated
+     * @returns {boolean} Whether client is authenticated
+     */
+    get isAuthenticated() {
+      if (clientInfo.socketAuth) {
+        return clientInfo.socketAuth.isAuthenticated();
+      }
+      return false;
+    },
+    /**
+     * Get auth tier for this client
+     * @returns {number} Auth tier (0-3)
+     */
+    get authTier() {
+      if (clientInfo.socketAuth) {
+        return clientInfo.socketAuth.getTier();
+      }
+      return 0;
+    },
+    /**
+     * Send a message to this client
+     * @param {string} type - Message type identifier
+     * @param {any} data - Data payload to send
+     */
     sendTo(type, data) {
       if (clientInfo.send) {
         try {
@@ -58,6 +93,12 @@ function createClientWrapper(clientInfo) {
  * @type {Map<string, ClientWrapper>}
  */
 const clients = new Proxy(_clients, {
+  /**
+   * Proxy get handler - intercepts property access
+   * @param {Map} target - The underlying clients Map
+   * @param {string|symbol} prop - Property being accessed
+   * @returns {any} The property value or bound method
+   */
   get(target, prop) {
     if (prop === "set" || prop === "delete" || prop === "clear") {
       return () => {
@@ -98,7 +139,7 @@ function addClient(clientInfo, onAdd) {
 /**
  * Remove a client from the connected clients map
  *
- * @param {string|{clientId: string}} clientIdOrInfo - Client ID or info object
+ * @param {string|Object} clientIdOrInfo - Client ID or info object with clientId
  * @param {Function} [onRemove] - Optional cleanup callback (receives clientId)
  * @private
  */
@@ -147,6 +188,20 @@ function updateClientSend(clientId, send) {
   }
 }
 
+/**
+ * Update a client's auth state manager
+ *
+ * @param {string} clientId - The client's unique identifier
+ * @param {Object} socketAuth - Socket auth manager instance
+ * @private
+ */
+function updateClientAuth(clientId, socketAuth) {
+  const wrapper = _clients.get(clientId);
+  if (wrapper && wrapper._raw) {
+    wrapper._raw.socketAuth = socketAuth;
+  }
+}
+
 module.exports = {
   clients,
   _clients,
@@ -154,4 +209,5 @@ module.exports = {
   removeClient,
   updateClientEmbed,
   updateClientSend,
+  updateClientAuth,
 };
