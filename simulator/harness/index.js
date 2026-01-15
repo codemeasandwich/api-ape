@@ -165,6 +165,7 @@ class Harness {
       where: options.where || "test-api",
       onConnect: options.onConnect,
       fileTransferOptions: options.fileTransferOptions,
+      longPollingOptions: options.longPollingOptions,
       id: options.id,
     };
 

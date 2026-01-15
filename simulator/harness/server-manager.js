@@ -148,6 +148,9 @@ class ServerManager extends EventEmitter {
    * @param {Function} [options.onConnect] - Connection lifecycle callback
    * @param {Object} [options.adapter] - Database adapter for Forest clustering
    * @param {Object} [options.fileTransferOptions] - File transfer configuration
+   * @param {Object} [options.longPollingOptions] - Long polling configuration
+   * @param {number} [options.longPollingOptions.heartbeatInterval=20000] - Heartbeat interval in ms
+   * @param {number} [options.longPollingOptions.recycleTimeout=25000] - Connection recycle timeout in ms
    * @param {string} [options.id] - Custom server ID (auto-generated if not provided)
    * @returns {Promise<ServerInstance>} The created server instance
    *
@@ -202,6 +205,7 @@ class ServerManager extends EventEmitter {
       where,
       onConnect: options.onConnect,
       fileTransferOptions: options.fileTransferOptions,
+      longPollingOptions: options.longPollingOptions,
     };
 
     // Add adapter if provided
@@ -294,6 +298,12 @@ class ServerManager extends EventEmitter {
       );
     }
     await Promise.all(closePromises);
+
+    // Reset the FileTransferManager singleton to clear its cleanup interval
+    const {
+      resetFileTransferManager,
+    } = require("../../server/lib/fileTransfer");
+    resetFileTransferManager();
   }
 
   /**
@@ -435,6 +445,14 @@ class ServerInstance extends EventEmitter {
   }
 
   /**
+   * Get the api-ape core instance (contains fileTransfer, controllers, etc.)
+   * @returns {Object}
+   */
+  get core() {
+    return this._apeInstance?.core;
+  }
+
+  /**
    * Close the server
    * @returns {Promise<void>}
    */
@@ -460,6 +478,9 @@ class ServerInstance extends EventEmitter {
         }
       }
     }
+
+    // Wait for close events to propagate (prevents "Cannot log after tests are done")
+    await new Promise((r) => setTimeout(r, 50));
 
     // Close the HTTP server
     await new Promise((resolve, reject) => {
