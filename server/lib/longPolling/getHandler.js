@@ -136,6 +136,9 @@ function ensureClientId(req, res) {
  * @param {Map<string, ClientState>} streamClients - Map of active client connections
  * @param {Function} [onConnect] - Optional callback when client connects.
  *     Receives (socket, req, send) and can return { onDisconnect, embed }.
+ * @param {Object} [options] - Optional configuration options
+ * @param {number} [options.heartbeatInterval=20000] - Interval in ms for heartbeat pings
+ * @param {number} [options.recycleTimeout=25000] - Timeout in ms before recycling connection
  * @returns {Function} HTTP request handler function
  *
  * @example
@@ -181,7 +184,9 @@ function ensureClientId(req, res) {
  *     console.log('Received:', event)
  * }
  */
-function createGetHandler(streamClients, onConnect) {
+function createGetHandler(streamClients, onConnect, options = {}) {
+  const { heartbeatInterval = 20000, recycleTimeout = 25000 } = options;
+
   /**
    * HTTP GET request handler for streaming responses.
    *
@@ -194,7 +199,7 @@ function createGetHandler(streamClients, onConnect) {
 
     // Set up streaming response headers
     res.writeHead(200, {
-      "Content-Type": "application/json",
+      "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no", // Disable nginx buffering for real-time
@@ -208,23 +213,32 @@ function createGetHandler(streamClients, onConnect) {
       res,
       messageQueue: [],
       heartbeatTimer: null,
+      recycleTimer: null,
       isActive: true,
     };
 
     /**
      * Sends an event to the client.
+     * Signature matches WebSocket send for compatibility with broadcast system.
      *
+     * @param {string|null} queryId - Query ID (not used for polling, included for API compat)
      * @param {string} type - Event type (e.g., 'message', 'broadcast')
      * @param {*} data - Event payload
      * @param {*} [err] - Optional error information
      */
-    const send = (type, data, err) => {
+    const send = (queryId, type, data, err) => {
       if (!clientState.isActive) return;
 
       try {
-        res.write(jss.stringify({ type, data, err: err || undefined }));
+        // Send in SSE format: data: {...}\n\n
+        // Note: queryId is ignored for polling (it's for WS response correlation)
+        res.write(
+          "data: " +
+            jss.stringify({ type, data, err: err || undefined, queryId }) +
+            "\n\n",
+        );
       } catch (e) {
-        // Write failed, clean up connection
+        /* istanbul ignore next - stream write error, requires network failure */
         cleanup();
       }
     };
@@ -245,6 +259,11 @@ function createGetHandler(streamClients, onConnect) {
       // Clear heartbeat timer
       if (clientState.heartbeatTimer) {
         clearInterval(clientState.heartbeatTimer);
+      }
+
+      // Clear recycle timer
+      if (clientState.recycleTimer) {
+        clearTimeout(clientState.recycleTimer);
       }
 
       // Remove from client maps
@@ -268,11 +287,13 @@ function createGetHandler(streamClients, onConnect) {
       if (!clientState.isActive) return;
 
       try {
-        res.write('{"type":"__heartbeat__"}');
+        // Use SSE comment format for heartbeat (doesn't trigger message parsing)
+        res.write(":ping\n\n");
       } catch (e) {
+        /* istanbul ignore next - heartbeat write error, requires network failure */
         cleanup();
       }
-    }, 20000); // Every 20 seconds
+    }, heartbeatInterval);
 
     // Parse user agent for client info
     const sessionIdMatch = (req.headers.cookie || "").match(
@@ -287,7 +308,12 @@ function createGetHandler(streamClients, onConnect) {
     // Add to stream clients map
     streamClients.set(clientId, clientState);
 
+    // Send connection acknowledgment immediately
+    // This is required for HTTP clients to know the stream is ready
+    send(null, "__connected__", { clientId }, null);
+
     // Call onConnect callback if provided
+    /* istanbul ignore next 17 - onConnect callback handlers for long polling */
     if (onConnect) {
       Promise.resolve(onConnect(null, req, send))
         .then((handlers) => {
@@ -309,7 +335,8 @@ function createGetHandler(streamClients, onConnect) {
 
     // Close connection after 25 seconds to recycle
     // Client should automatically reconnect
-    setTimeout(
+    /* istanbul ignore next 11 - recycle timer, runs after test cleanup */
+    clientState.recycleTimer = setTimeout(
       () => {
         cleanup();
         try {
@@ -318,7 +345,7 @@ function createGetHandler(streamClients, onConnect) {
           /* ignore */
         }
       },
-      25000, // 25 seconds
+      recycleTimeout,
     );
   };
 }

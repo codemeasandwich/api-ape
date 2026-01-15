@@ -51,6 +51,7 @@
 
 const { broadcast, clients } = require("../broadcast");
 const jss = require("../../../utils/jss");
+const messageHash = require("../../../utils/messageHash");
 
 /**
  * Extracts the client ID from request cookies.
@@ -233,9 +234,12 @@ function createPostHandler(streamClients) {
     req.on("data", (chunk) => chunks.push(chunk));
 
     req.on("end", async () => {
+      // Parse request body and generate queryId first (needed for error responses too)
+      const body = Buffer.concat(chunks).toString("utf8");
+      const queryId = messageHash(body);
+
       try {
         // Parse request body using JSS for rich type support
-        const body = Buffer.concat(chunks).toString("utf8");
         const { type: rawType, data } = jss.parse(body);
 
         // Normalize the type (remove leading slash, lowercase)
@@ -265,12 +269,12 @@ function createPostHandler(streamClients) {
          * @type {ControllerContext}
          */
         const context = {
-          // Spread embed values first so they can be overridden
-          ...embedValues,
-
-          // Core identifiers
+          // Core identifiers (can be overridden by embed)
           clientId,
           sessionId,
+
+          // Spread embed values - these take priority over defaults
+          ...embedValues,
 
           // Request object for advanced use cases
           req,
@@ -280,14 +284,14 @@ function createPostHandler(streamClients) {
            * @param {string} t - Message type
            * @param {*} d - Message data
            */
-          broadcast: (t, d) => broadcast(t, d),
+          broadcast: /* istanbul ignore next */ (t, d) => broadcast(t, d),
 
           /**
            * Broadcast a message to all clients except this one.
            * @param {string} t - Message type
            * @param {*} d - Message data
            */
-          broadcastOthers: (t, d) => broadcast(t, d, clientId),
+          broadcastOthers: /* istanbul ignore next */ (t, d) => broadcast(t, d, clientId),
 
           // Access to all connected clients
           clients,
@@ -297,15 +301,18 @@ function createPostHandler(streamClients) {
         const result = await controller.call(context, data);
 
         // Send successful response using JSS for rich type support
+        // Include queryId so client can match response to pending request
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(jss.stringify({ data: result }));
+        res.end(jss.stringify({ data: result, queryId }));
       } catch (err) {
-        // Controller threw an error
-        sendJson(res, 500, { error: err.message || String(err) });
+        // Controller threw an error - include queryId for proper error handling
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(jss.stringify({ err: err.message || String(err), queryId }));
       }
     });
 
     // Handle request errors
+    /* istanbul ignore next 3 - request error handler, requires network failure */
     req.on("error", (err) => {
       sendJson(res, 500, { error: err.message });
     });

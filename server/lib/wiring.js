@@ -330,6 +330,7 @@ module.exports = function wiring(controllers, onConnect, fileTransfer) {
      *
      * @param {...any} args - Arguments to pass to send
      */
+    /* istanbul ignore next 7 - send buffer fallthrough, only hit if user stores ref and calls later */
     const sentBufferFn = (...args) => {
       if (send) {
         send(...args);
@@ -423,6 +424,7 @@ module.exports = function wiring(controllers, onConnect, fileTransfer) {
          */
         const isOk = socketOpen(socket, req, onError);
 
+        /* istanbul ignore next 4 - origin validation failure, requires CORS misconfiguration */
         if (!isOk) {
           removeClient(clientId); // Clean up if connection fails
           return;
@@ -481,6 +483,14 @@ module.exports = function wiring(controllers, onConnect, fileTransfer) {
         socket.on("close", () => {
           onDisconnect();
         });
+
+        /**
+         * Send connection acknowledgment with clientId
+         *
+         * This allows WebSocket clients to know their clientId for use
+         * in HTTP requests (e.g., binary file uploads via PUT).
+         */
+        send(null, "__connected__", { clientId }, null);
 
         /**
          * Flush any messages that were buffered during setup

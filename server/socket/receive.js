@@ -286,6 +286,15 @@ module.exports = function receiveHandler(ape) {
 
     try {
       /**
+       * Find binary upload tags BEFORE JSS parsing
+       *
+       * JSS decode strips unknown tags like <!B> and <!A>, so we need to
+       * extract upload information from the raw JSON first.
+       */
+      const rawParsed = JSON.parse(msgString);
+      const rawData = rawParsed.data;
+
+      /**
        * Parse the JSS-encoded message
        * Extracts type (endpoint), data (payload), and createdAt (timestamp)
        */
@@ -311,15 +320,16 @@ module.exports = function receiveHandler(ape) {
        *
        * If the data contains tagged binary references (<!A> or <!B>),
        * register upload expectations and wait for the actual data.
+       * NOTE: We use rawData (from JSON.parse) because JSS strips upload tags.
        */
       let processedData = data;
 
-      if (fileTransfer && data) {
+      if (fileTransfer && rawData) {
         /**
-         * Find all upload-tagged properties
+         * Find all upload-tagged properties from raw JSON
          * @type {Array<{path: string, hash: string, tag: string}>}
          */
-        const uploadTags = findUploadTags(data);
+        const uploadTags = findUploadTags(rawData);
 
         if (uploadTags.length > 0) {
           // Clean the tags from keys (rename 'file<!A>' to 'file')
@@ -346,7 +356,11 @@ module.exports = function receiveHandler(ape) {
             );
           } catch (uploadErr) {
             // Upload failed (timeout or error) - send error response
-            send(queryId, false, false, uploadErr);
+            try {
+              send(queryId, false, false, uploadErr);
+            } catch (sendErr) {
+              // Socket likely closed - ignore
+            }
             if (typeof onFinish === "function") onFinish(uploadErr, true);
             return;
           }
@@ -358,7 +372,7 @@ module.exports = function receiveHandler(ape) {
          * These indicate files that will be shared between clients.
          * Register the streaming file so it can receive the upload.
          */
-        const fileTags = findFileTags(data);
+        const fileTags = findFileTags(rawData);
         if (fileTags.length > 0) {
           fileTags.forEach(({ hash }) =>
             fileTransfer.registerStreamingFile(hash, clientId),
@@ -402,18 +416,29 @@ module.exports = function receiveHandler(ape) {
 
       /**
        * Handle controller result
+       *
+       * Note: send() may throw if socket is closed during processing.
+       * We catch these errors silently since the client is already gone.
        */
       result
         .then((val) => {
           // Only send response if controller returned a value
           if (undefined !== val) {
-            send(queryId, false, val, false);
+            try {
+              send(queryId, false, val, false);
+            } catch (sendErr) {
+              // Socket likely closed during processing - ignore
+            }
           }
           if (typeof onFinish === "function") onFinish(false, val);
         })
         .catch((err) => {
           // Send error response
-          send(queryId, false, false, err);
+          try {
+            send(queryId, false, false, err);
+          } catch (sendErr) {
+            // Socket likely closed during processing - ignore
+          }
           if (typeof onFinish === "function") onFinish(err, true);
         });
     } catch (err) {
