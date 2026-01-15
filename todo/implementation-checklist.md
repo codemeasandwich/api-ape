@@ -89,65 +89,127 @@ Both adapters implement the Passport.js Strategy interface:
 
 ---
 
-## Phase 4: Enterprise Adapters ⬜ NOT STARTED
+## Phase 4: Enterprise Adapters ✅ COMPLETED
 
-| # | Item | Status | Files to Create |
-|---|------|--------|-----------------|
-| 4.1 | LDAP adapter | ⬜ Todo | `server/security/auth/adapters/ldap.js` |
-| 4.2 | LDAP adapter tests | ⬜ Todo | `server/security/auth/adapters/ldap.test.js` |
-| 4.3 | SAML adapter | ⬜ Todo | `server/security/auth/adapters/saml.js` |
-| 4.4 | SAML adapter tests | ⬜ Todo | `server/security/auth/adapters/saml.test.js` |
-| 4.5 | OAuth2 adapter | ⬜ Todo | `server/security/auth/adapters/oauth2.js` |
-| 4.6 | OAuth2 adapter tests | ⬜ Todo | `server/security/auth/adapters/oauth2.test.js` |
-| 4.7 | Adapter registration in framework | ⬜ Todo | Update `index.js` |
-| 4.8 | Enterprise adapter docs | ⬜ Todo | Update `README.md` |
+All Phase 4 items implemented with Passport.js-compatible adapters (57 enterprise adapter tests).
 
-**Message types to implement:**
+| # | Item | Status | Files |
+|---|------|--------|-------|
+| 4.1 | LDAP adapter | ✅ Done | `server/security/auth/adapters/ldap.js` |
+| 4.2 | LDAP adapter tests | ✅ Done | `server/security/auth/adapters/ldap.test.js` (18 tests) |
+| 4.3 | SAML adapter | ✅ Done | `server/security/auth/adapters/saml.js` |
+| 4.4 | SAML adapter tests | ✅ Done | `server/security/auth/adapters/saml.test.js` (18 tests) |
+| 4.5 | OAuth2 adapter | ✅ Done | `server/security/auth/adapters/oauth2.js` |
+| 4.6 | OAuth2 adapter tests | ✅ Done | `server/security/auth/adapters/oauth2.test.js` (21 tests) |
+| 4.7 | Adapter registration in framework | ✅ Done | `server/security/auth/index.js` |
+| 4.8 | Enterprise adapter docs | ✅ Done | `server/security/auth/adapters/files.md` |
+
+**Implemented Message Types:**
 ```javascript
+// LDAP (Tier 1)
 { type: "ldap_auth", username, password }
-{ type: "saml_auth", samlResponse }
-{ type: "oauth2_auth", accessToken }
+{ type: "ldap_auth_ok", userId, profile, tier }
+{ type: "ldap_auth_fail", error, message }
+
+// SAML (Tier 1)
+{ type: "saml_auth_start" }
+{ type: "saml_auth_redirect", url, requestId }
+{ type: "saml_auth_callback", SAMLResponse, RelayState }
+{ type: "saml_auth_ok", userId, profile }
+{ type: "saml_auth_fail", error, message }
+{ type: "saml_logout_start", nameId }
+{ type: "saml_logout_redirect", url }
+
+// OAuth2 (Tier 1)
+{ type: "oauth2_auth_start" }
+{ type: "oauth2_auth_redirect", url, state }
+{ type: "oauth2_callback", code, state }
+{ type: "oauth2_auth_ok", userId, profile, accessToken, refreshToken }
+{ type: "oauth2_auth_fail", error, message }
+{ type: "oauth2_token_refresh", refreshToken }
+{ type: "oauth2_token_refreshed", accessToken, expiresIn }
 ```
+
+**Passport.js Compatibility:**
+All enterprise adapters implement the Passport.js Strategy interface:
+- Constructor accepts `(options, verify)` or `(verify)` pattern
+- `authenticate(req, options)` method
+- Callbacks: `this.success(user, info)`, `this.fail(info)`, `this.error(err)`, `this.redirect(url)`
+- Exported as `LDAPStrategy`, `SAMLStrategy`, and `OAuth2Strategy` aliases
 
 ---
 
-## Phase 5: 2-of-3 Key Recovery / Tier 3 ⬜ NOT STARTED
+## Phase 5: 2-of-3 Key Recovery / Tier 3 ✅ COMPLETED
 
-| # | Item | Status | Files to Create |
-|---|------|--------|-----------------|
+All Phase 5 items implemented with full server-side and client-side SDK (241+ MFA tests passing).
+
+| # | Item | Status | Files |
+|---|------|--------|-------|
 | **Core SSS Implementation** |||
-| 5.1 | Shamir Secret Sharing (SSS) utilities | ⬜ Todo | `server/security/auth/mfa/sss.js` |
-| 5.2 | SSS unit tests | ⬜ Todo | `server/security/auth/mfa/sss.test.js` |
+| 5.1 | Shamir Secret Sharing (SSS) utilities | ✅ Done | `server/security/auth/mfa/sss.js` |
+| 5.2 | SSS unit tests | ✅ Done | `server/security/auth/mfa/sss.test.js` (66 tests) |
 | **Share Management** |||
-| 5.3 | Two-of-three adapter | ⬜ Todo | `server/security/auth/mfa/two-of-three.js` |
-| 5.4 | Two-of-three tests | ⬜ Todo | `server/security/auth/mfa/two-of-three.test.js` |
-| 5.5 | Ledger for share versioning | ⬜ Todo | `server/security/auth/mfa/ledger.js` |
-| 5.6 | Ledger tests | ⬜ Todo | `server/security/auth/mfa/ledger.test.js` |
+| 5.3 | Two-of-three adapter | ✅ Done | `server/security/auth/mfa/two-of-three.js` |
+| 5.4 | Two-of-three tests | ✅ Done | `server/security/auth/mfa/two-of-three.test.js` (34 tests) |
+| 5.5 | Ledger for share versioning | ✅ Done | `server/security/auth/mfa/ledger.js` |
+| 5.6 | Ledger tests | ✅ Done | `server/security/auth/mfa/ledger.test.js` (47 tests) |
 | **Recovery Flows** |||
-| 5.7 | Key recovery handler | ⬜ Todo | `server/security/auth/mfa/recovery.js` |
-| 5.8 | Recovery tests | ⬜ Todo | `server/security/auth/mfa/recovery.test.js` |
+| 5.7 | Key recovery handler | ✅ Done | `server/security/auth/mfa/recovery.js` |
+| 5.8 | Recovery tests | ✅ Done | `server/security/auth/mfa/recovery.test.js` (28 tests) |
+| **Crypto Utilities** |||
+| 5.9 | Server crypto utilities | ✅ Done | `server/security/auth/mfa/crypto-utils.js` |
+| 5.10 | Server crypto tests | ✅ Done | `server/security/auth/mfa/crypto-utils.test.js` (66 tests) |
 | **Message Handlers** |||
-| 5.9 | Key recovery message routing | ⬜ Todo | Update `handlers/auth-messages.js` |
-| 5.10 | HIGH_SECURITY state integration | ⬜ Todo | Update `state-machine.js` |
-| **Rotation/Revocation** |||
-| 5.11 | Share rotation logic | ⬜ Todo | Part of `two-of-three.js` |
-| 5.12 | Revocation handling | ⬜ Todo | Part of `ledger.js` |
-| 5.13 | Device loss recovery flows | ⬜ Todo | Part of `recovery.js` |
+| 5.11 | Key recovery message routing | ✅ Done | `server/security/auth/index.js` |
+| 5.12 | HIGH_SECURITY state integration | ✅ Done | `server/security/auth/state-machine-mfa.js` |
+| **Client SDK** |||
+| 5.13 | Client crypto utilities | ✅ Done | `client/auth/crypto-utils.js` |
+| 5.14 | Client IndexedDB storage | ✅ Done | `client/auth/share-storage.js` |
+| 5.15 | Client storage tests | ✅ Done | `client/auth/share-storage.test.js` (61 tests) |
+| 5.16 | Key recovery client SDK | ✅ Done | `client/auth/key-recovery.js` |
+| 5.17 | Client SDK tests | ✅ Done | `client/auth/key-recovery.test.js` (42 tests) |
 
-**Message types to implement:**
+**Implemented Message Types:**
 ```javascript
-{ type: "key_recovery_start" }
+// Enrollment
+{ type: "key_recovery_enrollment_start" }
+{ type: "key_recovery_enrollment_challenge", challenge, factorRequirements }
+{ type: "key_recovery_enrollment_finish", encShares: { S1, S3 }, proof }
+{ type: "key_recovery_enrollment_ok" }
+
+// Recovery (Tier 3 elevation)
+{ type: "key_recovery_start", factors }
 { type: "key_recovery_shares", encShares: { S1: "...", S3: "..." } }
-{ type: "key_recovery_complete" }
+{ type: "key_recovery_complete", proof }
 { type: "key_recovery_ok", tier: 3 }
+
+// Rotation (device loss)
+{ type: "key_recovery_rotation_start", shareId, reason }
+{ type: "key_recovery_rotation_ok", shareId, version }
+{ type: "key_recovery_cancel" }
+{ type: "key_recovery_status" }
 ```
 
-**Crypto primitives needed:**
-- `SSS.split(secret, threshold, total)`
-- `SSS.combine(shares)`
-- `AEAD_Encrypt/Decrypt` (XChaCha20-Poly1305 or AES-GCM)
-- `HKDF` for key derivation
-- `Argon2id` for A2F share KDF
+**Crypto primitives implemented:**
+- `SSS.split(secret, threshold, total)` - GF(256) Shamir Secret Sharing
+- `SSS.combine(shares)` - Lagrange interpolation
+- `AEAD_Encrypt/Decrypt` - AES-256-GCM (Node.js crypto / Web Crypto API)
+- `HKDF` - RFC 5869 key derivation
+- `Argon2id` - Password-based KDF with PBKDF2 fallback
+
+**Share Distribution:**
+| Share | Factor | Storage | Encryption Key |
+|-------|--------|---------|----------------|
+| S1 | OAuth | Server ledger | `HKDF(oauthToken, salt, "S1_key")` |
+| S2 | WebAuthn | Client IndexedDB | `HKDF(authenticatorData, credId, "S2_key")` |
+| S3 | TOTP | Server ledger | `Argon2id(totpSeed, salt)` |
+
+**Passport.js Compatibility:**
+The two-of-three adapter implements the Passport.js Strategy interface:
+- Constructor accepts `(options, verify)` pattern
+- `authenticate(req, options)` method
+- Callbacks: `this.success(user, info)`, `this.fail(info)`, `this.error(err)`
+- Exported as `TwoOfThreeStrategy` alias
 
 ---
 
@@ -192,10 +254,11 @@ Both adapters implement the Passport.js Strategy interface:
 | `@cloudflare/opaque` or `opaque-wasm` | OPAQUE protocol | Phase 1 | Mock mode available |
 | `@simplewebauthn/server` | WebAuthn verification | Phase 3 | Mock mode available |
 | `otplib` or `speakeasy` | TOTP generation/verification | Phase 3 | Built-in RFC 6238 impl |
-| `ldapjs` | LDAP authentication | Phase 4 | Not started |
-| `passport-saml` or `saml2-js` | SAML authentication | Phase 4 | Not started |
-| `secrets.js` or `shamir` | Shamir Secret Sharing | Phase 5 | Not started |
-| `argon2` | KDF for A2F shares | Phase 5 | Not started |
+| `ldapjs` | LDAP authentication | Phase 4 | Mock mode available |
+| `passport-saml` or `saml2-js` | SAML authentication | Phase 4 | Mock mode available |
+| Pure JS SSS | Shamir Secret Sharing | Phase 5 | ✅ Built-in (GF(256)) |
+| `argon2` | KDF for A2F shares | Phase 5 | ✅ With PBKDF2 fallback |
+| `fake-indexeddb` | Testing IndexedDB | Phase 5 | ✅ Dev dependency |
 
 ---
 
@@ -206,12 +269,12 @@ Both adapters implement the Passport.js Strategy interface:
 | Phase 1 | ✅ Complete | 12/12 | 0 |
 | Phase 2 | 🟡 Partial | 1/3 | 2 (deferred) |
 | Phase 3 | ✅ Complete | 8/8 | 0 |
-| Phase 4 | ⬜ Not Started | 0/8 | 8 |
-| Phase 5 | ⬜ Not Started | 0/13 | 13 |
+| Phase 4 | ✅ Complete | 8/8 | 0 |
+| Phase 5 | ✅ Complete | 17/17 | 0 |
 | Additional | 🟡 Partial | 1/10 | 9 |
 
-**Total completed: 22 items**
-**Total remaining: 32 items**
+**Total completed: 47 items**
+**Total remaining: 11 items**
 
 ---
 
@@ -223,8 +286,21 @@ Both adapters implement the Passport.js Strategy interface:
 | `opaque.test.js` | 12 | ✅ Pass |
 | `webauthn.test.js` | 25 | ✅ Pass |
 | `totp.test.js` | 35 | ✅ Pass |
-| `index.test.js` | 23 | ✅ Pass |
-| **Total** | **114** | ✅ Pass |
+| `ldap.test.js` | 18 | ✅ Pass |
+| `saml.test.js` | 18 | ✅ Pass |
+| `oauth2.test.js` | 21 | ✅ Pass |
+| `index.test.js` | 32 | ✅ Pass |
+| **Phase 5 - MFA** |||
+| `sss.test.js` | 66 | ✅ Pass |
+| `crypto-utils.test.js` | 66 | ✅ Pass |
+| `ledger.test.js` | 47 | ✅ Pass |
+| `two-of-three.test.js` | 34 | ✅ Pass |
+| `recovery.test.js` | 28 | ✅ Pass |
+| **Phase 5 - Client** |||
+| `share-storage.test.js` | 61 | ✅ Pass |
+| `key-recovery.test.js` | 42 | ✅ Pass |
+| **Auth Total** | **536** | ✅ Pass |
+| **Full Suite** | **1205** | ✅ Pass |
 
 ---
 

@@ -233,6 +233,11 @@ function createAuthStateMachine(config = {}) {
     failAuth,
     startMFA: mfaFunctions.startMFA,
     completeMFA: mfaFunctions.completeMFA,
+    // Key recovery (2-of-3 Tier 3) functions
+    startKeyRecovery: mfaFunctions.startKeyRecovery,
+    completeKeyRecovery: mfaFunctions.completeKeyRecovery,
+    cancelKeyRecovery: mfaFunctions.cancelKeyRecovery,
+    getKeyRecoveryStatus: mfaFunctions.getKeyRecoveryStatus,
     generateNonce: nonceManager.generateNonce,
     consumeNonce: nonceManager.consumeNonce,
     isLockedOut,

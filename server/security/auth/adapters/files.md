@@ -14,6 +14,9 @@ This directory contains protocol-specific authentication adapters. Each adapter 
 adapters/
 ├── opaque.js          # OPAQUE adapter factory and enums
 ├── opaque-handlers.js # OPAQUE message handlers
+├── ldap.js            # LDAP/AD adapter (Passport.js compatible)
+├── saml.js            # SAML 2.0 SSO adapter (Passport.js compatible)
+├── oauth2.js          # OAuth2 adapter (Passport.js compatible)
 ├── webauthn.js        # WebAuthn/FIDO2 adapter (Passport.js compatible)
 └── totp.js            # TOTP RFC 6238 adapter (Passport.js compatible)
 ```
@@ -48,6 +51,37 @@ WebAuthn/FIDO2 adapter for hardware security key MFA (Tier 2):
 - Exports `WebAuthnMessageType` and `WebAuthnError` enums
 - Counter validation prevents authenticator cloning
 - Mock mode for testing (real verification requires `@simplewebauthn/server`)
+
+### `ldap.js`
+
+LDAP/Active Directory adapter for enterprise authentication (Tier 1):
+
+- `createLDAPStrategy(config, verify)` — Passport.js-compatible factory
+- Simple bind and search-then-bind modes
+- Group membership extraction for role mapping
+- Exports `LDAPMessageType` and `LDAPError` enums
+- Mock mode for testing (real bind requires `ldapjs`)
+
+### `saml.js`
+
+SAML 2.0 SSO adapter for enterprise identity providers (Tier 1):
+
+- `createSAMLStrategy(config, verify)` — Passport.js-compatible factory
+- SP-initiated and IdP-initiated SSO support
+- Handles `handleAuthStart`, `handleAuthCallback`, `handleLogoutStart`
+- Exports `SAMLMessageType` and `SAMLError` enums
+- Mock mode for testing (real validation requires `passport-saml`)
+
+### `oauth2.js`
+
+OAuth2 Authorization Code adapter for identity providers (Tier 1):
+
+- `createOAuth2Strategy(config, verify)` — Passport.js-compatible factory
+- PKCE support for enhanced security
+- Handles `handleAuthStart`, `handleAuthCallback`, `handleTokenRefresh`
+- Exports `OAuth2MessageType` and `OAuth2Error` enums
+- State parameter for CSRF protection
+- Mock mode for testing (real token exchange requires HTTP client)
 
 ### `totp.js`
 

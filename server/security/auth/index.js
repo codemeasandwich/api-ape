@@ -4,69 +4,41 @@
  * Coordinates authentication adapters, state machines, and message handling.
  * Provides a unified interface for socket authentication.
  *
- * ## Architecture
- *
- * ```
- * ┌────────────────────────────────────────────────────────────────┐
- * │                     AuthFramework                               │
- * │  ┌──────────────────────────────────────────────────────────┐  │
- * │  │  Adapter Registry                                         │  │
- * │  │  - OPAQUE (Tier 1)                                       │  │
- * │  │  - LDAP, SAML, OAuth2 (Tier 1, future)                   │  │
- * │  │  - WebAuthn, TOTP (Tier 2, future)                       │  │
- * │  └──────────────────────────────────────────────────────────┘  │
- * │  ┌──────────────────────────────────────────────────────────┐  │
- * │  │  Per-Socket State Machines                                │  │
- * │  │  - Tracks auth state per clientId                        │  │
- * │  │  - Enforces tier requirements                            │  │
- * │  └──────────────────────────────────────────────────────────┘  │
- * │  ┌──────────────────────────────────────────────────────────┐  │
- * │  │  Message Router                                           │  │
- * │  │  - Routes auth messages to appropriate adapter           │  │
- * │  │  - Handles auth_* message types                          │  │
- * │  └──────────────────────────────────────────────────────────┘  │
- * └────────────────────────────────────────────────────────────────┘
- * ```
- *
  * @module server/security/auth
  * @see {@link module:server/security/auth/state-machine} for state management
  * @see {@link module:server/security/auth/adapters/opaque} for OPAQUE adapter
  */
 
+"use strict";
+
 const { createAuthStateMachine, AuthState, AuthTier, AuthError } = require("./state-machine");
 const { createOpaqueAdapter, OpaqueMessageType, OpaqueError } = require("./adapters/opaque");
 const { createWebAuthnStrategy, WebAuthnMessageType, WebAuthnError } = require("./adapters/webauthn");
 const { createTOTPStrategy, TOTPMessageType, TOTPError } = require("./adapters/totp");
-
-/**
- * Auth message type prefixes for routing
- * @type {string[]}
- */
-const AUTH_MESSAGE_PREFIXES = ["opaque_", "ldap_", "saml_", "oauth2_", "mfa_", "key_recovery_", "webauthn_", "totp_"];
-
-/**
- * Check if a message type is an authentication message
- *
- * @param {string} type - Message type
- * @returns {boolean} Whether this is an auth message
- */
-function isAuthMessage(type) {
-  if (!type) return false;
-  return AUTH_MESSAGE_PREFIXES.some((prefix) => type.startsWith(prefix));
-}
+const { createLDAPStrategy, LDAPMessageType, LDAPError } = require("./adapters/ldap");
+const { createSAMLStrategy, SAMLMessageType, SAMLError } = require("./adapters/saml");
+const { createOAuth2Strategy, OAuth2MessageType, OAuth2Error } = require("./adapters/oauth2");
+const { createTwoOfThreeStrategy, TwoOfThreeMessageType, TwoOfThreeError } = require("./mfa/two-of-three");
+const { AUTH_MESSAGE_PREFIXES, isAuthMessage } = require("./framework/constants");
+const { createSocketAuthManager } = require("./framework/socket-auth");
 
 /**
  * AuthFramework configuration
  * @typedef {Object} AuthFrameworkConfig
  * @property {Object} [opaque={}] - OPAQUE adapter configuration
+ * @property {Object} [ldap=null] - LDAP adapter configuration
+ * @property {Object} [saml=null] - SAML adapter configuration
+ * @property {Object} [oauth2=null] - OAuth2 adapter configuration
  * @property {Object} [webauthn={}] - WebAuthn adapter configuration
  * @property {Object} [totp={}] - TOTP adapter configuration
+ * @property {Object} [twoOfThree={}] - 2-of-3 key recovery adapter configuration (Tier 3)
  * @property {Object} [stateMachine={}] - State machine configuration
  * @property {boolean} [requireAuth=false] - Require auth for all connections
  * @property {string[]} [mfaMethods=['webauthn', 'totp']] - Available MFA methods
  * @property {Function} [onAuthSuccess] - Callback on successful authentication
  * @property {Function} [onAuthFailure] - Callback on authentication failure
  * @property {Function} [onMFASuccess] - Callback on successful MFA elevation
+ * @property {Function} [onKeyRecoverySuccess] - Callback on successful Tier 3 elevation
  */
 
 /**
@@ -97,14 +69,19 @@ function isAuthMessage(type) {
 function createAuthFramework(config = {}) {
   const {
     opaque: opaqueConfig = {},
+    ldap: ldapConfig = null,
+    saml: samlConfig = null,
+    oauth2: oauth2Config = null,
     webauthn: webauthnConfig = {},
     totp: totpConfig = {},
+    twoOfThree: twoOfThreeConfig = {},
     stateMachine: stateMachineConfig = {},
     requireAuth = false,
     mfaMethods = ["webauthn", "totp"],
     onAuthSuccess = () => {},
     onAuthFailure = () => {},
     onMFASuccess = () => {},
+    onKeyRecoverySuccess = () => {},
   } = config;
 
   /** Registered adapters */
@@ -117,6 +94,24 @@ function createAuthFramework(config = {}) {
   const opaqueAdapter = createOpaqueAdapter(opaqueConfig);
   adapters.set("opaque", opaqueAdapter);
 
+  /** LDAP adapter instance (Tier 1, optional) */
+  if (ldapConfig) {
+    const ldapAdapter = createLDAPStrategy(ldapConfig);
+    adapters.set("ldap", ldapAdapter);
+  }
+
+  /** SAML adapter instance (Tier 1, optional) */
+  if (samlConfig) {
+    const samlAdapter = createSAMLStrategy(samlConfig);
+    adapters.set("saml", samlAdapter);
+  }
+
+  /** OAuth2 adapter instance (Tier 1, optional) */
+  if (oauth2Config) {
+    const oauth2Adapter = createOAuth2Strategy(oauth2Config);
+    adapters.set("oauth2", oauth2Adapter);
+  }
+
   /** WebAuthn adapter instance (Tier 2 MFA) */
   const webauthnAdapter = createWebAuthnStrategy(webauthnConfig);
   adapters.set("webauthn", webauthnAdapter);
@@ -124,6 +119,10 @@ function createAuthFramework(config = {}) {
   /** TOTP adapter instance (Tier 2 MFA) */
   const totpAdapter = createTOTPStrategy(totpConfig);
   adapters.set("totp", totpAdapter);
+
+  /** Two-of-Three adapter instance (Tier 3 Key Recovery) */
+  const twoOfThreeAdapter = createTwoOfThreeStrategy(twoOfThreeConfig);
+  adapters.set("two-of-three", twoOfThreeAdapter);
 
   /**
    * Register an authentication adapter
@@ -155,361 +154,28 @@ function createAuthFramework(config = {}) {
     const stateMachine = createAuthStateMachine(stateMachineConfig);
     socketStates.set(clientId, stateMachine);
 
-    /**
-     * Handle an incoming auth message
-     *
-     * @param {string} type - Message type
-     * @param {Object} data - Message data
-     * @returns {Promise<Object>} Response message
-     */
-    async function handleMessage(type, data) {
-      const state = stateMachine.getState();
-
-      try {
-        // OPAQUE Registration
-        if (type === OpaqueMessageType.REG_START) {
-          const response = await opaqueAdapter.handleRegStart({
-            clientId,
-            user: data.user,
-            clientNonce: data.clientNonce,
-            regRequest: data.regRequest,
-          });
-          return response;
-        }
-
-        if (type === OpaqueMessageType.REG_FINISH) {
-          const response = await opaqueAdapter.handleRegFinish({
-            clientId,
-            user: data.user,
-            clientNonce: data.clientNonce,
-            regRecord: data.regRecord,
-          });
-          return response;
-        }
-
-        // OPAQUE Authentication
-        if (type === OpaqueMessageType.AUTH_START) {
-          stateMachine.startAuth("opaque");
-
-          const response = await opaqueAdapter.handleAuthStart({
-            clientId,
-            user: data.user,
-            clientNonce: data.clientNonce,
-          });
-          return response;
-        }
-
-        if (type === OpaqueMessageType.AUTH_2) {
-          const response = await opaqueAdapter.handleAuthFinish({
-            clientId,
-            user: data.user,
-            clientNonce: data.clientNonce,
-            clientAuth: data.clientAuth,
-          });
-
-          const authResult = stateMachine.completeAuth(response.assignedPrincipal);
-
-          onAuthSuccess(clientId, authResult.principal);
-
-          return {
-            ...response,
-            state: authResult.state,
-            tier: authResult.tier,
-          };
-        }
-
-        // ================================================================
-        // MFA Challenge/Verify (Generic)
-        // ================================================================
-
-        if (type === "mfa_challenge") {
-          // Client requests available MFA methods
-          const availableMethods = [];
-          const userId = state.principal?.userId;
-
-          if (mfaMethods.includes("webauthn")) {
-            try {
-              const creds = await webauthnAdapter.handleAuthStart({ clientId, userId });
-              availableMethods.push({ method: "webauthn", challenge: creds });
-            } catch (e) {
-              // WebAuthn not set up for this user
-            }
-          }
-
-          if (mfaMethods.includes("totp") && await totpAdapter.isEnabled(userId)) {
-            availableMethods.push({ method: "totp" });
-          }
-
-          if (availableMethods.length === 0) {
-            return {
-              type: "mfa_challenge_fail",
-              error: "NO_MFA_METHODS",
-              message: "No MFA methods configured for this user",
-            };
-          }
-
-          // Start MFA flow in state machine
-          stateMachine.startMFA(availableMethods.map((m) => m.method));
-
-          return {
-            type: "mfa_challenge",
-            methods: availableMethods,
-          };
-        }
-
-        if (type === "mfa_verify") {
-          const { method, ...verifyData } = data;
-
-          if (method === "webauthn") {
-            const result = await webauthnAdapter.handleAuthFinish({
-              clientId,
-              userId: state.principal?.userId,
-              challenge: verifyData.challenge,
-              assertion: verifyData.assertion,
-            });
-
-            const mfaResult = stateMachine.completeMFA("webauthn");
-            onMFASuccess(clientId, mfaResult.principal, "webauthn");
-
-            return {
-              type: "mfa_elevated",
-              method: "webauthn",
-              tier: mfaResult.tier,
-              state: mfaResult.state,
-            };
-          }
-
-          if (method === "totp") {
-            await totpAdapter.handleVerify({
-              clientId,
-              userId: state.principal?.userId,
-              code: verifyData.code,
-            });
-
-            const mfaResult = stateMachine.completeMFA("totp");
-            onMFASuccess(clientId, mfaResult.principal, "totp");
-
-            return {
-              type: "mfa_elevated",
-              method: "totp",
-              tier: mfaResult.tier,
-              state: mfaResult.state,
-            };
-          }
-
-          return {
-            type: "mfa_verify_fail",
-            error: "UNKNOWN_MFA_METHOD",
-            message: `Unknown MFA method: ${method}`,
-          };
-        }
-
-        // ================================================================
-        // WebAuthn Registration/Auth (Direct)
-        // ================================================================
-
-        if (type === WebAuthnMessageType.REG_START) {
-          return await webauthnAdapter.handleRegStart({
-            clientId,
-            userId: data.userId || state.principal?.userId,
-            userName: data.userName,
-            userDisplayName: data.userDisplayName,
-          });
-        }
-
-        if (type === WebAuthnMessageType.REG_FINISH) {
-          return await webauthnAdapter.handleRegFinish({
-            clientId,
-            userId: data.userId || state.principal?.userId,
-            challenge: data.challenge,
-            attestation: data.attestation,
-          });
-        }
-
-        if (type === WebAuthnMessageType.AUTH_START) {
-          return await webauthnAdapter.handleAuthStart({
-            clientId,
-            userId: data.userId || state.principal?.userId,
-          });
-        }
-
-        if (type === WebAuthnMessageType.AUTH_FINISH) {
-          const result = await webauthnAdapter.handleAuthFinish({
-            clientId,
-            userId: data.userId || state.principal?.userId,
-            challenge: data.challenge,
-            assertion: data.assertion,
-          });
-
-          // If already at Tier 1, elevate to Tier 2
-          if (state.tier >= AuthTier.BASIC && state.state === AuthState.AUTHENTICATED) {
-            stateMachine.startMFA(["webauthn"]);
-            const mfaResult = stateMachine.completeMFA("webauthn");
-            onMFASuccess(clientId, mfaResult.principal, "webauthn");
-
-            return {
-              ...result,
-              tier: mfaResult.tier,
-              state: mfaResult.state,
-            };
-          }
-
-          return result;
-        }
-
-        // ================================================================
-        // TOTP Setup/Verify (Direct)
-        // ================================================================
-
-        if (type === TOTPMessageType.SETUP_START) {
-          return await totpAdapter.handleSetupStart({
-            clientId,
-            userId: data.userId || state.principal?.userId,
-            accountName: data.accountName,
-          });
-        }
-
-        if (type === TOTPMessageType.SETUP_VERIFY) {
-          return await totpAdapter.handleSetupVerify({
-            clientId,
-            userId: data.userId || state.principal?.userId,
-            code: data.code,
-          });
-        }
-
-        if (type === TOTPMessageType.VERIFY) {
-          const result = await totpAdapter.handleVerify({
-            clientId,
-            userId: data.userId || state.principal?.userId,
-            code: data.code,
-          });
-
-          // If already at Tier 1, elevate to Tier 2
-          if (state.tier >= AuthTier.BASIC && state.state === AuthState.AUTHENTICATED) {
-            stateMachine.startMFA(["totp"]);
-            const mfaResult = stateMachine.completeMFA("totp");
-            onMFASuccess(clientId, mfaResult.principal, "totp");
-
-            return {
-              ...result,
-              tier: mfaResult.tier,
-              state: mfaResult.state,
-            };
-          }
-
-          return result;
-        }
-
-        if (type === TOTPMessageType.DISABLE_START) {
-          return await totpAdapter.handleDisable({
-            clientId,
-            userId: data.userId || state.principal?.userId,
-            code: data.code,
-          });
-        }
-
-        // Unknown auth message
-        return {
-          type: "auth_error",
-          error: "UNKNOWN_MESSAGE_TYPE",
-          message: `Unknown auth message type: ${type}`,
-        };
-      } catch (err) {
-        if (type === OpaqueMessageType.AUTH_START || type === OpaqueMessageType.AUTH_2) {
-          const failResult = stateMachine.failAuth(err.code || "AUTH_ERROR");
-          onAuthFailure(clientId, err, failResult);
-        }
-
-        return {
-          type: type.replace(/_start$|_2$/, "_fail"),
-          error: err.code || "AUTH_ERROR",
-          message: err.message,
-          attempts: stateMachine.getState().attempts,
-        };
-      }
-    }
-
-    /**
-     * Get current auth state
-     * @returns {Object} Current auth state
-     */
-    function getState() {
-      return stateMachine.getState();
-    }
-
-    /**
-     * Get current auth tier
-     * @returns {number} Current tier (0-3)
-     */
-    function getTier() {
-      return stateMachine.getTier();
-    }
-
-    /**
-     * Check if socket is authenticated
-     * @returns {boolean} Whether socket is authenticated
-     */
-    function isAuthenticated() {
-      return stateMachine.getTier() >= AuthTier.BASIC;
-    }
-
-    /**
-     * Check if socket meets minimum tier requirement
-     *
-     * @param {number} requiredTier - Minimum required tier
-     * @returns {boolean} Whether socket meets requirement
-     */
-    function meetsRequirement(requiredTier) {
-      return stateMachine.getTier() >= requiredTier;
-    }
-
-    /**
-     * Check if action is authorized (stub for future per-message authz)
-     *
-     * @param {string} action - Action/endpoint name
-     * @param {Object} [context={}] - Additional context
-     * @returns {Object} Authorization result { allowed, reason }
-     */
-    function authorize(action, context = {}) {
-      const state = stateMachine.getState();
-
-      if (!state.isAuthenticated) {
-        return {
-          allowed: false,
-          reason: "NOT_AUTHENTICATED",
-          requiredTier: AuthTier.BASIC,
-          currentTier: state.tier,
-        };
-      }
-
-      return {
-        allowed: true,
-        principal: state.principal,
-        tier: state.tier,
-      };
-    }
-
-    /**
-     * Clean up resources when socket disconnects
-     */
-    function cleanup() {
-      stateMachine.cleanup();
-      opaqueAdapter.cleanupClient(clientId);
-      webauthnAdapter.cleanupClient(clientId);
-      totpAdapter.cleanupClient(clientId);
-      socketStates.delete(clientId);
-    }
-
-    return {
-      handleMessage,
-      getState,
-      getTier,
-      isAuthenticated,
-      meetsRequirement,
-      authorize,
-      cleanup,
+    const manager = createSocketAuthManager({
+      clientId,
       stateMachine,
+      adapters: {
+        opaqueAdapter,
+        ldapAdapter: adapters.get("ldap"),
+        webauthnAdapter,
+        totpAdapter,
+        twoOfThreeAdapter,
+      },
+      mfaMethods,
+      callbacks: { onAuthSuccess, onAuthFailure, onMFASuccess, onKeyRecoverySuccess },
+    });
+
+    // Wrap cleanup to also remove from socketStates
+    const originalCleanup = manager.cleanup;
+    manager.cleanup = function () {
+      originalCleanup();
+      socketStates.delete(clientId);
     };
+
+    return manager;
   }
 
   /**
@@ -574,11 +240,14 @@ function createAuthFramework(config = {}) {
     WebAuthnError,
     TOTPMessageType,
     TOTPError,
+    TwoOfThreeMessageType,
+    TwoOfThreeError,
     AUTH_MESSAGE_PREFIXES,
 
     // Export strategy constructors for custom instantiation
     createWebAuthnStrategy,
     createTOTPStrategy,
+    createTwoOfThreeStrategy,
   };
 }
 
@@ -594,12 +263,28 @@ module.exports = {
   WebAuthnError,
   TOTPMessageType,
   TOTPError,
+  TwoOfThreeMessageType,
+  TwoOfThreeError,
+  LDAPMessageType,
+  LDAPError,
+  SAMLMessageType,
+  SAMLError,
+  OAuth2MessageType,
+  OAuth2Error,
   AUTH_MESSAGE_PREFIXES,
 
   // Export strategy constructors for Passport.js compatibility
   createWebAuthnStrategy,
   createTOTPStrategy,
+  createTwoOfThreeStrategy,
+  createLDAPStrategy,
+  createSAMLStrategy,
+  createOAuth2Strategy,
   // Passport.js style aliases
   WebAuthnStrategy: createWebAuthnStrategy,
   TOTPStrategy: createTOTPStrategy,
+  TwoOfThreeStrategy: createTwoOfThreeStrategy,
+  LDAPStrategy: createLDAPStrategy,
+  SAMLStrategy: createSAMLStrategy,
+  OAuth2Strategy: createOAuth2Strategy,
 };

@@ -16,7 +16,9 @@ const {
   OpaqueMessageType,
   WebAuthnMessageType,
   TOTPMessageType,
+  LDAPMessageType,
   createTOTPStrategy,
+  createLDAPStrategy,
 } = require("./index");
 
 // Create a helper TOTP instance for generating test codes
@@ -43,6 +45,11 @@ describe("Auth Framework Integration", () => {
     test("identifies WebAuthn messages", () => {
       expect(isAuthMessage("webauthn_reg_start")).toBe(true);
       expect(isAuthMessage("webauthn_auth_start")).toBe(true);
+    });
+
+    test("identifies LDAP messages", () => {
+      expect(isAuthMessage("ldap_auth")).toBe(true);
+      expect(isAuthMessage("ldap_auth_ok")).toBe(true);
     });
 
     test("identifies TOTP messages", () => {
@@ -180,6 +187,142 @@ describe("Auth Framework Integration", () => {
       expect(authFinish.tier).toBe(AuthTier.BASIC);
       expect(socketAuth.isAuthenticated()).toBe(true);
       expect(socketAuth.getTier()).toBe(AuthTier.BASIC);
+    });
+  });
+
+  describe("LDAP Authentication Flow (Tier 1)", () => {
+    let ldapFramework;
+    let ldapAdapter;
+
+    beforeEach(async () => {
+      // Create a framework with LDAP enabled
+      ldapAdapter = createLDAPStrategy({
+        url: "ldap://localhost:389",
+        baseDN: "ou=users,dc=example,dc=com",
+      });
+
+      // Register a test user
+      await ldapAdapter.registerTestUser("ldapuser", "ldappass", {
+        cn: "LDAP User",
+        mail: "ldapuser@example.com",
+        memberOf: ["cn=developers,ou=groups,dc=example,dc=com"],
+      });
+
+      ldapFramework = createAuthFramework({
+        ldap: {
+          url: "ldap://localhost:389",
+          baseDN: "ou=users,dc=example,dc=com",
+        },
+        webauthn: { rpId: "example.com", rpName: "Test App" },
+        totp: { issuer: "Test App" },
+      });
+
+      // Also register user in the framework's internal LDAP adapter
+      const frameworkLdap = ldapFramework.getAdapter("ldap");
+      await frameworkLdap.registerTestUser("ldapuser", "ldappass", {
+        cn: "LDAP User",
+        mail: "ldapuser@example.com",
+        memberOf: ["cn=developers,ou=groups,dc=example,dc=com"],
+      });
+    });
+
+    afterEach(() => {
+      ldapAdapter.cleanup();
+    });
+
+    test("LDAP authentication elevates to Tier 1", async () => {
+      // User scenario: Enterprise user authenticates with LDAP credentials
+      const socketAuth = ldapFramework.createSocketAuth("ldap-client");
+
+      const result = await socketAuth.handleMessage(LDAPMessageType.AUTH, {
+        username: "ldapuser",
+        password: "ldappass",
+      });
+
+      expect(result.type).toBe(LDAPMessageType.AUTH_OK);
+      expect(result.tier).toBe(AuthTier.BASIC);
+      expect(result.userId).toBe("ldapuser");
+      expect(result.profile.displayName).toBe("LDAP User");
+      expect(result.profile.email).toBe("ldapuser@example.com");
+      expect(socketAuth.isAuthenticated()).toBe(true);
+      expect(socketAuth.getTier()).toBe(AuthTier.BASIC);
+
+      socketAuth.cleanup();
+    });
+
+    test("LDAP authentication fails with wrong password", async () => {
+      // User scenario: User enters wrong password
+      const socketAuth = ldapFramework.createSocketAuth("ldap-fail-client");
+
+      const result = await socketAuth.handleMessage(LDAPMessageType.AUTH, {
+        username: "ldapuser",
+        password: "wrongpassword",
+      });
+
+      expect(result.type).toBe(LDAPMessageType.AUTH_FAIL);
+      expect(socketAuth.isAuthenticated()).toBe(false);
+
+      socketAuth.cleanup();
+    });
+
+    test("LDAP authentication returns error when LDAP not configured", async () => {
+      // User scenario: Client sends LDAP auth to framework without LDAP configured
+      const socketAuth = framework.createSocketAuth("no-ldap-client");
+
+      const result = await socketAuth.handleMessage(LDAPMessageType.AUTH, {
+        username: "user",
+        password: "pass",
+      });
+
+      expect(result.type).toBe(LDAPMessageType.AUTH_FAIL);
+      expect(result.error).toBe("LDAP_NOT_CONFIGURED");
+
+      socketAuth.cleanup();
+    });
+
+    test("LDAP authenticated user can setup MFA", async () => {
+      // User scenario: Enterprise user authenticates via LDAP, then sets up TOTP
+      const socketAuth = ldapFramework.createSocketAuth("ldap-mfa-client");
+
+      // Authenticate via LDAP
+      await socketAuth.handleMessage(LDAPMessageType.AUTH, {
+        username: "ldapuser",
+        password: "ldappass",
+      });
+
+      // Setup TOTP
+      const setupStart = await socketAuth.handleMessage(TOTPMessageType.SETUP_START, {
+        userId: "ldapuser",
+      });
+
+      expect(setupStart.type).toBe(TOTPMessageType.SETUP_CHALLENGE);
+      expect(setupStart.secret).toBeDefined();
+
+      // Generate valid TOTP code
+      const counter = Math.floor(Date.now() / 30000);
+      const code = totpHelper._generateTOTP(setupStart.secret, counter, { digits: 6 });
+
+      const setupVerify = await socketAuth.handleMessage(TOTPMessageType.SETUP_VERIFY, {
+        userId: "ldapuser",
+        code,
+      });
+
+      expect(setupVerify.type).toBe(TOTPMessageType.SETUP_OK);
+
+      // Verify TOTP to elevate to Tier 2
+      const verifyCounter = Math.floor(Date.now() / 30000);
+      const verifyCode = totpHelper._generateTOTP(setupStart.secret, verifyCounter, { digits: 6 });
+
+      const verifyResult = await socketAuth.handleMessage(TOTPMessageType.VERIFY, {
+        userId: "ldapuser",
+        code: verifyCode,
+      });
+
+      expect(verifyResult.type).toBe(TOTPMessageType.OK);
+      expect(verifyResult.tier).toBe(AuthTier.ELEVATED);
+      expect(socketAuth.getTier()).toBe(AuthTier.ELEVATED);
+
+      socketAuth.cleanup();
     });
   });
 
@@ -662,14 +805,14 @@ describe("Auth Framework Integration", () => {
       // User scenario: Client sends an auth message type that doesn't exist
       const socketAuth = framework.createSocketAuth("unknown-msg-client");
 
-      const result = await socketAuth.handleMessage("ldap_auth", {
+      const result = await socketAuth.handleMessage("kerberos_auth", {
         username: "user",
-        password: "pass",
+        ticket: "abc123",
       });
 
       expect(result.type).toBe("auth_error");
       expect(result.error).toBe("UNKNOWN_MESSAGE_TYPE");
-      expect(result.message).toContain("ldap_auth");
+      expect(result.message).toContain("kerberos_auth");
 
       socketAuth.cleanup();
     });
