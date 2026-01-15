@@ -35,12 +35,14 @@
 
 const { createAuthStateMachine, AuthState, AuthTier, AuthError } = require("./state-machine");
 const { createOpaqueAdapter, OpaqueMessageType, OpaqueError } = require("./adapters/opaque");
+const { createWebAuthnStrategy, WebAuthnMessageType, WebAuthnError } = require("./adapters/webauthn");
+const { createTOTPStrategy, TOTPMessageType, TOTPError } = require("./adapters/totp");
 
 /**
  * Auth message type prefixes for routing
  * @type {string[]}
  */
-const AUTH_MESSAGE_PREFIXES = ["opaque_", "ldap_", "saml_", "oauth2_", "mfa_", "key_recovery_"];
+const AUTH_MESSAGE_PREFIXES = ["opaque_", "ldap_", "saml_", "oauth2_", "mfa_", "key_recovery_", "webauthn_", "totp_"];
 
 /**
  * Check if a message type is an authentication message
@@ -57,10 +59,14 @@ function isAuthMessage(type) {
  * AuthFramework configuration
  * @typedef {Object} AuthFrameworkConfig
  * @property {Object} [opaque={}] - OPAQUE adapter configuration
+ * @property {Object} [webauthn={}] - WebAuthn adapter configuration
+ * @property {Object} [totp={}] - TOTP adapter configuration
  * @property {Object} [stateMachine={}] - State machine configuration
  * @property {boolean} [requireAuth=false] - Require auth for all connections
+ * @property {string[]} [mfaMethods=['webauthn', 'totp']] - Available MFA methods
  * @property {Function} [onAuthSuccess] - Callback on successful authentication
  * @property {Function} [onAuthFailure] - Callback on authentication failure
+ * @property {Function} [onMFASuccess] - Callback on successful MFA elevation
  */
 
 /**
@@ -91,10 +97,14 @@ function isAuthMessage(type) {
 function createAuthFramework(config = {}) {
   const {
     opaque: opaqueConfig = {},
+    webauthn: webauthnConfig = {},
+    totp: totpConfig = {},
     stateMachine: stateMachineConfig = {},
     requireAuth = false,
+    mfaMethods = ["webauthn", "totp"],
     onAuthSuccess = () => {},
     onAuthFailure = () => {},
+    onMFASuccess = () => {},
   } = config;
 
   /** Registered adapters */
@@ -103,9 +113,17 @@ function createAuthFramework(config = {}) {
   /** Per-socket auth state machines */
   const socketStates = new Map();
 
-  /** OPAQUE adapter instance */
+  /** OPAQUE adapter instance (Tier 1) */
   const opaqueAdapter = createOpaqueAdapter(opaqueConfig);
   adapters.set("opaque", opaqueAdapter);
+
+  /** WebAuthn adapter instance (Tier 2 MFA) */
+  const webauthnAdapter = createWebAuthnStrategy(webauthnConfig);
+  adapters.set("webauthn", webauthnAdapter);
+
+  /** TOTP adapter instance (Tier 2 MFA) */
+  const totpAdapter = createTOTPStrategy(totpConfig);
+  adapters.set("totp", totpAdapter);
 
   /**
    * Register an authentication adapter
@@ -200,6 +218,196 @@ function createAuthFramework(config = {}) {
           };
         }
 
+        // ================================================================
+        // MFA Challenge/Verify (Generic)
+        // ================================================================
+
+        if (type === "mfa_challenge") {
+          // Client requests available MFA methods
+          const availableMethods = [];
+          const userId = state.principal?.userId;
+
+          if (mfaMethods.includes("webauthn")) {
+            try {
+              const creds = await webauthnAdapter.handleAuthStart({ clientId, userId });
+              availableMethods.push({ method: "webauthn", challenge: creds });
+            } catch (e) {
+              // WebAuthn not set up for this user
+            }
+          }
+
+          if (mfaMethods.includes("totp") && await totpAdapter.isEnabled(userId)) {
+            availableMethods.push({ method: "totp" });
+          }
+
+          if (availableMethods.length === 0) {
+            return {
+              type: "mfa_challenge_fail",
+              error: "NO_MFA_METHODS",
+              message: "No MFA methods configured for this user",
+            };
+          }
+
+          // Start MFA flow in state machine
+          stateMachine.startMFA(availableMethods.map((m) => m.method));
+
+          return {
+            type: "mfa_challenge",
+            methods: availableMethods,
+          };
+        }
+
+        if (type === "mfa_verify") {
+          const { method, ...verifyData } = data;
+
+          if (method === "webauthn") {
+            const result = await webauthnAdapter.handleAuthFinish({
+              clientId,
+              userId: state.principal?.userId,
+              challenge: verifyData.challenge,
+              assertion: verifyData.assertion,
+            });
+
+            const mfaResult = stateMachine.completeMFA("webauthn");
+            onMFASuccess(clientId, mfaResult.principal, "webauthn");
+
+            return {
+              type: "mfa_elevated",
+              method: "webauthn",
+              tier: mfaResult.tier,
+              state: mfaResult.state,
+            };
+          }
+
+          if (method === "totp") {
+            await totpAdapter.handleVerify({
+              clientId,
+              userId: state.principal?.userId,
+              code: verifyData.code,
+            });
+
+            const mfaResult = stateMachine.completeMFA("totp");
+            onMFASuccess(clientId, mfaResult.principal, "totp");
+
+            return {
+              type: "mfa_elevated",
+              method: "totp",
+              tier: mfaResult.tier,
+              state: mfaResult.state,
+            };
+          }
+
+          return {
+            type: "mfa_verify_fail",
+            error: "UNKNOWN_MFA_METHOD",
+            message: `Unknown MFA method: ${method}`,
+          };
+        }
+
+        // ================================================================
+        // WebAuthn Registration/Auth (Direct)
+        // ================================================================
+
+        if (type === WebAuthnMessageType.REG_START) {
+          return await webauthnAdapter.handleRegStart({
+            clientId,
+            userId: data.userId || state.principal?.userId,
+            userName: data.userName,
+            userDisplayName: data.userDisplayName,
+          });
+        }
+
+        if (type === WebAuthnMessageType.REG_FINISH) {
+          return await webauthnAdapter.handleRegFinish({
+            clientId,
+            userId: data.userId || state.principal?.userId,
+            challenge: data.challenge,
+            attestation: data.attestation,
+          });
+        }
+
+        if (type === WebAuthnMessageType.AUTH_START) {
+          return await webauthnAdapter.handleAuthStart({
+            clientId,
+            userId: data.userId || state.principal?.userId,
+          });
+        }
+
+        if (type === WebAuthnMessageType.AUTH_FINISH) {
+          const result = await webauthnAdapter.handleAuthFinish({
+            clientId,
+            userId: data.userId || state.principal?.userId,
+            challenge: data.challenge,
+            assertion: data.assertion,
+          });
+
+          // If already at Tier 1, elevate to Tier 2
+          if (state.tier >= AuthTier.BASIC && state.state === AuthState.AUTHENTICATED) {
+            stateMachine.startMFA(["webauthn"]);
+            const mfaResult = stateMachine.completeMFA("webauthn");
+            onMFASuccess(clientId, mfaResult.principal, "webauthn");
+
+            return {
+              ...result,
+              tier: mfaResult.tier,
+              state: mfaResult.state,
+            };
+          }
+
+          return result;
+        }
+
+        // ================================================================
+        // TOTP Setup/Verify (Direct)
+        // ================================================================
+
+        if (type === TOTPMessageType.SETUP_START) {
+          return await totpAdapter.handleSetupStart({
+            clientId,
+            userId: data.userId || state.principal?.userId,
+            accountName: data.accountName,
+          });
+        }
+
+        if (type === TOTPMessageType.SETUP_VERIFY) {
+          return await totpAdapter.handleSetupVerify({
+            clientId,
+            userId: data.userId || state.principal?.userId,
+            code: data.code,
+          });
+        }
+
+        if (type === TOTPMessageType.VERIFY) {
+          const result = await totpAdapter.handleVerify({
+            clientId,
+            userId: data.userId || state.principal?.userId,
+            code: data.code,
+          });
+
+          // If already at Tier 1, elevate to Tier 2
+          if (state.tier >= AuthTier.BASIC && state.state === AuthState.AUTHENTICATED) {
+            stateMachine.startMFA(["totp"]);
+            const mfaResult = stateMachine.completeMFA("totp");
+            onMFASuccess(clientId, mfaResult.principal, "totp");
+
+            return {
+              ...result,
+              tier: mfaResult.tier,
+              state: mfaResult.state,
+            };
+          }
+
+          return result;
+        }
+
+        if (type === TOTPMessageType.DISABLE_START) {
+          return await totpAdapter.handleDisable({
+            clientId,
+            userId: data.userId || state.principal?.userId,
+            code: data.code,
+          });
+        }
+
         // Unknown auth message
         return {
           type: "auth_error",
@@ -287,6 +495,8 @@ function createAuthFramework(config = {}) {
     function cleanup() {
       stateMachine.cleanup();
       opaqueAdapter.cleanupClient(clientId);
+      webauthnAdapter.cleanupClient(clientId);
+      totpAdapter.cleanupClient(clientId);
       socketStates.delete(clientId);
     }
 
@@ -360,7 +570,15 @@ function createAuthFramework(config = {}) {
     AuthError,
     OpaqueMessageType,
     OpaqueError,
+    WebAuthnMessageType,
+    WebAuthnError,
+    TOTPMessageType,
+    TOTPError,
     AUTH_MESSAGE_PREFIXES,
+
+    // Export strategy constructors for custom instantiation
+    createWebAuthnStrategy,
+    createTOTPStrategy,
   };
 }
 
@@ -372,5 +590,16 @@ module.exports = {
   AuthError,
   OpaqueMessageType,
   OpaqueError,
+  WebAuthnMessageType,
+  WebAuthnError,
+  TOTPMessageType,
+  TOTPError,
   AUTH_MESSAGE_PREFIXES,
+
+  // Export strategy constructors for Passport.js compatibility
+  createWebAuthnStrategy,
+  createTOTPStrategy,
+  // Passport.js style aliases
+  WebAuthnStrategy: createWebAuthnStrategy,
+  TOTPStrategy: createTOTPStrategy,
 };

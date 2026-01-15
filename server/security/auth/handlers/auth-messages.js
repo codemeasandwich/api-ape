@@ -8,7 +8,7 @@
  * @see {@link module:server/security/auth} for the auth framework
  */
 
-const { isAuthMessage, OpaqueMessageType } = require("../index");
+const { isAuthMessage, OpaqueMessageType, WebAuthnMessageType, TOTPMessageType } = require("../index");
 
 /**
  * Create a handler function that processes auth messages
@@ -76,6 +76,7 @@ function createAuthMessageHandler(socketAuth, send) {
  * @type {Object<string, string>}
  */
 const AUTH_MESSAGE_DESCRIPTIONS = {
+  // OPAQUE (Tier 1)
   [OpaqueMessageType.REG_START]: "OPAQUE registration start",
   [OpaqueMessageType.REG_RESPONSE]: "OPAQUE registration response",
   [OpaqueMessageType.REG_FINISH]: "OPAQUE registration finish",
@@ -86,9 +87,39 @@ const AUTH_MESSAGE_DESCRIPTIONS = {
   [OpaqueMessageType.AUTH_2]: "OPAQUE authentication proof",
   [OpaqueMessageType.AUTH_OK]: "OPAQUE authentication success",
   [OpaqueMessageType.AUTH_FAIL]: "OPAQUE authentication failed",
+
+  // WebAuthn (Tier 2 MFA)
+  [WebAuthnMessageType.REG_START]: "WebAuthn registration start",
+  [WebAuthnMessageType.REG_CHALLENGE]: "WebAuthn registration challenge",
+  [WebAuthnMessageType.REG_FINISH]: "WebAuthn registration finish",
+  [WebAuthnMessageType.REG_OK]: "WebAuthn registration complete",
+  [WebAuthnMessageType.REG_FAIL]: "WebAuthn registration failed",
+  [WebAuthnMessageType.AUTH_START]: "WebAuthn authentication start",
+  [WebAuthnMessageType.AUTH_CHALLENGE]: "WebAuthn authentication challenge",
+  [WebAuthnMessageType.AUTH_FINISH]: "WebAuthn authentication finish",
+  [WebAuthnMessageType.AUTH_OK]: "WebAuthn authentication success",
+  [WebAuthnMessageType.AUTH_FAIL]: "WebAuthn authentication failed",
+
+  // TOTP (Tier 2 MFA)
+  [TOTPMessageType.SETUP_START]: "TOTP setup start",
+  [TOTPMessageType.SETUP_CHALLENGE]: "TOTP setup challenge",
+  [TOTPMessageType.SETUP_VERIFY]: "TOTP setup verify",
+  [TOTPMessageType.SETUP_OK]: "TOTP setup complete",
+  [TOTPMessageType.SETUP_FAIL]: "TOTP setup failed",
+  [TOTPMessageType.VERIFY]: "TOTP verification",
+  [TOTPMessageType.OK]: "TOTP verification success",
+  [TOTPMessageType.FAIL]: "TOTP verification failed",
+  [TOTPMessageType.DISABLE_START]: "TOTP disable",
+  [TOTPMessageType.DISABLE_OK]: "TOTP disabled",
+
+  // Generic MFA
   mfa_challenge: "MFA challenge issued",
   mfa_verify: "MFA verification attempt",
   mfa_elevated: "MFA elevation complete",
+  mfa_challenge_fail: "MFA challenge failed",
+  mfa_verify_fail: "MFA verification failed",
+
+  // Key Recovery (Tier 3)
   key_recovery_start: "Key recovery initiated",
   key_recovery_shares: "Key recovery shares provided",
   key_recovery_complete: "Key recovery complete",

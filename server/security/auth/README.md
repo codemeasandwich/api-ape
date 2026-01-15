@@ -2,15 +2,17 @@
 
 ## Overview
 
-This module provides a tiered authentication system for api-ape WebSocket connections. It supports OPAQUE-based password authentication where the server never learns raw passwords, with extensibility for MFA and enterprise SSO adapters.
+This module provides a tiered authentication system for api-ape WebSocket connections. It supports OPAQUE-based password authentication where the server never learns raw passwords, with MFA (WebAuthn/TOTP) for elevated security and extensibility for enterprise SSO adapters.
 
 **Key capabilities:**
 
 - **OPAQUE/PAKE authentication** — Password-authenticated key exchange (server never sees raw password)
+- **MFA support** — WebAuthn (FIDO2) and TOTP (RFC 6238) for Tier 2 elevation
+- **Passport.js compatible** — MFA adapters work with existing Passport.js strategies
 - **Tiered security model** — Guest → Basic → Elevated → High Security
 - **State machine enforcement** — No-downgrade rule, timeout handling, rate limiting
 - **Authorization middleware** — Per-endpoint tier and permission checks
-- **Adapter pattern** — Pluggable authentication methods (OPAQUE, LDAP, SAML, OAuth2, WebAuthn, TOTP)
+- **Adapter pattern** — Pluggable authentication methods (OPAQUE, WebAuthn, TOTP, LDAP, SAML, OAuth2)
 
 > **Contributing?** See the module files for implementation details.
 
@@ -22,8 +24,9 @@ This module provides a tiered authentication system for api-ape WebSocket connec
 │  ┌──────────────────────────────────────────────────────────────┐  │
 │  │  Adapter Registry                                             │  │
 │  │  - OPAQUE (Tier 1) ✓                                         │  │
-│  │  - LDAP, SAML, OAuth2 (Tier 1, future)                       │  │
-│  │  - WebAuthn, TOTP (Tier 2, future)                           │  │
+│  │  - WebAuthn (Tier 2 MFA) ✓                                   │  │
+│  │  - TOTP (Tier 2 MFA) ✓                                       │  │
+│  │  - LDAP, SAML, OAuth2 (Tier 1, planned)                      │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 │  ┌──────────────────────────────────────────────────────────────┐  │
 │  │  Per-Socket State Machines                                    │  │
@@ -33,7 +36,7 @@ This module provides a tiered authentication system for api-ape WebSocket connec
 │  ┌──────────────────────────────────────────────────────────────┐  │
 │  │  Message Router                                               │  │
 │  │  - Routes auth messages to appropriate adapter               │  │
-│  │  - Handles opaque_*, mfa_*, key_recovery_* message types     │  │
+│  │  - Handles opaque_*, webauthn_*, totp_*, mfa_* messages     │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────┘
 ```
@@ -61,8 +64,25 @@ const authFramework = createAuthFramework({
     getUser: async (username) => db.users.findOne({ username }),
     saveUser: async (username, data) => db.users.insertOne({ username, ...data })
   },
+  webauthn: {
+    rpId: 'example.com',
+    rpName: 'My App',
+    // Optional: provide credential storage
+    getCredentials: async (userId) => db.webauthn.find({ userId }),
+    saveCredential: async (userId, credential) => db.webauthn.insertOne({ userId, ...credential })
+  },
+  totp: {
+    issuer: 'My App',
+    // Optional: provide secret storage
+    getSecret: async (userId) => db.totp.findOne({ userId }),
+    saveSecret: async (userId, data) => db.totp.upsertOne({ userId }, data)
+  },
+  mfaMethods: ['webauthn', 'totp'],
   onAuthSuccess: (clientId, principal) => {
     console.log(`${clientId} authenticated as ${principal.userId}`);
+  },
+  onMFASuccess: (clientId, principal, method) => {
+    console.log(`${clientId} elevated via ${method}`);
   }
 });
 ```
@@ -94,7 +114,7 @@ ape(server, {
 
 ## Message Protocol
 
-### OPAQUE Registration
+### OPAQUE Registration (Tier 1)
 
 ```
 Client                              Server
@@ -104,7 +124,7 @@ Client                              Server
   |<- opaque_reg_ok ---------------|  { msg: "registered" }
 ```
 
-### OPAQUE Authentication
+### OPAQUE Authentication (Tier 1)
 
 ```
 Client                              Server
@@ -112,6 +132,79 @@ Client                              Server
   |<- opaque_auth_1 ---------------|  { serverNonce, ts, envelope, oprfResponse }
   |-- opaque_auth_2 -------------->|  { clientAuth }
   |<- opaque_auth_ok --------------|  { assignedPrincipal, serverProof, tier: 1 }
+```
+
+### WebAuthn Registration (MFA Setup)
+
+```
+Client                              Server
+  |-- webauthn_reg_start --------->|  { userId, userName }
+  |<- webauthn_reg_challenge ------|  { challenge, rp, user, pubKeyCredParams }
+  |-- webauthn_reg_finish -------->|  { challenge, attestation }
+  |<- webauthn_reg_ok -------------|  { credentialId }
+```
+
+### WebAuthn Authentication (Tier 2 Elevation)
+
+```
+Client                              Server
+  |-- webauthn_auth_start -------->|  { userId }
+  |<- webauthn_auth_challenge -----|  { challenge, allowCredentials }
+  |-- webauthn_auth_finish ------->|  { challenge, assertion }
+  |<- webauthn_auth_ok ------------|  { tier: 2 }
+```
+
+### TOTP Setup
+
+```
+Client                              Server
+  |-- totp_setup_start ----------->|  { userId }
+  |<- totp_setup_challenge --------|  { secret, otpauthUri }
+  |-- totp_setup_verify ---------->|  { code }
+  |<- totp_setup_ok ---------------|  { }
+```
+
+### TOTP Verification (Tier 2 Elevation)
+
+```
+Client                              Server
+  |-- totp_verify ---------------->|  { userId, code }
+  |<- totp_ok --------------------|  { tier: 2 }
+```
+
+### Generic MFA Challenge Flow
+
+```
+Client                              Server
+  |-- mfa_challenge -------------->|  { }
+  |<- mfa_challenge ---------------|  { methods: [{ method: "totp" }, { method: "webauthn", challenge: {...} }] }
+  |-- mfa_verify ----------------->|  { method: "totp", code: "123456" }
+  |<- mfa_elevated ----------------|  { method: "totp", tier: 2 }
+```
+
+## Passport.js Compatibility
+
+Both WebAuthn and TOTP adapters are compatible with Passport.js:
+
+```js
+const passport = require('passport');
+const { WebAuthnStrategy, TOTPStrategy } = require('api-ape/server/security/auth');
+
+// Use with Passport.js
+passport.use('webauthn', new WebAuthnStrategy({
+  rpId: 'example.com',
+  rpName: 'My App'
+}, (user, done) => {
+  // Custom verification logic
+  done(null, user);
+}));
+
+passport.use('totp', new TOTPStrategy({
+  issuer: 'My App'
+}, (user, done) => {
+  // Custom verification logic
+  done(null, user);
+}));
 ```
 
 ## Controller Context
@@ -192,23 +285,35 @@ GUEST → AUTHENTICATING → AUTHENTICATED (Tier 1)
 | **No-downgrade** | Cannot return to lower tier after auth |
 | **Rate limiting** | Lockout after configurable failed attempts |
 | **Session binding** | Auth bound to `clientId + nonces + timestamp` |
+| **TOTP replay protection** | Tracks used counters to prevent code reuse |
+| **WebAuthn counter** | Validates and updates authenticator counter |
 
 ## File Structure
 
 ```
 auth/
 ├── index.js              # Auth framework coordinator
+├── index.test.js         # Integration tests (23 tests)
 ├── state-machine.js      # State transitions, tier management
+├── state-machine.test.js # State machine tests (31 tests)
+├── nonce-manager.js      # Single-use nonce handling
 ├── adapters/
-│   └── opaque.js         # OPAQUE/SRP implementation
+│   ├── opaque.js         # OPAQUE/SRP implementation
+│   ├── opaque.test.js    # OPAQUE tests (12 tests)
+│   ├── webauthn.js       # WebAuthn/FIDO2 adapter (Passport.js compatible)
+│   ├── webauthn.test.js  # WebAuthn tests (25 tests)
+│   ├── totp.js           # TOTP RFC 6238 adapter (Passport.js compatible)
+│   └── totp.test.js      # TOTP tests (35 tests)
 └── handlers/
     └── auth-messages.js  # Message routing
 ```
+
+**Total: 114 tests passing**
 
 ## See Also
 
 - [`../README.md`](../README.md) — Security module overview
 - [`../../socket/authMiddleware.js`](../../socket/authMiddleware.js) — Authorization middleware
 - [`../../socket/receiveContext.js`](../../socket/receiveContext.js) — Controller context with auth
-- [`../../../todo/Authentication.md`](../../../todo/Authentication.md) — OPAQUE protocol design
-- [`../../../todo/login.md`](../../../todo/login.md) — 2-of-3 MFA design (future)
+- [`../../../todo/Security.md`](../../../todo/Security.md) — Security architecture design
+- [`../../../todo/implementation-checklist.md`](../../../todo/implementation-checklist.md) — Implementation progress

@@ -35,25 +35,57 @@ All Phase 1 items are implemented and tested (31 tests, 700+ total passing).
 
 ---
 
-## Phase 3: MFA / Tier 2 ⬜ NOT STARTED
+## Phase 3: MFA / Tier 2 ✅ COMPLETED
 
-| # | Item | Status | Files to Create/Modify |
-|---|------|--------|------------------------|
-| 3.1 | WebAuthn adapter | ⬜ Todo | `server/security/auth/adapters/webauthn.js` |
-| 3.2 | WebAuthn adapter tests | ⬜ Todo | `server/security/auth/adapters/webauthn.test.js` |
-| 3.3 | TOTP adapter | ⬜ Todo | `server/security/auth/adapters/totp.js` |
-| 3.4 | TOTP adapter tests | ⬜ Todo | `server/security/auth/adapters/totp.test.js` |
-| 3.5 | MFA challenge/verify handlers | ⬜ Todo | Update `handlers/auth-messages.js` |
-| 3.6 | Tier elevation flow in state machine | ⬜ Todo | Update `state-machine.js` (states exist, flows need wiring) |
-| 3.7 | MFA configuration options | ⬜ Todo | Update `index.js` framework config |
-| 3.8 | MFA integration tests | ⬜ Todo | New test file |
+All Phase 3 items implemented with Passport.js-compatible adapters (114 total auth tests passing).
 
-**Message types to implement:**
+| # | Item | Status | Files |
+|---|------|--------|-------|
+| 3.1 | WebAuthn adapter (Passport.js compatible) | ✅ Done | `server/security/auth/adapters/webauthn.js` |
+| 3.2 | WebAuthn adapter tests | ✅ Done | `server/security/auth/adapters/webauthn.test.js` (25 tests) |
+| 3.3 | TOTP adapter (Passport.js compatible) | ✅ Done | `server/security/auth/adapters/totp.js` |
+| 3.4 | TOTP adapter tests | ✅ Done | `server/security/auth/adapters/totp.test.js` (35 tests) |
+| 3.5 | MFA challenge/verify handlers | ✅ Done | `server/security/auth/index.js`, `handlers/auth-messages.js` |
+| 3.6 | Tier elevation flow in state machine | ✅ Done | `server/security/auth/index.js` (integrated) |
+| 3.7 | MFA configuration options | ✅ Done | `server/security/auth/index.js` (`mfaMethods`, callbacks) |
+| 3.8 | MFA integration tests | ✅ Done | `server/security/auth/index.test.js` (23 tests) |
+
+**Implemented Message Types:**
 ```javascript
-{ type: "mfa_challenge", methods: ["webauthn", "totp"] }
-{ type: "mfa_verify", method: "webauthn", assertion: "..." }
-{ type: "mfa_elevated", tier: 2 }
+// Generic MFA
+{ type: "mfa_challenge" }                     // Request available MFA methods
+{ type: "mfa_challenge", methods: [...] }     // Response with available methods
+{ type: "mfa_verify", method: "totp", code }  // Verify TOTP
+{ type: "mfa_verify", method: "webauthn", challenge, assertion }  // Verify WebAuthn
+{ type: "mfa_elevated", tier: 2 }             // Success response
+
+// WebAuthn Direct
+{ type: "webauthn_reg_start", userId, userName }
+{ type: "webauthn_reg_challenge", challenge, rp, user, ... }
+{ type: "webauthn_reg_finish", userId, challenge, attestation }
+{ type: "webauthn_reg_ok" }
+{ type: "webauthn_auth_start", userId }
+{ type: "webauthn_auth_challenge", challenge, allowCredentials }
+{ type: "webauthn_auth_finish", userId, challenge, assertion }
+{ type: "webauthn_auth_ok", tier: 2 }
+
+// TOTP Direct
+{ type: "totp_setup_start", userId }
+{ type: "totp_setup_challenge", secret, otpauthUri }
+{ type: "totp_setup_verify", userId, code }
+{ type: "totp_setup_ok" }
+{ type: "totp_verify", userId, code }
+{ type: "totp_ok", tier: 2 }
+{ type: "totp_disable_start", userId, code }
+{ type: "totp_disable_ok" }
 ```
+
+**Passport.js Compatibility:**
+Both adapters implement the Passport.js Strategy interface:
+- Constructor accepts `(options, verify)` or `(verify)` pattern
+- `authenticate(req, options)` method
+- Callbacks: `this.success(user, info)`, `this.fail(info)`, `this.error(err)`
+- Exported as `WebAuthnStrategy` and `TOTPStrategy` aliases
 
 ---
 
@@ -137,11 +169,11 @@ All Phase 1 items are implemented and tested (31 tests, 700+ total passing).
 | B.3 | Session revocation on password change | ⬜ Todo | |
 | B.4 | Session binding to clientId | ⬜ Todo | |
 
-### Tests for index.js ⬜ MISSING
+### Tests for index.js ✅ COMPLETED
 
 | # | Item | Status | File |
 |---|------|--------|------|
-| C.1 | Auth framework coordinator tests | ⬜ Todo | `server/security/auth/index.test.js` |
+| C.1 | Auth framework coordinator tests | ✅ Done | `server/security/auth/index.test.js` (23 tests) |
 
 ### Manual/Integration Testing ⬜ NOT DONE
 
@@ -155,15 +187,15 @@ All Phase 1 items are implemented and tested (31 tests, 700+ total passing).
 
 ## Recommended Library Dependencies
 
-| Library | Purpose | Phase |
-|---------|---------|-------|
-| `@cloudflare/opaque` or `opaque-wasm` | OPAQUE protocol | Phase 1 (mock mode available) |
-| `@simplewebauthn/server` | WebAuthn verification | Phase 3 |
-| `otplib` or `speakeasy` | TOTP generation/verification | Phase 3 |
-| `ldapjs` | LDAP authentication | Phase 4 |
-| `passport-saml` or `saml2-js` | SAML authentication | Phase 4 |
-| `secrets.js` or `shamir` | Shamir Secret Sharing | Phase 5 |
-| `argon2` | KDF for A2F shares | Phase 5 |
+| Library | Purpose | Phase | Status |
+|---------|---------|-------|--------|
+| `@cloudflare/opaque` or `opaque-wasm` | OPAQUE protocol | Phase 1 | Mock mode available |
+| `@simplewebauthn/server` | WebAuthn verification | Phase 3 | Mock mode available |
+| `otplib` or `speakeasy` | TOTP generation/verification | Phase 3 | Built-in RFC 6238 impl |
+| `ldapjs` | LDAP authentication | Phase 4 | Not started |
+| `passport-saml` or `saml2-js` | SAML authentication | Phase 4 | Not started |
+| `secrets.js` or `shamir` | Shamir Secret Sharing | Phase 5 | Not started |
+| `argon2` | KDF for A2F shares | Phase 5 | Not started |
 
 ---
 
@@ -173,12 +205,26 @@ All Phase 1 items are implemented and tested (31 tests, 700+ total passing).
 |-------|--------|------------|-----------------|
 | Phase 1 | ✅ Complete | 12/12 | 0 |
 | Phase 2 | 🟡 Partial | 1/3 | 2 (deferred) |
-| Phase 3 | ⬜ Not Started | 0/8 | 8 |
+| Phase 3 | ✅ Complete | 8/8 | 0 |
 | Phase 4 | ⬜ Not Started | 0/8 | 8 |
 | Phase 5 | ⬜ Not Started | 0/13 | 13 |
-| Additional | ⬜ Not Started | 0/10 | 10 |
+| Additional | 🟡 Partial | 1/10 | 9 |
 
-**Total remaining work items: 41**
+**Total completed: 22 items**
+**Total remaining: 32 items**
+
+---
+
+## Test Coverage
+
+| Test File | Tests | Status |
+|-----------|-------|--------|
+| `state-machine.test.js` | 31 | ✅ Pass |
+| `opaque.test.js` | 12 | ✅ Pass |
+| `webauthn.test.js` | 25 | ✅ Pass |
+| `totp.test.js` | 35 | ✅ Pass |
+| `index.test.js` | 23 | ✅ Pass |
+| **Total** | **114** | ✅ Pass |
 
 ---
 

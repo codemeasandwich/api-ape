@@ -13,7 +13,9 @@ This directory contains protocol-specific authentication adapters. Each adapter 
 ```
 adapters/
 ├── opaque.js          # OPAQUE adapter factory and enums
-└── opaque-handlers.js # OPAQUE message handlers
+├── opaque-handlers.js # OPAQUE message handlers
+├── webauthn.js        # WebAuthn/FIDO2 adapter (Passport.js compatible)
+└── totp.js            # TOTP RFC 6238 adapter (Passport.js compatible)
 ```
 
 ## Files
@@ -35,3 +37,25 @@ OPAQUE message handler implementations:
 - Auth flow: `handleAuthStart`, `handleAuthFinish`
 - Manages pending sessions with automatic expiry cleanup
 - Creates user principal on successful authentication
+
+### `webauthn.js`
+
+WebAuthn/FIDO2 adapter for hardware security key MFA (Tier 2):
+
+- `createWebAuthnStrategy(config, verify)` — Passport.js-compatible factory
+- Registration flow: `handleRegStart`, `handleRegFinish`
+- Auth flow: `handleAuthStart`, `handleAuthFinish`
+- Exports `WebAuthnMessageType` and `WebAuthnError` enums
+- Counter validation prevents authenticator cloning
+- Mock mode for testing (real verification requires `@simplewebauthn/server`)
+
+### `totp.js`
+
+TOTP RFC 6238 adapter for authenticator app MFA (Tier 2):
+
+- `createTOTPStrategy(config, verify)` — Passport.js-compatible factory
+- Setup flow: `handleSetupStart`, `handleSetupVerify`
+- Verify flow: `handleVerify`, `handleDisable`
+- Exports `TOTPMessageType` and `TOTPError` enums
+- Built-in base32 encoding, HMAC-SHA1 code generation
+- Counter tracking prevents code replay within window
