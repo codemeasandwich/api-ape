@@ -41,10 +41,13 @@
  * 2. Otherwise, treat as hostname and remove port if present
  * 3. Split hostname by `.` and take the last two segments
  *
+ * **Country Code TLD Handling**:
+ * - Handles common ccTLDs like `.co.uk`, `.com.au`, `.me.uk`
+ * - Detection: If TLD is 2 chars AND SLD is a known pattern (co, com, net, org, me, ac, gov)
+ * - Example: `api.example.co.uk` → `example.co.uk` (not `co.uk`)
+ *
  * **Limitations**:
- * - Does not handle multi-part TLDs like `.co.uk` or `.com.au`
- *   (e.g., `api.example.co.uk` → `co.uk` instead of `example.co.uk`)
- * - For production use with international domains, consider using
+ * - For complex cases (e.g., `.pvt.k12.ma.us`), consider using
  *   a proper public suffix list library
  *
  * @function extractRootDomain
@@ -86,6 +89,23 @@
  * extractRootDomain('not-a-valid-url')
  * // Returns: 'not-a-valid-url'
  */
+// Common second-level domains used with country code TLDs
+const CCTLD_SLDS = new Set(["co", "com", "net", "org", "me", "ac", "gov", "edu"]);
+
+/**
+ * Check if a domain uses a country code TLD pattern
+ * @param {string[]} parts - Domain parts split by '.'
+ * @returns {boolean} True if this looks like a ccTLD domain
+ * @private
+ */
+function isCcTLD(parts) {
+  if (parts.length < 3) return false;
+  const tld = parts[parts.length - 1];
+  const sld = parts[parts.length - 2];
+  // TLD must be 2 chars (country code) AND SLD is a known pattern
+  return tld.length === 2 && CCTLD_SLDS.has(sld.toLowerCase());
+}
+
 module.exports = function extractRootDomain(url) {
   // Handle null/undefined/empty input
   if (!url) return "";
@@ -97,9 +117,15 @@ module.exports = function extractRootDomain(url) {
       const hostname = new URL(url).hostname;
       const parts = hostname.split(".");
 
-      // If more than 2 parts (e.g., sub.example.com), take last 2
-      // Otherwise return as-is (e.g., example.com or localhost)
-      return parts.length > 2 ? parts.slice(-2).join(".") : hostname;
+      if (parts.length > 2) {
+        // Check for country code TLD (e.g., .co.uk, .com.au, .me.uk)
+        if (isCcTLD(parts)) {
+          // Include the third-level domain for ccTLDs
+          return parts.slice(-3).join(".");
+        }
+        return parts.slice(-2).join(".");
+      }
+      return hostname;
     }
 
     // Handle hostname:port format (no protocol)
@@ -107,8 +133,14 @@ module.exports = function extractRootDomain(url) {
     const hostname = url.split(":")[0];
     const parts = hostname.split(".");
 
-    // Same logic: take last 2 parts if more than 2
-    return parts.length > 2 ? parts.slice(-2).join(".") : hostname;
+    if (parts.length > 2) {
+      // Check for country code TLD (e.g., .co.uk, .com.au, .me.uk)
+      if (isCcTLD(parts)) {
+        return parts.slice(-3).join(".");
+      }
+      return parts.slice(-2).join(".");
+    }
+    return hostname;
   } catch {
     // If URL parsing fails, try to extract hostname from raw string
     // This handles malformed URLs gracefully

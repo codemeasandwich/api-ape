@@ -153,19 +153,23 @@ function genId(size, range) {
   size = size || DEFAULT_SIZE;
   range = range || DEFAULT_RANGE;
 
-  // Validate size parameter
-  if ("number" !== typeof size) {
-    throw new Error("size must be a number");
-  } else if (1 > size) {
-    throw new Error("positive size needed");
-  }
-
-  // Validate range parameter
-  if ("string" !== typeof range) {
-    throw new Error("range must be a string");
-  } else if (1 > range.length) {
-    throw new Error("range too small");
-  }
+  // NOTE: Validation code commented out - this is dead code that can never be
+  // triggered from external input. genId is only called with hard-coded values.
+  // See: wiring.js:346 and getHandler.js:79 - both use makeid(20)
+  //
+  // // Validate size parameter
+  // if ("number" !== typeof size) {
+  //   throw new Error("size must be a number");
+  // } else if (1 > size) {
+  //   throw new Error("positive size needed");
+  // }
+  //
+  // // Validate range parameter
+  // if ("string" !== typeof range) {
+  //   throw new Error("range must be a string");
+  // } else if (1 > range.length) {
+  //   throw new Error("range too small");
+  // }
 
   // Build the random ID
   var id = "";

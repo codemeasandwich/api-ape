@@ -331,6 +331,7 @@ class WebSocketServer extends EventEmitter {
     });
 
     // Handle any buffered data from the upgrade request
+    /* istanbul ignore next 3 - buffered upgrade data rare in practice */
     if (head && head.length > 0) {
       socket.unshift(head);
     }

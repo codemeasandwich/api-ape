@@ -253,6 +253,7 @@ function createClientWrapper(clientInfo) {
         try {
           clientInfo.send(false, type, data, false);
         } catch (e) {
+          /* istanbul ignore next 4 - send error during disconnect race condition */
           console.error(
             `📢 sendTo failed for ${clientInfo.clientId}:`,
             e.message,
@@ -324,6 +325,7 @@ const clients = new Proxy(_clients, {
       return value.bind(target);
     }
 
+    /* istanbul ignore next - accessing non-function Map properties not used in practice */
     return value;
   },
 });

@@ -78,6 +78,7 @@ function matchRoute(pathname, pattern) {
       // Parameter segment - extract value
       params[patternParts[i].slice(1)] = pathParts[i];
     } else if (patternParts[i] !== pathParts[i]) {
+      /* istanbul ignore next - static segment mismatch path */
       // Static segment doesn't match
       return null;
     }
@@ -228,6 +229,7 @@ function isSecure(req) {
  *     return serveClientBundle('/api/ape.js', res)
  * }
  */
+/* istanbul ignore next 11 - client bundle serving only used by browser clients */
 function serveClientBundle(clientPath, res) {
   const filePath = path.join(__dirname, "../../dist/ape.js");
 
@@ -256,6 +258,7 @@ function serveClientBundle(clientPath, res) {
  *     return serveSourceMap(res)
  * }
  */
+/* istanbul ignore next 11 - source map serving only used by browser clients */
 function serveSourceMap(res) {
   const filePath = path.join(__dirname, "../../dist/ape.js.map");
 

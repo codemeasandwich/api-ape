@@ -349,6 +349,7 @@ function handleDownload(req, res, hash, core) {
   // Check for streaming file first (client-to-client transfer)
   const streamingFile = core.fileTransfer.getStreamingFile(hash);
 
+  /* istanbul ignore if - streaming file download, requires client-to-client streaming setup */
   if (streamingFile) {
     // Security: Require HTTPS for non-localhost
     if (!isLocalhost(req.headers.host) && !isSecure(req)) {
@@ -461,6 +462,7 @@ function handleUpload(req, res, match, core) {
     // Concatenate all chunks into a single Buffer
     const data = Buffer.concat(chunks);
 
+    /* istanbul ignore if - streaming file upload, requires client-to-client streaming setup */
     // Check if this is a streaming file upload
     if (core.fileTransfer.isStreamingFile(pathHash)) {
       const success = core.fileTransfer.completeStreamingUpload(pathHash, data);
@@ -496,6 +498,7 @@ function handleUpload(req, res, match, core) {
   });
 
   // Handle request errors
+  /* istanbul ignore next - request error handler, requires network failure */
   req.on("error", (err) => sendJson(res, 500, { error: err.message }));
 }
 

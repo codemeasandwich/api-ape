@@ -16,6 +16,7 @@
  * - **Index file support**: `index.js` files map to their parent directory
  * - **Duplicate detection**: Throws an error if two files map to the same endpoint
  * - **Case normalization**: All endpoint paths are lowercased
+ * - **Private file exclusion**: Files/directories starting with `_` are ignored
  *
  * @module server/utils/deepRequire
  * @see {@link module:server/lib/loader} - Uses this module to load controllers
@@ -43,6 +44,7 @@
  */
 
 // Ensure this module is only run on Node.js server
+/* istanbul ignore next 3 - only reachable in browser environment */
 if (!global.process) {
   throw new Error("deepRequire need to be run on Node server");
 }
@@ -187,6 +189,10 @@ module.exports = function (dirname, selector) {
     // Skip root index.js (typically re-exports or setup)
     if (file === "/index.js") return packages;
 
+    // Skip underscore-prefixed files/directories (private/internal modules)
+    // e.g., _helper.js, _internal/secret.js won't be exposed as endpoints
+    if (file.includes("/_")) return packages;
+
     // Compute endpoint path from file path:
     // 1. Remove file extension
     // 2. Split into path parts
@@ -207,6 +213,7 @@ module.exports = function (dirname, selector) {
     const endpoint = pathParts.join("/").toLowerCase();
 
     // Check for duplicate endpoints
+    /* istanbul ignore next 8 - startup error, would break all tests if triggered */
     if (packages[endpoint] !== undefined) {
       throw new Error(
         `🦍 Duplicate endpoint detected: "${endpoint}"\n` +

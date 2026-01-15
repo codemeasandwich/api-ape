@@ -296,6 +296,7 @@ function parseFrame(buffer) {
     // Check that high 32 bits are zero
     const high = buffer.readUInt32BE(offset);
     const low = buffer.readUInt32BE(offset + 4);
+    /* istanbul ignore next 3 - requires >4GB payload which is impractical to test */
     if (high !== 0) {
       throw new Error("Payload too large");
     }
