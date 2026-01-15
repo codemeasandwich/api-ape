@@ -116,6 +116,43 @@ function getFilesFromDir(dir, fileTypes) {
 const re = /(?:\.([^.]+))?$/;
 
 /**
+ * Computes the endpoint path from a file path.
+ *
+ * @private
+ * @function computeEndpoint
+ * @param {string} file - File path like '/users/list.js'
+ * @returns {string|null} Endpoint like 'users/list', or null if file should be skipped
+ */
+function computeEndpoint(file) {
+  // Skip root index.js (typically re-exports or setup)
+  if (file === "/index.js") return null;
+
+  // Skip underscore-prefixed files/directories (private/internal modules)
+  if (file.includes("/_")) return null;
+
+  // Compute endpoint path from file path:
+  // 1. Remove file extension
+  // 2. Split into path parts
+  // 3. Remove leading empty string from split
+  // 4. If last part is 'index', remove it (index.js maps to parent)
+  // 5. Join with '/'
+  const pathParts = file
+    .replace(re.exec(file)[0], "")
+    .split("/")
+    .slice(1);
+
+  // Handle index.js files - they map to their parent directory
+  if (pathParts[pathParts.length - 1] === "index") {
+    pathParts.pop();
+  }
+
+  // Skip if empty (was root index after removing 'index')
+  if (pathParts.length === 0) return null;
+
+  return pathParts.join("/");
+}
+
+/**
  * Loads all modules from a directory tree into a flat endpoint-keyed object.
  *
  * This function implements the convention-based routing system for api-ape:
@@ -181,36 +218,17 @@ module.exports = function (dirname, selector) {
    */
   const endpointSources = {};
 
-  // Get all matching files and reduce into endpoint -> module map
-  return getFilesFromDir(
-    dirname,
-    selector.map((ext) => `.${ext}`),
-  ).reduce((packages, file) => {
-    // Skip root index.js (typically re-exports or setup)
-    if (file === "/index.js") return packages;
+  /**
+   * Object mapping endpoint paths to loaded modules.
+   * Kept in outer scope so the file watcher can add new controllers.
+   * @type {Object<string, *>}
+   */
+  const packages = {};
 
-    // Skip underscore-prefixed files/directories (private/internal modules)
-    // e.g., _helper.js, _internal/secret.js won't be exposed as endpoints
-    if (file.includes("/_")) return packages;
-
-    // Compute endpoint path from file path:
-    // 1. Remove file extension
-    // 2. Split into path parts
-    // 3. Remove leading empty string from split
-    // 4. If last part is 'index', remove it (index.js maps to parent)
-    // 5. Join with '/'
-    const pathParts = file
-      .replace(re.exec(file)[0], "") // Remove extension
-      .split("/")
-      .slice(1); // Remove leading empty string
-
-    // Handle index.js files - they map to their parent directory
-    if (pathParts[pathParts.length - 1] === "index") {
-      pathParts.pop();
-    }
-
-    // Create the endpoint path
-    const endpoint = pathParts.join("/");
+  // Get all matching files and load them
+  getFilesFromDir(dirname, selector.map((ext) => `.${ext}`)).forEach((file) => {
+    const endpoint = computeEndpoint(file);
+    if (!endpoint) return;
 
     // Check for duplicate endpoints
     /* istanbul ignore next 8 - startup error, would break all tests if triggered */
@@ -226,7 +244,32 @@ module.exports = function (dirname, selector) {
     // Track source for error messages and load the module
     endpointSources[endpoint] = file;
     packages[endpoint] = require(dirname + `/${file}`);
+  });
 
-    return packages;
-  }, {});
+  // Watch for new and changed controller files and hot-load them
+  fs.watch(dirname, { recursive: true }, (eventType, filename) => {
+    // Handle both new files (rename) and changes (change)
+    if (!filename) return;
+
+    // Check extension matches selector
+    if (!selector.some((ext) => filename.endsWith(`.${ext}`))) return;
+
+    const filePath = path.join(dirname, filename);
+
+    // Check file exists (rename fires for both add and delete)
+    if (!fs.existsSync(filePath)) return;
+
+    // Normalize to /foo/bar.js format for computeEndpoint
+    const normalizedFile = "/" + filename.split(path.sep).join("/");
+    const endpoint = computeEndpoint(normalizedFile);
+    if (!endpoint) return;
+
+    // Clear require cache to ensure fresh module load
+    delete require.cache[require.resolve(filePath)];
+    const isNew = !packages[endpoint];
+    packages[endpoint] = require(filePath);
+    console.log(`🦍 ${isNew ? "Hot-loaded" : "Reloaded"}: ${endpoint}`);
+  });
+
+  return packages;
 };
