@@ -182,10 +182,15 @@ export async function checkCaptivePortal() {
       const skew = Math.abs(now - data.ts);
       if (skew > MAX_PING_CLOCK_SKEW) {
         if (isDevMode()) {
+          const direction =
+            now > data.ts ? "Server time is behind" : "Server time is ahead";
           console.error(
-            "🦍 [DEV] Ping failed: timestamp too old/stale (skew:",
-            skew,
-            "ms)",
+            `🦍 [DEV] Ping failed: timestamp too old/stale\n` +
+              `  Skew: ${skew}ms (~${Math.round(skew / 1000)}s)\n` +
+              `  Client time: ${new Date(now).toISOString()}\n` +
+              `  Server time: ${new Date(data.ts).toISOString()}\n` +
+              `  ${direction} by ${Math.round(skew / 1000)}s\n` +
+              `  Max allowed: ${MAX_PING_CLOCK_SKEW}ms`,
           );
         }
         return "walled";
