@@ -52,6 +52,7 @@
  * | `ape`       | Function | Server setup or API call to /ape         |
  * | `api`       | Proxy    | Same as default export                   |
  * | `broadcast` | Function | Send message to all connected clients    |
+ * | `publish`   | Function | Send message to channel subscribers      |
  * | `clients`   | Map      | Read-only map of connected clients       |
  *
  * @module server/index
@@ -116,7 +117,7 @@
  */
 
 const serverApe = require("./lib/main");
-const { broadcast, clients } = require("./lib/broadcast");
+const { broadcast, clients, publish } = require("./lib/broadcast");
 const api = require("./client");
 const { _queueOrSend } = require("./client");
 
@@ -130,6 +131,7 @@ const { _queueOrSend } = require("./client");
  */
 serverApe.broadcast = broadcast;
 serverApe.clients = clients;
+serverApe.publish = publish;
 
 /**
  * Check if a value looks like an HTTP server instance
@@ -235,6 +237,25 @@ function ape(firstArg, ...rest) {
 ape.broadcast = broadcast;
 
 /**
+ * Publish a message to all subscribers of a channel
+ *
+ * Sends a message to all clients subscribed to the specified channel.
+ * Also caches the message so new subscribers receive it immediately.
+ *
+ * @function publish
+ * @param {string} channel - Channel name (e.g., '/health', '/stock/AAPL')
+ * @param {any} data - Data payload to send
+ *
+ * @example
+ * // Publish to a channel
+ * ape.publish('/health', { status: 'ok', uptime: process.uptime() })
+ *
+ * // Clients subscribed to '/health' will receive:
+ * // { type: '/health', data: { status: 'ok', uptime: 12345 } }
+ */
+ape.publish = publish;
+
+/**
  * Read-only Map of connected clients
  *
  * Provides access to all currently connected clients. Each client entry
@@ -331,5 +352,6 @@ module.exports = api;
 module.exports.ape = ape;
 module.exports.api = api;
 module.exports.broadcast = broadcast;
+module.exports.publish = publish;
 module.exports.clients = clients;
 module.exports.default = api;
