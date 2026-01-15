@@ -1,5 +1,7 @@
 # 🦍 api-ape Server
 
+![api-ape logo](../assets/apiApeLogo.png)
+
 ## Overview
 
 The server module provides the backend infrastructure for api-ape's WebSocket-based Remote Procedure Events (RPE) system. It transforms a standard Node.js or Bun HTTP server into a real-time API server where client function calls are automatically routed to controller files.

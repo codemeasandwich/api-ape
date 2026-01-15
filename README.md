@@ -9,6 +9,8 @@
 [![JSS Encoding](https://img.shields.io/badge/encoding-JSS-blue.svg)](server/README.md)
 [![license](https://img.shields.io/npm/l/api-ape.svg)](https://github.com/codemeasandwich/api-ape/blob/main/LICENSE)
 
+![api-ape mascot](assets/friend.png)
+
 **Remote Procedure Events (RPE)** — A lightweight WebSocket framework for building real-time APIs. Call server functions from the browser like local methods. Get real-time broadcasts with zero setup.
 
 ---

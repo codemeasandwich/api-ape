@@ -6,8 +6,8 @@ Below I’ll show two compact, exact flows (OPAQUE recommended) and then the aut
 
 ```
 Client                                  Server
-  |  (WebSocket open)                    |
-  |<-- { clientId } ---------------------|   // server assigned UUID (8-char b64)
+  |  (WebSocket open)                     |
+  |<-- { clientId } ----------------------|   // server assigned UUID (8-char b64)
   |                                       |
   | (optional)                            |
   | If Sec-WebSocket-Protocol includes 'auth' the server requires auth --->
