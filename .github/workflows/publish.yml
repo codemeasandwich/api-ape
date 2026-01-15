@@ -3,9 +3,126 @@ name: Publish to npm with Provenance
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      skip_integration:
+        description: 'Skip integration tests'
+        required: false
+        default: 'false'
 
 jobs:
+  # Run simulator tests with 100% coverage requirement
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage threshold
+        run: |
+          npm test -- --coverage --coverageThreshold='{"global":{"branches":81,"functions":94,"lines":91,"statements":91}}'
+
+  # Cross-runtime integration tests
+  integration:
+    needs: test
+    if: github.event.inputs.skip_integration != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime: node
+            version: '18'
+          - runtime: node
+            version: '20'
+          - runtime: node
+            version: '22'
+          - runtime: bun
+            version: 'latest'
+          - runtime: deno
+            version: 'v1.x'
+
+    runs-on: ubuntu-latest
+    name: Integration (${{ matrix.runtime }} ${{ matrix.version }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.runtime == 'node' && matrix.version || '20' }}
+          cache: 'npm'
+
+      - name: Setup Bun
+        if: matrix.runtime == 'bun'
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: ${{ matrix.version }}
+
+      - name: Setup Deno
+        if: matrix.runtime == 'deno'
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: ${{ matrix.version }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Node.js integration
+        if: matrix.runtime == 'node'
+        run: node integration/node/run.js
+
+      - name: Run Bun integration
+        if: matrix.runtime == 'bun'
+        run: bun run integration/bun/run.ts
+
+      - name: Run Deno integration
+        if: matrix.runtime == 'deno'
+        run: deno run --allow-all integration/deno/run.ts
+
+  # Framework integration tests (Express, Next.js, etc.)
+  framework-integration:
+    needs: test
+    if: github.event.inputs.skip_integration != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: [express, nextjs]
+
+    runs-on: ubuntu-latest
+    name: Integration (${{ matrix.framework }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install main dependencies
+        run: npm ci
+
+      - name: Install framework dependencies
+        run: cd integration/${{ matrix.framework }} && npm install
+
+      - name: Run ${{ matrix.framework }} integration
+        working-directory: integration
+        run: node ${{ matrix.framework }}/test.js
+
+  # Publish to npm (only on release)
   publish:
+    needs: [test, integration, framework-integration]
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -22,9 +139,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Run tests
-        run: npm test
 
       - name: Build browser bundle
         run: npx esbuild client/browser.js --bundle --minify --sourcemap --outfile=dist/ape.js

@@ -69,5 +69,28 @@
     "esbuild": "^0.27.2",
     "jest": "^29.3.1",
     "ws": "^8.19.0"
+  },
+  "jest": {
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/integration/"
+    ],
+    "collectCoverageFrom": [
+      "server/**/*.js",
+      "utils/**/*.js",
+      "!**/node_modules/**",
+      "!**/example/**",
+      "!server/adapters/**",
+      "!server/lib/ws/adapters/**",
+      "!server/lib/bun.js",
+      "!server/lib/runtimes/bun.js"
+    ],
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "/example/",
+      "/simulator/",
+      "/client/",
+      "/integration/"
+    ]
   }
 }
