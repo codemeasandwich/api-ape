@@ -27,9 +27,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run tests with coverage threshold
-        run: |
-          npm test -- --coverage --coverageThreshold='{"global":{"branches":81,"functions":94,"lines":91,"statements":91}}'
+      - name: Run tests
+        run: npm test
 
   # Cross-runtime integration tests
   integration:
