@@ -14,6 +14,8 @@ jobs:
   # Run simulator tests with 100% coverage requirement
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -51,6 +53,8 @@ jobs:
 
     runs-on: ubuntu-latest
     name: Integration (${{ matrix.runtime }} ${{ matrix.version }})
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -99,6 +103,8 @@ jobs:
 
     runs-on: ubuntu-latest
     name: Integration (${{ matrix.framework }})
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -113,13 +119,14 @@ jobs:
         run: npm ci
 
       - name: Install framework dependencies
-        run: cd integration/${{ matrix.framework }} && npm install
+        run: cd integration/${{ matrix.framework }} && npm ci
 
       - name: Run ${{ matrix.framework }} integration
         working-directory: integration
         run: node ${{ matrix.framework }}/test.js
 
-  # Publish to npm (only on release)
+  # Publish to npm (only on release events, not workflow_dispatch)
+  # workflow_dispatch is for testing the pipeline without publishing
   publish:
     needs: [test, integration, framework-integration]
     if: github.event_name == 'release'

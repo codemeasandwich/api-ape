@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 PACKAGE_NAME=$(node -p "require('./package.json').name")
@@ -50,12 +50,13 @@ if [[ $ORIGIN_VERSION_CMP -eq 1 ]]; then
     node -e "
       const fs = require('fs');
       const lockfile = require('./package-lock.json');
-      lockfile.version = '$LOCAL_VERSION';
+      const version = process.argv[1];
+      lockfile.version = version;
       if (lockfile.packages && lockfile.packages['']) {
-        lockfile.packages[''].version = '$LOCAL_VERSION';
+        lockfile.packages[''].version = version;
       }
       fs.writeFileSync('./package-lock.json', JSON.stringify(lockfile, null, 2) + '\n');
-    "
+    " "$LOCAL_VERSION"
     echo "   ✅ package-lock.json updated"
   fi
   
@@ -155,23 +156,25 @@ elif [[ $VERSION_CMP -eq 0 ]]; then
   node -e "
     const fs = require('fs');
     const pkg = require('./package.json');
-    pkg.version = '$NEW_VERSION';
+    const version = process.argv[1];
+    pkg.version = version;
     fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
-  "
-  
+  " "$NEW_VERSION"
+
   # Update package-lock.json if it exists
   if [[ -f "package-lock.json" ]]; then
     node -e "
       const fs = require('fs');
       const lockfile = require('./package-lock.json');
-      lockfile.version = '$NEW_VERSION';
+      const version = process.argv[1];
+      lockfile.version = version;
       if (lockfile.packages && lockfile.packages['']) {
-        lockfile.packages[''].version = '$NEW_VERSION';
+        lockfile.packages[''].version = version;
       }
       fs.writeFileSync('./package-lock.json', JSON.stringify(lockfile, null, 2) + '\n');
-    "
+    " "$NEW_VERSION"
   fi
-  
+
   # Amend the last commit with the version bump
   git add package.json
   if [[ -f "package-lock.json" ]]; then
@@ -179,38 +182,40 @@ elif [[ $VERSION_CMP -eq 0 ]]; then
   fi
   git commit --amend --no-edit
   git push --force-with-lease
-  
+
   LOCAL_VERSION="$NEW_VERSION"
   echo "✅ Version bumped and commit amended"
 else
   # Local version is lower than npm - this shouldn't happen, bump to npm + patch
   echo "⚠️  Local version ($LOCAL_VERSION) is lower than npm ($NPM_VERSION). Bumping from npm version..."
-  
+
   IFS='.' read -r MAJOR MINOR PATCH <<< "$NPM_VERSION"
   NEW_PATCH=$((PATCH + 1))
   NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-  
+
   echo "📝 Bumping version: $NPM_VERSION → $NEW_VERSION"
-  
+
   # Update package.json with new version
   node -e "
     const fs = require('fs');
     const pkg = require('./package.json');
-    pkg.version = '$NEW_VERSION';
+    const version = process.argv[1];
+    pkg.version = version;
     fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
-  "
-  
+  " "$NEW_VERSION"
+
   # Update package-lock.json if it exists
   if [[ -f "package-lock.json" ]]; then
     node -e "
       const fs = require('fs');
       const lockfile = require('./package-lock.json');
-      lockfile.version = '$NEW_VERSION';
+      const version = process.argv[1];
+      lockfile.version = version;
       if (lockfile.packages && lockfile.packages['']) {
-        lockfile.packages[''].version = '$NEW_VERSION';
+        lockfile.packages[''].version = version;
       }
       fs.writeFileSync('./package-lock.json', JSON.stringify(lockfile, null, 2) + '\n');
-    "
+    " "$NEW_VERSION"
   fi
   
   # Amend the last commit with the version bump
@@ -454,8 +459,19 @@ else
       \"body\": $CHANGELOG_ESCAPED
     }")
   
-  # Check if release was created
-  if echo "$RESPONSE" | grep -q '"id"'; then
+  # Check if release was created (look for "id" field in JSON response)
+  if echo "$RESPONSE" | node -e "
+    let data = '';
+    process.stdin.on('data', chunk => data += chunk);
+    process.stdin.on('end', () => {
+      try {
+        const json = JSON.parse(data);
+        process.exit(json.id ? 0 : 1);
+      } catch (e) {
+        process.exit(1);
+      }
+    });
+  "; then
     echo "✅ Release created via GitHub API"
   else
     echo "❌ Failed to create release:"

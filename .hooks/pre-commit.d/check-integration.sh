@@ -15,8 +15,7 @@ if [ ! -d "$INTEGRATION_DIR" ]; then
     exit 0
 fi
 
-# Check available runtimes
-RUNTIMES_AVAILABLE=0
+# Track test results
 RUNTIMES_TESTED=0
 RUNTIMES_FAILED=0
 

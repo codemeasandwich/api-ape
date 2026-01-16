@@ -5,6 +5,14 @@
 # Directories to exclude from checks
 EXCLUDED_DIRS="node_modules|coverage|.next|.git|.hooks|.github|example|todo|scripts"
 
+# Print a formatted header for check output
+print_header() {
+    local title="$1"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  $title"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
 # Function to check if a path should be excluded
 is_excluded() {
     local path="$1"
