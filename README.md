@@ -62,8 +62,9 @@ module.exports = function(text) {
 <script src="/api/ape.js"></script>
 <script>
   const result = await api.hello('World')  // "Hello, World!"
-  
-  api.on('message', ({ data }) => console.log(data))
+
+  // Subscribe to messages (pass a callback)
+  const unsub = api.message(data => console.log(data))
 </script>
 ```
 
@@ -72,7 +73,10 @@ module.exports = function(text) {
 import api from 'api-ape'
 
 const result = await api.hello('World')
-api.on('message', ({ data }) => console.log(data))
+
+// Subscribe (pass callback) vs RPC call (pass data)
+const unsub = api.message(data => console.log(data))  // Subscribe
+await api.message({ text: 'Hello' })                   // RPC call
 ```
 
 ---

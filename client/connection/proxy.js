@@ -43,6 +43,8 @@
  * api.chat.messages('/room1', {...})  // Calls "/chat/messages/room1"
  */
 
+import { subscribe } from "./subscriptions.js";
+
 /**
  * Path segment separator used when building endpoint paths
  * @constant {string}
@@ -59,7 +61,7 @@ const joinKey = "/";
  * @constant {Set<string>}
  * @private
  */
-const reservedKeys = new Set(["on", "onConnectionChange", "transport"]);
+const reservedKeys = new Set(["onConnectionChange", "transport"]);
 
 /**
  * Proxy handler object that implements the path-building behavior
@@ -108,14 +110,19 @@ const handler = {
     /**
      * Wrapper function that builds the path and forwards to the sender
      *
-     * @param {string|any} a - Either a path suffix (if 2 args) or the data payload
+     * @param {string|any|Function} a - Either a path suffix (if 2 args), data payload, or subscription callback
      * @param {any} [b] - The data payload (if 2 args)
-     * @returns {Promise<any>} Promise resolving to the server response
+     * @returns {Promise<any>|Function} Promise resolving to server response, or unsubscribe function for subscriptions
      *
      * @example
-     * // Single argument - data only
+     * // Single argument - data only (RPC call)
      * api.users({ name: 'Alice' })
      * // → path="/users", body={ name: 'Alice' }
+     *
+     * @example
+     * // Single argument - function (subscription)
+     * api.news.banking(data => console.log(data))
+     * // → subscribes to "/news/banking", returns unsubscribe function
      *
      * @example
      * // Two arguments - path suffix + data
@@ -130,6 +137,11 @@ const handler = {
     const wrapperFn = function (a, b) {
       let path = joinKey + key,
         body;
+
+      // If single argument is a function, this is a subscription
+      if (arguments.length === 1 && typeof a === "function") {
+        return subscribe(path, a);
+      }
 
       if (2 === arguments.length) {
         // Two arguments: first is path suffix, second is body

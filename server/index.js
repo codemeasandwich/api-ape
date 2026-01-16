@@ -118,8 +118,16 @@
 
 const serverApe = require("./lib/main");
 const { broadcast, clients, publish } = require("./lib/broadcast");
+const createPublishProxy = require("./lib/broadcast/publishProxy");
 const api = require("./client");
 const { _queueOrSend } = require("./client");
+
+/**
+ * Chained publish proxy for fluent syntax
+ * @type {Proxy}
+ * @private
+ */
+const publishProxy = createPublishProxy();
 
 /**
  * Attach broadcast utilities to the serverApe function for convenience access
@@ -131,7 +139,7 @@ const { _queueOrSend } = require("./client");
  */
 serverApe.broadcast = broadcast;
 serverApe.clients = clients;
-serverApe.publish = publish;
+serverApe.publish = publishProxy;
 
 /**
  * Check if a value looks like an HTTP server instance
@@ -239,21 +247,20 @@ ape.broadcast = broadcast;
 /**
  * Publish a message to all subscribers of a channel
  *
- * Sends a message to all clients subscribed to the specified channel.
- * Also caches the message so new subscribers receive it immediately.
- *
- * @function publish
- * @param {string} channel - Channel name (e.g., '/health', '/stock/AAPL')
- * @param {any} data - Data payload to send
+ * Supports both chained syntax and direct function call:
  *
  * @example
- * // Publish to a channel
+ * // Chained syntax (v2)
+ * ape.publish.news.banking({ headline: 'Market Update' })
+ * ape.publish.health({ status: 'ok', uptime: process.uptime() })
+ *
+ * // Direct call (legacy, still supported)
  * ape.publish('/health', { status: 'ok', uptime: process.uptime() })
  *
  * // Clients subscribed to '/health' will receive:
  * // { type: '/health', data: { status: 'ok', uptime: 12345 } }
  */
-ape.publish = publish;
+ape.publish = publishProxy;
 
 /**
  * Read-only Map of connected clients
@@ -352,6 +359,6 @@ module.exports = api;
 module.exports.ape = ape;
 module.exports.api = api;
 module.exports.broadcast = broadcast;
-module.exports.publish = publish;
+module.exports.publish = publishProxy;
 module.exports.clients = clients;
 module.exports.default = api;

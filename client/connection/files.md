@@ -14,13 +14,15 @@ This module handles the core mechanics of maintaining a WebSocket connection to 
 
 ```
 connection/
-├── fileDownload.js   # Binary file download handling
-├── fileHandling.js   # File upload/download coordination
-├── fileUtils.js      # File transfer utilities
-├── network.js        # Network state detection
-├── proxy.js          # Proxy-based API generation
-├── sender.js         # Message sending with queryId correlation
-└── state.js          # Connection state machine
+├── fileDownload.js    # Binary file download handling
+├── fileHandling.js    # File upload/download coordination
+├── fileUtils.js       # File transfer utilities
+├── messageHandler.js  # Message processing and dispatch
+├── network.js         # Network state detection
+├── proxy.js           # Proxy-based API generation
+├── sender.js          # Message sending with queryId correlation
+├── state.js           # Connection state machine
+└── subscriptions.js   # Pub/sub subscription manager
 ```
 
 ## Files
@@ -59,3 +61,11 @@ Coordinates file uploads and downloads by detecting special tags in messages:
 ### `fileUtils.js`
 
 Shared utilities for file transfer operations including content type detection, hash generation, and ArrayBuffer/Buffer conversions.
+
+### `messageHandler.js`
+
+Handles incoming message processing and dispatch. Processes binary data hydration (fetching linked resources) and dispatches messages to registered handlers and subscription callbacks. Provides the `setOnReceiver` function for registering message handlers.
+
+### `subscriptions.js`
+
+Manages channel subscriptions for the chained subscription syntax. Tracks local callbacks per channel, sends subscribe/unsubscribe messages to server, dispatches incoming data to callbacks, and handles resubscription on reconnect.

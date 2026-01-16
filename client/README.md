@@ -28,11 +28,14 @@ The client works in both browser environments (via `<script>` tag) and bundled a
 ```html
 <script src="/api/ape.js"></script>
 <script>
-  // Call server functions
+  // Call server functions (RPC)
   api.hello('World').then(result => console.log(result))
-  
-  // Listen for broadcasts
-  api.on('message', ({ data }) => console.log(data))
+
+  // Subscribe to channels (pass a callback function)
+  const unsub = api.message(data => console.log(data))
+
+  // Unsubscribe when done
+  unsub()
 </script>
 ```
 
@@ -48,8 +51,13 @@ import api from 'api-ape'
 // Just use it! Calls are buffered until connected.
 api.users.list().then(users => console.log(users))
 
-// Listen for broadcasts
-api.on('message', ({ data }) => console.log(data))
+// Subscribe to channels (pass a callback function)
+const unsub = api.news.banking(data => {
+  console.log('Received:', data)
+})
+
+// Unsubscribe when done
+unsub()
 
 // Track connection state
 api.onConnectionChange((state) => {
@@ -109,29 +117,41 @@ Binary transfers use `/api/ape/data/:hash` endpoints with session verification.
 
 ## Pub/Sub Subscriptions
 
-Subscribe to channels to receive targeted updates from the server:
+Subscribe to channels using the same chaining syntax as RPC calls. The key difference: **pass a callback function to subscribe, pass data to make an RPC call**.
 
 ```js
-// Subscribe to a channel
-api.send({ subscribe: '/health' })
-api.send({ subscribe: '/stock/AAPL' })
+// RPC call - passing data
+await api.news.banking({ category: 'stocks' })  // Returns Promise<response>
 
-// Listen for published messages (same as broadcast)
-api.on('/health', ({ data }) => {
-  console.log('Health update:', data)
-})
-
-api.on('/stock/AAPL', ({ data }) => {
-  console.log('AAPL:', data.price)
+// Subscribe - passing a callback function
+const unsub = api.news.banking(data => {
+  console.log('Received:', data)
 })
 
 // Unsubscribe when done
-api.send({ unsubscribe: '/health' })
+unsub()
+```
+
+### Chained Subscriptions
+
+```js
+// Subscribe to nested channels
+const unsub1 = api.stock.AAPL(data => {
+  console.log('AAPL:', data.price)
+})
+
+const unsub2 = api.health(data => {
+  console.log('Health update:', data)
+})
+
+// Clean up
+unsub1()
+unsub2()
 ```
 
 **Behavior:**
 - On subscribe, you receive the last published message immediately (if any)
-- Messages arrive in the same format as broadcasts: `{ type: channel, data: payload }`
+- Subscriptions are automatically restored on reconnect
 - Subscriptions are automatically cleaned up on disconnect
 
 ## Security

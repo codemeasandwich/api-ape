@@ -20,21 +20,21 @@
 
         this.onStoreChange = attachStore(() => this.messages)
 
-        // Receive init with history + user count on connect
-        api.on('init', ({ data }) => {
+        // Subscribe to init with history + user count on connect
+        api.init(data => {
           this.messages = data.history || []
           this.users = data.users || 0
           this.onStoreChange()
         })
 
-        // Listen for user count updates
-        api.on('users', ({ data }) => {
+        // Subscribe to user count updates
+        api.users(data => {
           this.users = data.count
           this.onStoreChange()
         })
 
-        // Listen for new messages from others
-        api.on('message', ({ data }) => {
+        // Subscribe to new messages from others
+        api.message(data => {
           this.messages.push(data)
           this.onStoreChange()
         })

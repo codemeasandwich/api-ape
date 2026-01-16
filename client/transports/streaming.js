@@ -432,6 +432,32 @@ function createStreamingTransport() {
   }
 
   /**
+   * Send a raw message object to the server (for subscribe/unsubscribe)
+   *
+   * Unlike send(), this sends the object directly without wrapping it
+   * in the standard type/data/createdAt format.
+   *
+   * @async
+   * @param {Object} msg - The raw message object to send
+   * @returns {Promise<void>}
+   *
+   * @example
+   * // Subscribe to a channel
+   * await transport.sendRaw({ subscribe: '/news/banking' })
+   *
+   * // Unsubscribe from a channel
+   * await transport.sendRaw({ unsubscribe: '/news/banking' })
+   */
+  async function sendRaw(msg) {
+    await fetch(getPollUrl(), {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: jss.stringify(msg),
+    });
+  }
+
+  /**
    * Close the streaming connection
    *
    * Gracefully shuts down the transport:
@@ -499,6 +525,12 @@ function createStreamingTransport() {
      * @type {function(string, any, number): Promise<any>}
      */
     send,
+
+    /**
+     * Send a raw message object (for subscribe/unsubscribe)
+     * @type {function(Object): Promise<void>}
+     */
+    sendRaw,
 
     /**
      * Close the connection

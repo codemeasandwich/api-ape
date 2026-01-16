@@ -12,9 +12,10 @@ This module provides client tracking and messaging infrastructure for api-ape se
 
 ```
 broadcast/
-├── clients.js  # Client tracking with read-only proxy
-├── index.js    # Module entry point, wires pub/sub cleanup
-└── pubsub.js   # Channel subscription and publishing
+├── clients.js      # Client tracking with read-only proxy
+├── index.js        # Module entry point, wires pub/sub cleanup
+├── publishProxy.js # Chained publish proxy for fluent syntax
+└── pubsub.js       # Channel subscription and publishing
 ```
 
 ## Files
@@ -46,3 +47,7 @@ Channel-based pub/sub system for targeted messaging:
 - `publish(channel, data)` — Send message to all channel subscribers
 - `cleanupClientSubscriptions(clientId)` — Remove all subscriptions on disconnect
 - Stores last published message per channel for late-joining subscribers
+
+### `publishProxy.js`
+
+Creates a Proxy-based API for fluent publish syntax (`ape.publish.news.banking(data)`). Intercepts property access to build channel paths dynamically. Supports both chained syntax and legacy direct function call (`ape.publish('/channel', data)`).

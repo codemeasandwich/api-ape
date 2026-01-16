@@ -1,5 +1,5 @@
 /**
- * Core client socket connection module for api-ape
+ * @fileoverview Core client socket connection module for api-ape
  *
  * This module manages WebSocket connections with automatic fallback to HTTP streaming
  * when WebSocket connections fail or are blocked (e.g., by corporate firewalls).
@@ -61,12 +61,14 @@ import {
   setupOnlineListeners,
   WS_RETRY_INTERVAL,
 } from "./connection/network";
-import {
-  fetchLinkedResources,
-  fetchSharedFiles,
-} from "./connection/fileDownload";
 import { wrap } from "./connection/proxy";
 import { createWsSend, createSender } from "./connection/sender";
+import { setSendFn, resubscribeAll } from "./connection/subscriptions";
+import {
+  processIncomingData,
+  dispatchMessage,
+  setOnReceiver,
+} from "./connection/messageHandler";
 
 /**
  * Configured transport mode
@@ -132,20 +134,6 @@ const waitingOn = {};
 let aWaitingSend = [];
 
 /**
- * Array of universal message receivers (called for all message types)
- * @type {Array<function({err: any, type: string, data: any}): void>}
- * @private
- */
-const receiverArray = [];
-
-/**
- * Map of type-specific message receivers
- * @type {Object.<string, Array<function({err: any, type: string, data: any}): void>>}
- * @private
- */
-const ofTypesOb = {};
-
-/**
  * Whether auto-reconnect is enabled
  * @type {boolean}
  * @private
@@ -162,50 +150,6 @@ const wsSend = createWsSend(() => __socket, waitingOn);
 // Setup browser online/offline listeners on module load
 if (typeof window !== "undefined") {
   setupOnlineListeners(attemptConnection);
-}
-
-/**
- * Process incoming message data to hydrate binary resources
- *
- * This function handles two types of binary data references:
- * - L-tagged: Binary data linked from server responses (fetchLinkedResources)
- * - F-tagged: Shared files from other clients (fetchSharedFiles)
- *
- * @param {any} data - Raw data from server message
- * @param {Error|null} err - Error from the message, if any
- * @returns {Promise<any>} Hydrated data with binary resources fetched
- * @private
- *
- * @example
- * // Server sends: { image<!L>: 'abc123' }
- * // After hydration: { image: ArrayBuffer }
- */
-async function processIncomingData(data, err) {
-  if (!data || err) return data;
-  try {
-    let result = await fetchLinkedResources(data);
-    return await fetchSharedFiles(result);
-  } catch (e) {
-    console.error(`🦍 Failed to hydrate data:`, e);
-    return data;
-  }
-}
-
-/**
- * Dispatch a received message to all registered handlers
- *
- * Messages are delivered to:
- * 1. Type-specific handlers registered via setOnReceiver(type, handler)
- * 2. Universal handlers registered via setOnReceiver(handler)
- *
- * @param {string} type - Message type identifier
- * @param {Error|null} err - Error payload, if any
- * @param {any} data - Message data payload
- * @private
- */
-function dispatchMessage(type, err, data) {
-  if (ofTypesOb[type]) ofTypesOb[type].forEach((w) => w({ err, type, data }));
-  receiverArray.forEach((w) => w({ err, type, data }));
 }
 
 /**
@@ -257,6 +201,11 @@ function switchToStreaming() {
      */
     streamingTransport.onOpen = () => {
       ready = true;
+
+      // Set up subscription send function for streaming and re-subscribe
+      setSendFn((msg) => streamingTransport.sendRaw(msg));
+      resubscribeAll();
+
       notifyConnectionChange(ConnectionState.Connected);
       flushWaitingMessages((t, d, c) => streamingTransport.send(t, d, c));
       startWsRetry();
@@ -352,6 +301,11 @@ function tryWebSocket(isRetry = false) {
     currentTransport = "websocket";
     __socket = ws;
     ready = true;
+
+    // Set up subscription send function and re-subscribe to all channels
+    setSendFn((msg) => ws.send(jss.stringify(msg)));
+    resubscribeAll();
+
     notifyConnectionChange(ConnectionState.Connected);
     flushWaitingMessages(wsSend);
   };
@@ -510,28 +464,9 @@ function buildClientInterface() {
 
     /**
      * Register a message receiver/handler
-     *
-     * @param {string|function} onTypeStFn - Message type to listen for, or universal handler function
-     * @param {function=} handlerFn - Handler function (if first arg is type string)
-     *
-     * @example
-     * // Type-specific handler
-     * client.setOnReceiver('notification', (msg) => {
-     *   console.log('Got notification:', msg.data)
-     * })
-     *
-     * // Universal handler (receives all messages)
-     * client.setOnReceiver((msg) => {
-     *   console.log('Got message:', msg.type, msg.data)
-     * })
+     * @see {@link module:client/connection/messageHandler.setOnReceiver}
      */
-    setOnReceiver: (onTypeStFn, handlerFn) => {
-      if (typeof onTypeStFn === "string") {
-        ofTypesOb[onTypeStFn] = [handlerFn];
-      } else if (!receiverArray.includes(onTypeStFn)) {
-        receiverArray.push(onTypeStFn);
-      }
-    },
+    setOnReceiver,
 
     /**
      * Subscribe to connection state changes

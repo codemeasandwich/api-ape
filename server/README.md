@@ -179,10 +179,10 @@ api-ape includes a built-in pub/sub system for channel-based messaging. Unlike `
 
 ### Server Side
 
-Use `ape.publish(channel, data)` from anywhere on the server:
+Use chained `ape.publish.channel.name(data)` syntax from anywhere on the server:
 
 ```js
-const { ape, publish } = require('api-ape')
+const { ape } = require('api-ape')
 
 // Publish from a controller
 module.exports = function(data) {
@@ -190,28 +190,37 @@ module.exports = function(data) {
   return { published: true }
 }
 
-// Or publish from anywhere on the server
+// Chained publish syntax (recommended)
+ape.publish.stock.AAPL({ price: 185.50, change: 2.3 })
+ape.publish.notifications({ message: 'System update!' })
+ape.publish.news.banking({ headline: 'Market Update' })
+
+// Legacy syntax (still supported)
 ape.publish('/stock/AAPL', { price: 185.50, change: 2.3 })
-publish('/notifications', { message: 'System update!' })
 ```
 
 ### Client Side
 
-Clients subscribe by sending a message with a `subscribe` key:
+Clients subscribe using the same chaining syntax. Pass a **callback function** to subscribe:
 
 ```js
-// Subscribe to a channel
-api.send({ subscribe: '/health' })
-api.send({ subscribe: '/stock/AAPL' })
-
-// Unsubscribe
-api.send({ unsubscribe: '/health' })
-
-// Listen for published messages (same as broadcast)
-api.on('/health', ({ data }) => {
+// Subscribe to channels (pass a callback function)
+const unsub1 = api.health(data => {
   console.log('Health update:', data)
 })
+
+const unsub2 = api.stock.AAPL(data => {
+  console.log('AAPL:', data.price)
+})
+
+// Unsubscribe when done
+unsub1()
+unsub2()
 ```
+
+**Key insight:** The same chaining syntax is used for both RPC calls and subscriptions. The difference is what you pass:
+- **Data** → RPC call (returns Promise)
+- **Callback function** → Subscription (returns unsubscribe function)
 
 ### Behavior
 

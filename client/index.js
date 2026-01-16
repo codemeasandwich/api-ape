@@ -14,20 +14,30 @@
  * connection state internally. Calls made before the connection is established are
  * automatically buffered and flushed once connected.
  *
+ * ## Subscriptions (v2)
+ *
+ * Subscriptions use the same chaining syntax as RPC calls. The difference is
+ * what you pass: **a function argument = subscription, data = RPC call**.
+ *
  * For server-side rendering (SSR), the module returns a dummy object to prevent errors.
  *
  * @example
  * // Import the api-ape client
  * import api from 'api-ape'
  *
- * // Call API endpoints - calls are buffered until connected
+ * // RPC call - passing data
  * api.message({ user: 'Bob', text: 'Hello!' })
  *
  * // With path parameters
  * api.users('/123', { name: 'Updated Name' })
  *
- * // Subscribe to server broadcasts
- * api.on('message', (data) => console.log(data))
+ * // Subscribe to channels - passing a callback function
+ * const unsub = api.news.banking(data => {
+ *   console.log('Received:', data)
+ * })
+ *
+ * // Unsubscribe when done
+ * unsub()
  *
  * // Monitor connection state changes
  * api.onConnectionChange((state) => {
@@ -72,11 +82,11 @@ let resolvedClient = null;
 const bufferedCalls = [];
 
 /**
- * Buffer for broadcast receivers registered before the client is ready
- * @type {Array<{type: string, handler: Function}>}
+ * Buffer for subscriptions registered before the client is ready
+ * @type {Array<{channel: string, callback: Function, resolve: Function}>}
  * @private
  */
-const bufferedReceivers = [];
+const bufferedSubscriptions = [];
 
 /**
  * Registered connection state change handlers
@@ -120,6 +130,7 @@ function getClient() {
 
   clientPromise = (async () => {
     const connectSocket = (await import("./connectSocket.js")).default;
+    const { subscribe } = await import("./connection/subscriptions.js");
 
     // Connect
     const client = connectSocket();
@@ -133,11 +144,12 @@ function getClient() {
 
     resolvedClient = client;
 
-    // Flush buffered receivers
-    bufferedReceivers.forEach(({ type, handler }) => {
-      client.setOnReceiver(type, handler);
+    // Flush buffered subscriptions
+    bufferedSubscriptions.forEach(({ channel, callback, resolve }) => {
+      const unsub = subscribe(channel, callback);
+      resolve(unsub);
     });
-    bufferedReceivers.length = 0;
+    bufferedSubscriptions.length = 0;
 
     // Flush buffered calls
     bufferedCalls.forEach(({ method, args, resolve, reject }) => {
@@ -167,10 +179,13 @@ function getClient() {
  * to return functions that either call the client directly (if ready) or
  * buffer the call for later execution.
  *
+ * Subscriptions are detected by passing a function as the argument:
+ * - `api.news.banking({ data })` → RPC call (returns Promise)
+ * - `api.news.banking(callback)` → Subscription (returns unsubscribe function)
+ *
  * @type {Proxy}
  * @private
  *
- * @property {Function} on - Subscribe to server broadcasts
  * @property {Function} onConnectionChange - Subscribe to connection state changes
  * @property {string|null} transport - Current transport type ('websocket', 'polling', or null)
  */
@@ -186,7 +201,6 @@ const senderProxy = new Proxy(
      */
     get(target, prop) {
       // Reserved properties
-      if (prop === "on") return on;
       if (prop === "onConnectionChange") return onConnectionChange;
       if (prop === "transport") return resolvedClient?.transport || null;
       if (prop === "then" || prop === "catch") return undefined; // Not a Promise
@@ -208,42 +222,6 @@ const senderProxy = new Proxy(
     },
   },
 );
-
-/**
- * Subscribe to broadcast messages from the server
- *
- * Registers a handler function to receive messages of a specific type
- * pushed from the server. If the client isn't ready yet, the subscription
- * is buffered and registered once connected.
- *
- * @param {string} type - The broadcast message type to listen for
- * @param {Function} handler - Callback function invoked when a message of this type is received
- * @param {Object} handler.data - The message data sent from the server
- *
- * @example
- * // Listen for chat messages
- * api.on('chat', ({ err, type, data }) => {
- *   if (err) {
- *     console.error('Chat error:', err)
- *     return
- *   }
- *   console.log(`New message: ${data.text}`)
- * })
- *
- * @example
- * // Listen for user presence updates
- * api.on('presence', ({ data }) => {
- *   console.log(`${data.user} is now ${data.status}`)
- * })
- */
-function on(type, handler) {
-  if (resolvedClient) {
-    resolvedClient.setOnReceiver(type, handler);
-  } else {
-    bufferedReceivers.push({ type, handler });
-    getClient();
-  }
-}
 
 /**
  * Subscribe to connection state changes
@@ -301,13 +279,6 @@ function onConnectionChange(handler) {
 }
 
 // Define properties on the proxy to avoid Proxy interception issues
-Object.defineProperty(senderProxy, "on", {
-  value: on,
-  writable: false,
-  enumerable: false,
-  configurable: false,
-});
-
 Object.defineProperty(senderProxy, "onConnectionChange", {
   value: onConnectionChange,
   writable: false,
@@ -332,20 +303,25 @@ if (isBrowser) {
  * @example
  * import api from 'api-ape'
  *
- * // Make API calls
+ * // Make API calls (RPC)
  * const result = await api.users({ name: 'John' })
  *
  * // With path segments
  * const user = await api.users('/123')
  *
- * // Subscribe to broadcasts
- * api.on('notification', (data) => console.log(data))
+ * // Subscribe to channels (pass a callback function)
+ * const unsub = api.news.banking(data => {
+ *   console.log('Received:', data)
+ * })
+ *
+ * // Unsubscribe when done
+ * unsub()
  */
 export default senderProxy;
 
 /**
  * Named exports for more explicit imports
  * @example
- * import { on, onConnectionChange, getClient } from 'api-ape'
+ * import { onConnectionChange, getClient } from 'api-ape'
  */
-export { on, onConnectionChange, getClient };
+export { onConnectionChange, getClient };
