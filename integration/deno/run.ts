@@ -8,16 +8,19 @@
  */
 
 import { resolve, relative } from "https://deno.land/std@0.208.0/path/mod.ts";
+// @ts-ignore - Node module compatibility
+import { createRequire } from "node:module";
 
-// Import api-ape from local server directory using file URL
+// Create a require function for CommonJS modules
+const require = createRequire(import.meta.url);
+
+// Import api-ape using require (CommonJS module)
 const serverPath = resolve(Deno.cwd(), "server/index.js");
-// @ts-ignore - Dynamic import
-const { ape } = await import(`file://${serverPath}`);
+const { ape } = require(serverPath);
 
-// Import shared test infrastructure
-// @ts-ignore - CommonJS modules
-const { scenarios } = await import("../shared/scenarios.js");
-const { runScenarios } = await import("../shared/test-runner.js");
+// Import shared test infrastructure (CommonJS modules)
+const { scenarios } = require("../shared/scenarios.js");
+const { runScenarios } = require("../shared/test-runner.js");
 
 const PORT = 9102;
 
