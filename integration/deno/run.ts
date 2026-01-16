@@ -11,16 +11,28 @@ import { resolve, relative } from "https://deno.land/std@0.208.0/path/mod.ts";
 // @ts-ignore - Node module compatibility
 import { createRequire } from "node:module";
 
+// Global timeout to force exit if tests hang (2 minutes)
+const GLOBAL_TIMEOUT = 120000;
+setTimeout(() => {
+    console.error("ERROR: Global timeout reached - force exiting");
+    Deno.exit(1);
+}, GLOBAL_TIMEOUT);
+
+console.log("Starting Deno integration tests...");
+
 // Create a require function for CommonJS modules
 const require = createRequire(import.meta.url);
 
+console.log("Loading api-ape...");
 // Import api-ape using require (CommonJS module)
 const serverPath = resolve(Deno.cwd(), "server/index.js");
 const { ape } = require(serverPath);
+console.log("api-ape loaded successfully");
 
 // Import shared test infrastructure (CommonJS modules)
 const { scenarios } = require("../shared/scenarios.js");
 const { runScenarios } = require("../shared/test-runner.js");
+console.log("Test infrastructure loaded");
 
 const PORT = 9102;
 
