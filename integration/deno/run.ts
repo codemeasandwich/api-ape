@@ -29,6 +29,13 @@ const serverPath = resolve(Deno.cwd(), "server/index.js");
 const { ape } = require(serverPath);
 console.log("api-ape loaded successfully");
 
+// Force api-ape to use Node WebSocket adapter since we're using node:http
+// The Deno adapter expects native Deno Request objects, but node:http provides
+// Node-style IncomingMessage objects which are incompatible.
+const wsProvider = require(resolve(Deno.cwd(), "server/lib/wsProvider.js"));
+wsProvider._setRuntimeOverride({ deno: false });
+console.log("Runtime override set to use Node adapter");
+
 // Import shared test infrastructure (CommonJS modules)
 const { scenarios } = require("../shared/scenarios.js");
 const { runScenarios } = require("../shared/test-runner.js");
