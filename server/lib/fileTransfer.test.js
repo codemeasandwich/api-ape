@@ -343,6 +343,12 @@ describe('FileTransferManager - Uploads', () => {
 // =============================================================================
 
 describe('getFileTransferManager', () => {
+    afterAll(() => {
+        // Clean up singleton to prevent open handle warning
+        const { resetFileTransferManager } = require('./fileTransfer');
+        resetFileTransferManager();
+    });
+
     test('returns same instance on multiple calls', () => {
         const { getFileTransferManager: getFTM } = require('./fileTransfer');
         const instance1 = getFTM();

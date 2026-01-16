@@ -1,0 +1,21 @@
+{
+  "name": "api-ape-integration-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cross-runtime integration tests for api-ape",
+  "scripts": {
+    "test": "npm-run-all --continue-on-error test:*",
+    "test:node": "node node/run.js",
+    "test:bun": "bun run bun/run.ts",
+    "test:deno": "deno run --allow-all deno/run.ts",
+    "test:express": "node express/test.js",
+    "test:nextjs": "node nextjs/test.js",
+    "setup": "npm-run-all setup:*",
+    "setup:express": "cd express && npm install",
+    "setup:nextjs": "cd nextjs && npm install",
+    "check:runtimes": "node shared/check-runtimes.js"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  }
+}

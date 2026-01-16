@@ -25,13 +25,29 @@ NextJs/
 ├── api/
 │   └── message.js        # Message controller
 ├── ape/
-│   ├── onConnect.js      # Connection lifecycle
+│   ├── index.js          # Ape module entry point
+│   ├── client.js         # Client-side api-ape wrapper
+│   ├── embed.js          # Embed values for controller context
+│   ├── onConnect.js      # Connection lifecycle hook
+│   ├── onDisconnect.js   # Disconnection handler
+│   ├── onReceive.js      # Message receive handler
+│   ├── onSend.js         # Message send handler
+│   ├── onError.js        # Error handler
 │   └── logic/
-│       └── chat.js       # Chat utilities
+│       └── chat.js       # Chat utilities (history, etc.)
 ├── pages/
-│   └── index.tsx         # Chat UI
-└── styles/
-    └── Chat.module.css   # Chat styling
+│   ├── _app.tsx          # Next.js app wrapper
+│   ├── index.tsx         # Chat UI
+│   └── Info.tsx          # Info panel component
+├── styles/
+│   ├── globals.css       # Global styles
+│   ├── Home.module.css   # Home page styles
+│   └── Chat.module.css   # Chat component styles
+├── Dockerfile            # Production Docker image
+├── Dockerfile.dev        # Development Docker image
+├── docker-compose.yml    # Docker Compose config
+├── next.config.js        # Next.js configuration
+└── tsconfig.json         # TypeScript configuration
 ```
 
 ## Features
@@ -69,7 +85,7 @@ app.prepare().then(() => {
 ### Connection Lifecycle (ape/onConnect.js)
 
 ```js
-const { ape } = require('api-ape')  // For ape.clients, ape.broadcast
+const { ape } = require('api-ape')  // For ape.clients, ape.broadcast, ape.publish
 
 module.exports.onConnect = (socket, req, send) => {
   // Send initial data to new client

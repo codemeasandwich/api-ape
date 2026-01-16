@@ -9,6 +9,8 @@
 [![JSS Encoding](https://img.shields.io/badge/encoding-JSS-blue.svg)](server/README.md)
 [![license](https://img.shields.io/npm/l/api-ape.svg)](https://github.com/codemeasandwich/api-ape/blob/main/LICENSE)
 
+![api-ape mascot](assets/friend.jpg)
+
 **Remote Procedure Events (RPE)** — A lightweight WebSocket framework for building real-time APIs. Call server functions from the browser like local methods. Get real-time broadcasts with zero setup.
 
 ---
@@ -79,11 +81,13 @@ api.on('message', ({ data }) => console.log(data))
 
 * **[Auto-wiring](server/README.md#auto-routing)** — Drop JS files in a folder, they become API endpoints
 * **[Real-time broadcasts](server/README.md#controller-context-this)** — Built-in `broadcast()` and `broadcastOthers()` methods
+* **[Pub/Sub channels](server/README.md#pubsub-channels)** — Clients subscribe to channels, server publishes updates
 * **[Promise-based calls](client/README.md#usage)** — `api.users.list()` maps to `api/users/list.js`
 * **[Automatic reconnection](client/README.md#features)** — Client reconnects with exponential backoff
 * **[HTTP fallback](server/README.md#http-streaming-endpoints)** — Falls back to long polling when WebSockets are blocked
 * **[JSS Encoding](server/README.md#troubleshooting--faq)** — Supports Date, RegExp, Error, Set, Map over the wire
 * **[🌲 Forest](server/README.md#-forest-distributed-mesh)** — Distributed mesh for horizontal scaling
+* **[🔐 Authentication](server/README.md#authentication)** — OPAQUE/PAKE auth with tiered access control
 
 ---
 
@@ -106,6 +110,7 @@ cd example/ExpressJs && npm install && npm start
 |------|-------------|
 | **[Server README](server/README.md)** | API reference, lifecycle hooks, auto-routing, file transfers, 🌲 Forest |
 | **[Client README](client/README.md)** | Client usage, connection states, file transfers, security |
+| **[Auth README](server/security/auth/README.md)** | OPAQUE authentication, tiered access, authorization |
 | **[Adapters README](server/adapters/README.md)** | Database adapters for Forest |
 
 ---

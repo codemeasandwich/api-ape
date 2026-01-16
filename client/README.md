@@ -1,14 +1,23 @@
 # 🦍 api-ape Client
 
-WebSocket client library with auto-reconnection and proxy-based API calls.
+## Overview
 
-## Files
+The client module provides the browser-side WebSocket client for api-ape. It enables seamless communication with api-ape servers through a proxy-based API that converts method calls like `api.users.list()` into WebSocket messages.
 
-| File | Description |
-|------|-------------|
-| `index.js` | **Unified entry** — auto-initializing client with call buffering |
-| `browser.js` | Browser entry point — exposes `window.ape` |
-| `connectSocket.js` | WebSocket client with auto-reconnect, queuing, and JSS encoding |
+**Key capabilities:**
+
+- **Proxy-based API** — Call server endpoints like local methods (`api.path.method(data)`)
+- **Auto-reconnection** — Automatically reconnects with exponential backoff on disconnection
+- **Call buffering** — Queues calls made before connection is established
+- **JSS encoding** — Supports Date, RegExp, Error, Set, Map, and undefined over the wire
+- **HTTP fallback** — Falls back to long-polling when WebSocket is blocked
+- **Binary transfers** — Transparent file upload/download handling
+- **Connection state** — Track connection status (offline, connecting, connected, disconnected)
+- **Pub/sub subscriptions** — Subscribe to channels and receive targeted updates
+
+The client works in both browser environments (via `<script>` tag) and bundled applications (React, Vue, etc.).
+
+> **Contributing?** See [`files.md`](./files.md) for directory structure and file descriptions.
 
 ## Usage
 
@@ -53,6 +62,7 @@ api.onConnectionChange((state) => {
 - `disconnected` — Had connection, lost it
 - `connecting` — Actively connecting
 - `connected` — Ready to use
+- `closing` — Connection is closing
 
 **No async setup needed!** The client auto-initializes and buffers calls until connected.
 
@@ -94,6 +104,33 @@ await api.files.upload({
 ```
 
 Binary transfers use `/api/ape/data/:hash` endpoints with session verification.
+
+## Pub/Sub Subscriptions
+
+Subscribe to channels to receive targeted updates from the server:
+
+```js
+// Subscribe to a channel
+api.send({ subscribe: '/health' })
+api.send({ subscribe: '/stock/AAPL' })
+
+// Listen for published messages (same as broadcast)
+api.on('/health', ({ data }) => {
+  console.log('Health update:', data)
+})
+
+api.on('/stock/AAPL', ({ data }) => {
+  console.log('AAPL:', data.price)
+})
+
+// Unsubscribe when done
+api.send({ unsubscribe: '/health' })
+```
+
+**Behavior:**
+- On subscribe, you receive the last published message immediately (if any)
+- Messages arrive in the same format as broadcasts: `{ type: channel, data: payload }`
+- Subscriptions are automatically cleaned up on disconnect
 
 ## Security
 

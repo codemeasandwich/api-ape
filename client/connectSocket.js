@@ -1,1089 +1,584 @@
-import messageHash from '../utils/messageHash'
-import jss from '../utils/jss'
-import { createStreamingTransport } from './transports/streaming'
+/**
+ * Core client socket connection module for api-ape
+ *
+ * This module manages WebSocket connections with automatic fallback to HTTP streaming
+ * when WebSocket connections fail or are blocked (e.g., by corporate firewalls).
+ *
+ * ## Connection Flow
+ * 1. Attempts WebSocket connection first (preferred for low latency)
+ * 2. Falls back to HTTP streaming if WebSocket fails within 4 seconds
+ * 3. Periodically retries WebSocket even when using HTTP streaming
+ * 4. Handles reconnection automatically when connections drop
+ *
+ * ## Transport Modes
+ * - `websocket` - Real-time bidirectional WebSocket connection
+ * - `polling` - HTTP streaming fallback (GET for receiving, POST for sending)
+ * - `auto` - Automatically selects best transport (default)
+ *
+ * ## Binary Data Support
+ * The module transparently handles binary data (ArrayBuffer, Blob) by:
+ * - Converting binary payloads to HTTP uploads
+ * - Hydrating responses with linked binary resources
+ * - Supporting client-to-client file sharing
+ *
+ * @module client/connectSocket
+ * @see {@link module:client/connection/state} for connection state management
+ * @see {@link module:client/transports/streaming} for HTTP fallback transport
+ *
+ * @example
+ * // Basic usage
+ * import connectSocket from './connectSocket.js'
+ *
+ * const client = connectSocket()
+ * connectSocket.autoReconnect()
+ *
+ * // Send messages
+ * client.sender.chat({ message: 'Hello!' })
+ *   .then(response => console.log(response))
+ *
+ * // Receive broadcasts
+ * client.setOnReceiver('notification', (msg) => {
+ *   console.log('Received:', msg.data)
+ * })
+ *
+ * // Monitor connection state
+ * client.onConnectionChange((state) => {
+ *   console.log('Connection state:', state)
+ * })
+ */
 
-let connect;
-
-// Connection state enum
-const ConnectionState = {
-  Offline: 'offline',         // navigator.onLine = false
-  Walled: 'walled',           // Captive portal detected (ping failed)
-  Disconnected: 'disconnected',
-  Connecting: 'connecting',
-  Connected: 'connected',
-  Closing: 'closing'
-}
-
-// Connection state tracking - start with offline check
-let connectionState = (typeof navigator !== 'undefined' && !navigator.onLine)
-  ? ConnectionState.Offline
-  : ConnectionState.Disconnected
-const connectionChangeListeners = []
-
-function notifyConnectionChange(newState) {
-  if (connectionState !== newState) {
-    connectionState = newState
-    connectionChangeListeners.forEach(fn => fn(newState))
-  }
-}
-
-// Configuration
-let configuredTransport = 'auto' // 'auto' | 'websocket' | 'polling'
-
-// Transport state
-let currentTransport = null // 'websocket' | 'polling'
-let streamingTransport = null
-let wsRetryTimer = null
-let networkCheckTimer = null
-const WS_FALLBACK_TIMEOUT = 4000 // Time to wait for WS before fallback
-const WS_RETRY_INTERVAL = 30000  // Retry WebSocket while in polling mode
-const PING_TIMEOUT = 3000        // Timeout for ping check
-const MAX_PING_CLOCK_SKEW = 60000 // Max allowed time difference (60s)
+import jss from "../utils/jss";
+import { createStreamingTransport } from "./transports/streaming";
+import {
+  ConnectionState,
+  notifyConnectionChange,
+  onConnectionChange,
+} from "./connection/state";
+import {
+  getSocketUrl,
+  checkCaptivePortal,
+  scheduleNetworkRetry,
+  setupOnlineListeners,
+  WS_RETRY_INTERVAL,
+} from "./connection/network";
+import {
+  fetchLinkedResources,
+  fetchSharedFiles,
+} from "./connection/fileDownload";
+import { wrap } from "./connection/proxy";
+import { createWsSend, createSender } from "./connection/sender";
 
 /**
- * Check if running in dev/local mode
+ * Configured transport mode
+ * @type {'auto'|'websocket'|'polling'}
+ * @private
  */
-function isDevMode() {
-  if (typeof window === 'undefined') return false
-  return ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
-}
+let configuredTransport = "auto";
 
 /**
- * Build ping URL for captive portal detection
+ * Currently active transport type
+ * @type {'websocket'|'polling'|null}
+ * @private
  */
-function getPingUrl() {
-  const hostname = window.location.hostname
-  const isHttps = window.location.protocol === 'https:'
-  const port = window.location.port || (isHttps ? 443 : 80)
-  const protocol = isHttps ? 'https' : 'http'
-  const portSuffix = (port !== 80 && port !== 443) ? `:${port}` : ''
-  return `${protocol}://${hostname}${portSuffix}/api/ape/ping`
-}
+let currentTransport = null;
 
 /**
- * Check for captive portal by pinging /api/ape/ping
- * Returns 'ok' if real internet, 'walled' if captive portal detected
+ * HTTP streaming transport instance (created lazily)
+ * @type {import('./transports/streaming').StreamingTransport|null}
+ * @private
  */
-async function checkCaptivePortal() {
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT)
-
-    const response = await fetch(getPingUrl(), {
-      cache: 'no-store',
-      signal: controller.signal
-    })
-    clearTimeout(timeoutId)
-
-    if (!response.ok) {
-      if (isDevMode()) {
-        console.error('🦍 [DEV] Ping failed: HTTP', response.status)
-      }
-      return 'walled'
-    }
-
-    const data = await response.json()
-
-    // Verify response is genuine (not a captive portal redirect page)
-    if (data?.ok !== true) {
-      if (isDevMode()) {
-        console.error('🦍 [DEV] Ping failed: invalid response', data)
-      }
-      return 'walled'
-    }
-
-    // Validate timestamp to detect proxy replay attacks
-    if (typeof data.ts === 'number') {
-      const now = Date.now()
-      const skew = Math.abs(now - data.ts)
-      if (skew > MAX_PING_CLOCK_SKEW) {
-        if (isDevMode()) {
-          console.error('🦍 [DEV] Ping failed: timestamp too old/stale (skew:', skew, 'ms)')
-        }
-        return 'walled'
-      }
-    }
-
-    return 'ok'
-  } catch (err) {
-    if (isDevMode()) {
-      console.error('🦍 [DEV] Ping failed:', err.message || err)
-    }
-    return 'walled'
-  }
-}
+let streamingTransport = null;
 
 /**
- * Setup navigator.onLine event listeners
+ * Timer for periodic WebSocket retry attempts
+ * @type {number|null}
+ * @private
  */
-function setupOnlineListeners() {
-  if (typeof window === 'undefined') return
-
-  window.addEventListener('online', () => {
-    console.log('🦍 Browser went online, checking network...')
-    // Trigger reconnection attempt
-    attemptConnection()
-  })
-
-  window.addEventListener('offline', () => {
-    console.log('🦍 Browser went offline')
-    notifyConnectionChange(ConnectionState.Offline)
-  })
-}
-
-// Setup listeners on module load (browser only)
-if (typeof window !== 'undefined') {
-  setupOnlineListeners()
-}
-
-
+let wsRetryTimer = null;
 
 /**
- * Get WebSocket URL - auto-detects from window.location, keeps /api/ape path
+ * Timeout before falling back to HTTP streaming (ms)
+ * @constant {number}
  */
-function getSocketUrl() {
-  const hostname = window.location.hostname
-  const localServers = ["localhost", "127.0.0.1", "[::1]"]
-  const isLocal = localServers.includes(hostname)
-  const isHttps = window.location.protocol === "https:"
+const WS_FALLBACK_TIMEOUT = 4000;
 
-  // Use window.location.port if available, otherwise fallback (9010 for local dev, 443/80 for prod)
-  const port = window.location.port || (isLocal ? 9010 : (isHttps ? 443 : 80))
+/**
+ * Current WebSocket instance, or false if not connected
+ * @type {WebSocket|false}
+ * @private
+ */
+let __socket = false;
 
-  // Build URL - keep /api/ape path
-  const protocol = isHttps ? "wss" : "ws"
-  const portSuffix = (port !== 80 && port !== 443) ? `:${port}` : ""
+/**
+ * Whether the connection is ready to send/receive messages
+ * @type {boolean}
+ * @private
+ */
+let ready = false;
 
-  return `${protocol}://${hostname}${portSuffix}/api/ape`
-}
-
-let reconnect = false
-const connectTimeout = 5000
-const totalRequestTimeout = 10000
-//const location = window.location
-
-const joinKey = "/"
-// Properties accessed directly on `ape` that should NOT be intercepted
-const reservedKeys = new Set(['on', 'onConnectionChange', 'transport'])
-const handler = {
-  get(fn, key) {
-    // Skip proxy interception for reserved keys - return actual property
-    if (reservedKeys.has(key)) {
-      return fn[key]
-    }
-    const wrapperFn = function (a, b) {
-      let path = joinKey + key, body;
-      if (2 === arguments.length) {
-        path += a
-        body = b
-      } else {
-        body = a
-      }
-      return fn(path, body)
-    }
-    return new Proxy(wrapperFn, handler)
-  } // END get
-}
-
-function wrap(api) {
-  return new Proxy(api, handler)
-}
-
-let __socket = false, ready = false, wsSend = false;
+/**
+ * Map of pending query IDs to their response callbacks
+ * Used to match responses to their original requests
+ * @type {Object.<string, function(Error|null, any): void>}
+ * @private
+ */
 const waitingOn = {};
 
-let aWaitingSend = []
+/**
+ * Queue of messages waiting to be sent when connection becomes ready
+ * @type {Array<{type: string, data: any, resolve: function, reject: function, waiting: boolean, createdAt: number, timer: number}>}
+ * @private
+ */
+let aWaitingSend = [];
+
+/**
+ * Array of universal message receivers (called for all message types)
+ * @type {Array<function({err: any, type: string, data: any}): void>}
+ * @private
+ */
 const receiverArray = [];
+
+/**
+ * Map of type-specific message receivers
+ * @type {Object.<string, Array<function({err: any, type: string, data: any}): void>>}
+ * @private
+ */
 const ofTypesOb = {};
 
 /**
- * Switch to streaming transport (HTTP long polling fallback)
+ * Whether auto-reconnect is enabled
+ * @type {boolean}
+ * @private
+ */
+let reconnect = false;
+
+/**
+ * WebSocket send function bound to current socket
+ * @type {function(string, any, number, boolean=): Promise<any>}
+ * @private
+ */
+const wsSend = createWsSend(() => __socket, waitingOn);
+
+// Setup browser online/offline listeners on module load
+if (typeof window !== "undefined") {
+  setupOnlineListeners(attemptConnection);
+}
+
+/**
+ * Process incoming message data to hydrate binary resources
+ *
+ * This function handles two types of binary data references:
+ * - L-tagged: Binary data linked from server responses (fetchLinkedResources)
+ * - F-tagged: Shared files from other clients (fetchSharedFiles)
+ *
+ * @param {any} data - Raw data from server message
+ * @param {Error|null} err - Error from the message, if any
+ * @returns {Promise<any>} Hydrated data with binary resources fetched
+ * @private
+ *
+ * @example
+ * // Server sends: { image<!L>: 'abc123' }
+ * // After hydration: { image: ArrayBuffer }
+ */
+async function processIncomingData(data, err) {
+  if (!data || err) return data;
+  try {
+    let result = await fetchLinkedResources(data);
+    return await fetchSharedFiles(result);
+  } catch (e) {
+    console.error(`🦍 Failed to hydrate data:`, e);
+    return data;
+  }
+}
+
+/**
+ * Dispatch a received message to all registered handlers
+ *
+ * Messages are delivered to:
+ * 1. Type-specific handlers registered via setOnReceiver(type, handler)
+ * 2. Universal handlers registered via setOnReceiver(handler)
+ *
+ * @param {string} type - Message type identifier
+ * @param {Error|null} err - Error payload, if any
+ * @param {any} data - Message data payload
+ * @private
+ */
+function dispatchMessage(type, err, data) {
+  if (ofTypesOb[type]) ofTypesOb[type].forEach((w) => w({ err, type, data }));
+  receiverArray.forEach((w) => w({ err, type, data }));
+}
+
+/**
+ * Flush all queued messages through the provided send function
+ *
+ * Called when connection becomes ready to send pending messages
+ * that were queued while disconnected.
+ *
+ * @param {function(string, any, number): Promise<any>} sendFn - Send function to use
+ * @private
+ */
+function flushWaitingMessages(sendFn) {
+  aWaitingSend.forEach(
+    ({ type, data, resolve, reject, waiting, createdAt, timer }) => {
+      clearTimeout(timer);
+      const result = sendFn(type, data, createdAt);
+      if (waiting) result.then(resolve).catch(reject);
+    },
+  );
+  aWaitingSend = [];
+}
+
+/**
+ * Switch from WebSocket to HTTP streaming transport
+ *
+ * Creates the streaming transport if needed and sets up event handlers.
+ * This is called when WebSocket connection fails or times out.
+ *
+ * @private
  */
 function switchToStreaming() {
-  console.log('🦍 Switching to HTTP streaming transport')
-  currentTransport = 'polling'
+  console.log("🦍 Switching to HTTP streaming transport");
+  currentTransport = "polling";
 
   if (!streamingTransport) {
-    streamingTransport = createStreamingTransport()
+    streamingTransport = createStreamingTransport();
 
-    // Handle incoming messages from streaming transport
+    /**
+     * Handle incoming messages from streaming transport
+     * @param {{type: string, data: any, err: any}} msg - Parsed message
+     */
     streamingTransport.onMessage = async (msg) => {
-      const { err, type, data } = msg
+      const data = await processIncomingData(msg.data, msg.err);
+      dispatchMessage(msg.type, msg.err, data);
+    };
 
-      // Process linked resources and shared files
-      let processedData = data
-      if (data && !err) {
-        try {
-          processedData = await fetchLinkedResources(data)
-          processedData = await fetchSharedFiles(processedData)
-        } catch (fetchErr) {
-          console.error(`🦍 Failed to hydrate streaming data:`, fetchErr)
-        }
-      }
-
-      // Dispatch to type-specific handlers
-      if (ofTypesOb[type]) {
-        ofTypesOb[type].forEach(worker => worker({ err, type, data: processedData }))
-      }
-      // Dispatch to general handlers
-      receiverArray.forEach(worker => worker({ err, type, data: processedData }))
-    }
-
+    /**
+     * Handle streaming connection established
+     */
     streamingTransport.onOpen = () => {
-      ready = true
-      notifyConnectionChange(ConnectionState.Connected)
-      console.log('🦍 HTTP streaming connected')
+      ready = true;
+      notifyConnectionChange(ConnectionState.Connected);
+      flushWaitingMessages((t, d, c) => streamingTransport.send(t, d, c));
+      startWsRetry();
+    };
 
-      // Flush waiting messages
-      aWaitingSend.forEach(({ type, data, resolve, reject, waiting, createdAt, timer }) => {
-        clearTimeout(timer)
-        const resultPromise = streamingSend(type, data, createdAt)
-        if (waiting) {
-          resultPromise.then(resolve).catch(reject)
-        }
-      })
-      aWaitingSend = []
-
-      // Start background WebSocket retry
-      startWsRetry()
-    }
-
+    /**
+     * Handle streaming connection closed
+     */
     streamingTransport.onClose = () => {
-      ready = false
-      notifyConnectionChange(ConnectionState.Disconnected)
-    }
+      ready = false;
+      notifyConnectionChange(ConnectionState.Disconnected);
+    };
 
-    streamingTransport.onError = (err) => {
-      console.error('🦍 Streaming error:', err)
-    }
+    /**
+     * Handle streaming transport errors
+     * @param {Error} err - The error that occurred
+     */
+    streamingTransport.onError = (err) =>
+      console.error("🦍 Streaming error:", err);
   }
 
-  streamingTransport.connect()
+  streamingTransport.connect();
 }
 
 /**
- * Send via streaming transport
- */
-function streamingSend(type, data, createdAt) {
-  return streamingTransport.send(type, data, createdAt)
-}
-
-/**
- * Start background retry for WebSocket (while in polling mode)
+ * Start periodic WebSocket retry attempts
+ *
+ * When using HTTP streaming, periodically attempts to upgrade to WebSocket.
+ * This allows the connection to upgrade when network conditions improve.
+ *
+ * @private
  */
 function startWsRetry() {
-  if (wsRetryTimer) return
-  if (currentTransport !== 'polling') return
-  if (configuredTransport === 'polling') return // User explicitly wants polling only
-
+  if (
+    wsRetryTimer ||
+    currentTransport !== "polling" ||
+    configuredTransport === "polling"
+  )
+    return;
   wsRetryTimer = setInterval(() => {
-    if (currentTransport !== 'polling') {
-      clearInterval(wsRetryTimer)
-      wsRetryTimer = null
-      return
+    if (currentTransport !== "polling") {
+      clearInterval(wsRetryTimer);
+      wsRetryTimer = null;
+      return;
     }
-
-    console.log('🦍 Attempting WebSocket reconnection...')
-    tryWebSocket(true)
-  }, WS_RETRY_INTERVAL)
+    tryWebSocket(true);
+  }, WS_RETRY_INTERVAL);
 }
 
 /**
- * Try to establish WebSocket connection
- * @param {boolean} isRetry - If true, this is a background retry attempt
+ * Attempt to establish a WebSocket connection
+ *
+ * @param {boolean} [isRetry=false] - Whether this is a retry attempt from HTTP streaming mode
+ * @private
+ *
+ * @description
+ * Connection flow:
+ * 1. Creates WebSocket to server's /api/ape endpoint
+ * 2. Sets up fallback timer (only on initial connection with auto transport)
+ * 3. On success: marks ready, flushes queued messages
+ * 4. On failure: falls back to HTTP streaming (if auto mode)
+ * 5. On close: schedules reconnection if auto-reconnect enabled
  */
 function tryWebSocket(isRetry = false) {
-  const ws = new WebSocket(getSocketUrl())
-  let fallbackTimer = null
+  const ws = new WebSocket(getSocketUrl());
+  let fallbackTimer = null;
 
-  // Set fallback timeout (only for initial connection, not retries)
-  if (!isRetry && configuredTransport === 'auto') {
+  // Set up fallback to HTTP streaming if WebSocket doesn't connect in time
+  if (!isRetry && configuredTransport === "auto") {
     fallbackTimer = setTimeout(() => {
       if (ws.readyState !== WebSocket.OPEN) {
-        console.log('🦍 WebSocket timeout, falling back to HTTP streaming')
-        ws.close()
-        switchToStreaming()
+        ws.close();
+        switchToStreaming();
       }
-    }, WS_FALLBACK_TIMEOUT)
+    }, WS_FALLBACK_TIMEOUT);
   }
 
+  /**
+   * Handle WebSocket connection opened
+   */
   ws.onopen = () => {
-    if (fallbackTimer) clearTimeout(fallbackTimer)
+    if (fallbackTimer) clearTimeout(fallbackTimer);
 
-    // If this is a retry and we're in polling mode, switch back to WebSocket
-    if (isRetry && currentTransport === 'polling') {
-      console.log('🦍 WebSocket reconnected, switching from HTTP streaming')
-      if (streamingTransport) {
-        streamingTransport.close()
-      }
+    // If retrying from polling mode, close the streaming transport
+    if (isRetry && currentTransport === "polling") {
+      if (streamingTransport) streamingTransport.close();
       if (wsRetryTimer) {
-        clearInterval(wsRetryTimer)
-        wsRetryTimer = null
+        clearInterval(wsRetryTimer);
+        wsRetryTimer = null;
       }
     }
 
-    currentTransport = 'websocket'
-    __socket = ws
-    ready = true
-    notifyConnectionChange(ConnectionState.Connected)
+    currentTransport = "websocket";
+    __socket = ws;
+    ready = true;
+    notifyConnectionChange(ConnectionState.Connected);
+    flushWaitingMessages(wsSend);
+  };
 
-    aWaitingSend.forEach(({ type, data, resolve, reject, waiting, createdAt, timer }) => {
-      clearTimeout(timer)
-      const resultPromise = wsSend(type, data, createdAt)
-      if (waiting) {
-        resultPromise.then(resolve).catch(reject)
-      }
-    })
-    aWaitingSend = []
-  }
+  /**
+   * Handle incoming WebSocket messages
+   * @param {MessageEvent} event - WebSocket message event
+   */
+  ws.onmessage = async (event) => {
+    const { err, type, queryId, data } = jss.parse(event.data);
 
-  ws.onmessage = async function (event) {
-    const { err, type, queryId, data } = jss.parse(event.data)
-
-    // Messages with queryId must fulfill matching promise
-    if (queryId) {
-      if (waitingOn[queryId]) {
-        // Check for linked resources and fetch them before resolving
-        if (data && !err) {
-          try {
-            let hydratedData = await fetchLinkedResources(data)
-            hydratedData = await fetchSharedFiles(hydratedData)
-            waitingOn[queryId](err, hydratedData)
-          } catch (fetchErr) {
-            waitingOn[queryId](fetchErr, null)
-          }
-        } else {
-          waitingOn[queryId](err, data)
-        }
-        delete waitingOn[queryId]
-      } else {
-        console.error(`🦍 No matching queryId: ${queryId}`)
-      }
-      return
+    // Check if this is a response to a pending request
+    if (queryId && waitingOn[queryId]) {
+      const hydratedData = await processIncomingData(data, err);
+      waitingOn[queryId](err, hydratedData);
+      delete waitingOn[queryId];
+      return;
     }
 
-    // Only messages WITHOUT queryId go to setOnReceiver
-    let processedData = data
-    if (data && !err) {
-      try {
-        processedData = await fetchLinkedResources(data)
-        processedData = await fetchSharedFiles(processedData)
-      } catch (fetchErr) {
-        console.error(`🦍 Failed to hydrate broadcast data:`, fetchErr)
-      }
+    // Otherwise dispatch as a broadcast/push message
+    const processed = await processIncomingData(data, err);
+    dispatchMessage(type, err, processed);
+  };
+
+  /**
+   * Handle WebSocket errors
+   * @param {Event} err - Error event
+   */
+  ws.onerror = (err) => {
+    if (fallbackTimer) clearTimeout(fallbackTimer);
+    // Fall back to streaming on initial connection failure
+    if (!isRetry && configuredTransport === "auto" && !ready)
+      switchToStreaming();
+  };
+
+  /**
+   * Handle WebSocket connection closed
+   */
+  ws.onclose = () => {
+    if (fallbackTimer) clearTimeout(fallbackTimer);
+    __socket = false;
+    ready = false;
+
+    // Only handle reconnection if we were using WebSocket transport
+    if (currentTransport === "websocket") {
+      notifyConnectionChange(ConnectionState.Disconnected);
+      setTimeout(() => reconnect && connectSocket(), 500);
     }
-
-    if (ofTypesOb[type]) {
-      ofTypesOb[type].forEach(worker => worker({ err, type, data: processedData }))
-    }
-    receiverArray.forEach(worker => worker({ err, type, data: processedData }))
-  }
-
-  ws.onerror = function (err) {
-    if (fallbackTimer) clearTimeout(fallbackTimer)
-    console.error('socket ERROR:', err)
-
-    // On initial connection error in auto mode, fallback to streaming
-    if (!isRetry && configuredTransport === 'auto' && !ready) {
-      switchToStreaming()
-    }
-  }
-
-  ws.onclose = function (event) {
-    if (fallbackTimer) clearTimeout(fallbackTimer)
-    console.warn('socket disconnect:', event)
-    __socket = false
-    ready = false
-
-    // Only notify disconnected if we're on websocket transport
-    if (currentTransport === 'websocket') {
-      notifyConnectionChange(ConnectionState.Disconnected)
-      setTimeout(() => reconnect && connectSocket(), 500)
-    }
-  }
+  };
 }
 
 /**
- * Find all L-tagged (binary link) properties in data
- * Returns array of { path, hash }
- */
-function findLinkedResources(obj, path = '') {
-  const resources = []
-
-  if (obj === null || obj === undefined || typeof obj !== 'object') {
-    return resources
-  }
-
-  if (Array.isArray(obj)) {
-    for (let i = 0; i < obj.length; i++) {
-      resources.push(...findLinkedResources(obj[i], path ? `${path}.${i}` : String(i)))
-    }
-    return resources
-  }
-
-  for (const key of Object.keys(obj)) {
-    // Check for L-tag in key (from JSS encoding: key<!L>)
-    if (key.endsWith('<!L>')) {
-      const cleanKey = key.slice(0, -4)
-      const hash = obj[key]
-      resources.push({
-        path: path ? `${path}.${cleanKey}` : cleanKey,
-        hash,
-        originalKey: key
-      })
-    } else {
-      resources.push(...findLinkedResources(obj[key], path ? `${path}.${key}` : key))
-    }
-  }
-
-  return resources
-}
-
-/**
- * Find all F-tagged (shared file) properties in data
- * Returns array of { path, hash, originalKey }
- */
-function findFileTags(obj, path = '') {
-  const files = []
-
-  if (obj === null || obj === undefined || typeof obj !== 'object') {
-    return files
-  }
-
-  if (Array.isArray(obj)) {
-    for (let i = 0; i < obj.length; i++) {
-      files.push(...findFileTags(obj[i], path ? `${path}.${i}` : String(i)))
-    }
-    return files
-  }
-
-  for (const key of Object.keys(obj)) {
-    // Check for F-tag in key (client-to-client shared file marker)
-    if (key.endsWith('<!F>')) {
-      const cleanKey = key.slice(0, -4)
-      const hash = obj[key]
-      files.push({
-        path: path ? `${path}.${cleanKey}` : cleanKey,
-        hash,
-        originalKey: key
-      })
-    } else {
-      files.push(...findFileTags(obj[key], path ? `${path}.${key}` : key))
-    }
-  }
-
-  return files
-}
-
-/**
- * Clean up F-tagged keys (rename key<!F> to key)
- */
-function cleanFileTags(obj) {
-  if (obj === null || obj === undefined || typeof obj !== 'object') {
-    return obj
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map(cleanFileTags)
-  }
-
-  const cleaned = {}
-  for (const key of Object.keys(obj)) {
-    if (key.endsWith('<!F>')) {
-      const cleanKey = key.slice(0, -4)
-      cleaned[cleanKey] = obj[key]
-    } else {
-      cleaned[key] = cleanFileTags(obj[key])
-    }
-  }
-  return cleaned
-}
-
-/**
- * Fetch shared files (client-to-client transfers)
- * Retries if upload is still in progress
- */
-async function fetchSharedFiles(data, maxRetries = 5) {
-  const files = findFileTags(data)
-
-  if (files.length === 0) {
-    return data
-  }
-
-  console.log(`🦍 Fetching ${files.length} shared file(s)`)
-
-  const cleanedData = cleanFileTags(data)
-
-  const hostname = window.location.hostname
-  const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
-  const isHttps = window.location.protocol === "https:"
-  const port = window.location.port || (isLocal ? 9010 : (isHttps ? 443 : 80))
-  const protocol = isHttps ? "https" : "http"
-  const portSuffix = (port !== 80 && port !== 443) ? `:${port}` : ""
-  const baseUrl = `${protocol}://${hostname}${portSuffix}`
-
-  await Promise.all(files.map(async ({ path, hash }) => {
-    let retries = 0
-    let backoff = 100 // Start with 100ms
-
-    while (retries < maxRetries) {
-      try {
-        const response = await fetch(`${baseUrl}/api/ape/data/${hash}`, {
-          credentials: 'include'
-        })
-
-        if (!response.ok) {
-          // 404 might mean file not uploaded yet, retry
-          if (response.status === 404 && retries < maxRetries - 1) {
-            retries++
-            await new Promise(r => setTimeout(r, backoff))
-            backoff *= 2 // Exponential backoff
-            continue
-          }
-          throw new Error(`Failed to fetch shared file: ${response.status}`)
-        }
-
-        const arrayBuffer = await response.arrayBuffer()
-        setValueAtPath(cleanedData, path, arrayBuffer)
-
-        // Check if upload is still in progress
-        const isComplete = response.headers.get('X-Ape-Complete') === '1'
-        if (!isComplete) {
-          console.log(`🦍 Shared file ${hash} still uploading (${response.headers.get('X-Ape-Total-Received') || '?'} bytes)`)
-        }
-        break
-      } catch (err) {
-        if (retries >= maxRetries - 1) {
-          console.error(`🦍 Failed to fetch shared file at ${path}:`, err)
-          setValueAtPath(cleanedData, path, null)
-        }
-        retries++
-        await new Promise(r => setTimeout(r, backoff))
-        backoff *= 2
-      }
-    }
-  }))
-
-  return cleanedData
-}
-
-/**
- * Set a value at a nested path in an object
- */
-function setValueAtPath(obj, path, value) {
-  const parts = path.split('.')
-  let current = obj
-
-  for (let i = 0; i < parts.length - 1; i++) {
-    current = current[parts[i]]
-  }
-
-  current[parts[parts.length - 1]] = value
-}
-
-/**
- * Clean up L-tagged keys (rename key<!L> to key)
- */
-function cleanLinkedKeys(obj) {
-  if (obj === null || obj === undefined || typeof obj !== 'object') {
-    return obj
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map(cleanLinkedKeys)
-  }
-
-  const cleaned = {}
-  for (const key of Object.keys(obj)) {
-    if (key.endsWith('<!L>')) {
-      const cleanKey = key.slice(0, -4)
-      cleaned[cleanKey] = obj[key]
-    } else {
-      cleaned[key] = cleanLinkedKeys(obj[key])
-    }
-  }
-  return cleaned
-}
-
-/**
- * Fetch binary resources and hydrate data object
- */
-async function fetchLinkedResources(data, clientId) {
-  const resources = findLinkedResources(data)
-
-  if (resources.length === 0) {
-    return data
-  }
-
-  console.log(`🦍 Fetching ${resources.length} binary resource(s)`)
-
-  const cleanedData = cleanLinkedKeys(data)
-
-  const hostname = window.location.hostname
-  const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
-  const isHttps = window.location.protocol === "https:"
-  const port = window.location.port || (isLocal ? 9010 : (isHttps ? 443 : 80))
-  const protocol = isHttps ? "https" : "http"
-  const portSuffix = (port !== 80 && port !== 443) ? `:${port}` : ""
-  const baseUrl = `${protocol}://${hostname}${portSuffix}`
-
-  await Promise.all(resources.map(async ({ path, hash }) => {
-    try {
-      const response = await fetch(`${baseUrl}/api/ape/data/${hash}`, {
-        credentials: 'include',
-        headers: {
-          'X-Ape-Client-Id': clientId || ''
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch binary resource: ${response.status}`)
-      }
-
-      const arrayBuffer = await response.arrayBuffer()
-      setValueAtPath(cleanedData, path, arrayBuffer)
-    } catch (err) {
-      console.error(`🦍 Failed to fetch binary resource at ${path}:`, err)
-      setValueAtPath(cleanedData, path, null)
-    }
-  }))
-
-  return cleanedData
-}
-
-/**
- * Attempt to establish connection with network pre-checks
+ * Attempt to establish a connection to the server
+ *
+ * This function orchestrates the connection process:
+ * 1. Checks if browser is online
+ * 2. Detects captive portals (hotel/airport WiFi login pages)
+ * 3. Initiates appropriate transport based on configuration
+ *
+ * @async
+ * @private
  */
 async function attemptConnection() {
-  // Check if browser is online
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    notifyConnectionChange(ConnectionState.Offline)
-    return
+  // Check browser online status first
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    notifyConnectionChange(ConnectionState.Offline);
+    return;
   }
 
-  // Perform captive portal check
-  notifyConnectionChange(ConnectionState.Connecting)
-  const pingResult = await checkCaptivePortal()
+  notifyConnectionChange(ConnectionState.Connecting);
 
-  if (pingResult === 'walled') {
-    notifyConnectionChange(ConnectionState.Walled)
-    // Retry network check periodically
-    scheduleNetworkRetry()
-    return
+  // Check for captive portal
+  if ((await checkCaptivePortal()) === "walled") {
+    notifyConnectionChange(ConnectionState.Walled);
+    scheduleNetworkRetry(attemptConnection);
+    return;
   }
 
-  // Network is good, proceed with socket connection
-  proceedWithConnection()
+  // Start appropriate transport
+  configuredTransport === "polling" ? switchToStreaming() : tryWebSocket(false);
 }
 
 /**
- * Schedule a retry of network check (for walled/offline states)
+ * Create the sender function with current connection state
+ * @type {function(string, any): Promise<any>}
+ * @private
  */
-function scheduleNetworkRetry() {
-  if (networkCheckTimer) return
-  networkCheckTimer = setTimeout(() => {
-    networkCheckTimer = null
-    attemptConnection()
-  }, WS_RETRY_INTERVAL)
-}
+const sender = createSender(
+  () => ready,
+  () => wsSend,
+  aWaitingSend,
+  connectSocket,
+);
 
 /**
- * Proceed with WebSocket/polling connection after network checks pass
+ * Initialize or retrieve the client connection
+ *
+ * This is the main entry point for establishing connections.
+ * Calling it multiple times returns the same client interface.
+ *
+ * @returns {ClientInterface} Client interface with sender, receivers, and state management
+ *
+ * @example
+ * const client = connectSocket()
+ *
+ * // Access proxied sender
+ * client.sender.myEndpoint({ data: 'value' })
+ *
+ * // Subscribe to messages
+ * client.setOnReceiver('eventType', handler)
+ *
+ * // Check current transport
+ * console.log(client.transport) // 'websocket' or 'polling'
  */
-function proceedWithConnection() {
-  // Determine which transport to use
-  if (configuredTransport === 'polling') {
-    switchToStreaming()
-  } else {
-    // 'auto' or 'websocket' - try WebSocket first
-    tryWebSocket(false)
-  }
-}
-
 function connectSocket() {
-  // Skip if already connected or connecting
-  if (__socket && __socket.readyState !== WebSocket.CLOSED) {
-    return buildClientInterface()
-  }
-  if (currentTransport === 'polling' && streamingTransport?.isConnected()) {
-    return buildClientInterface()
-  }
-  if (connectionState === ConnectionState.Connecting) {
-    return buildClientInterface()
-  }
+  // Return existing interface if already connected
+  if (__socket && __socket.readyState !== WebSocket.CLOSED)
+    return buildClientInterface();
+  if (currentTransport === "polling" && streamingTransport?.isConnected())
+    return buildClientInterface();
 
-  // Start connection with network pre-checks
-  attemptConnection()
-
-  return buildClientInterface()
+  // Otherwise initiate connection
+  attemptConnection();
+  return buildClientInterface();
 }
 
 /**
- * Check if value is binary data (ArrayBuffer, typed array, or Blob)
- */
-function isBinaryData(value) {
-  if (value === null || value === undefined) return false
-  return value instanceof ArrayBuffer ||
-    ArrayBuffer.isView(value) ||
-    (typeof Blob !== 'undefined' && value instanceof Blob)
-}
-
-/**
- * Get binary type tag (A for ArrayBuffer, B for Blob)
- */
-function getBinaryTag(value) {
-  if (typeof Blob !== 'undefined' && value instanceof Blob) return 'B'
-  return 'A'
-}
-
-/**
- * Generate a simple hash for binary upload
- */
-function generateUploadHash(path) {
-  let hash = 0
-  for (let i = 0; i < path.length; i++) {
-    const char = path.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
-    hash = hash & hash
-  }
-  return Math.abs(hash).toString(36)
-}
-
-/**
- * Find and extract binary data from payload
- * Returns { processedData, uploads: [{ path, hash, data, tag }] }
- */
-function processBinaryForUpload(data, path = '') {
-  if (data === null || data === undefined) {
-    return { processedData: data, uploads: [] }
-  }
-
-  if (isBinaryData(data)) {
-    const tag = getBinaryTag(data)
-    const hash = generateUploadHash(path || 'root')
-    return {
-      processedData: { [`__ape_upload__`]: hash },
-      uploads: [{ path, hash, data, tag }]
-    }
-  }
-
-  if (Array.isArray(data)) {
-    const processedArray = []
-    const allUploads = []
-
-    for (let i = 0; i < data.length; i++) {
-      const itemPath = path ? `${path}.${i}` : String(i)
-      const { processedData, uploads } = processBinaryForUpload(data[i], itemPath)
-      processedArray.push(processedData)
-      allUploads.push(...uploads)
-    }
-
-    return { processedData: processedArray, uploads: allUploads }
-  }
-
-  if (typeof data === 'object') {
-    const processedObj = {}
-    const allUploads = []
-
-    for (const key of Object.keys(data)) {
-      const itemPath = path ? `${path}.${key}` : key
-      const { processedData, uploads } = processBinaryForUpload(data[key], itemPath)
-
-      // If this was binary data, mark the key with <!B> or <!A> tag
-      if (uploads.length > 0 && processedData?.__ape_upload__) {
-        const tag = uploads[uploads.length - 1].tag
-        processedObj[`${key}<!${tag}>`] = processedData.__ape_upload__
-      } else {
-        processedObj[key] = processedData
-      }
-      allUploads.push(...uploads)
-    }
-
-    return { processedData: processedObj, uploads: allUploads }
-  }
-
-  return { processedData: data, uploads: [] }
-}
-
-/**
- * Find and extract binary data for SHARING (client-to-client)
- * Uses <!F> tag instead of <!A>/<!B>
- * Returns { processedData, shares: [{ path, hash, data }] }
- */
-function processBinaryForSharing(data, path = '') {
-  if (data === null || data === undefined) {
-    return { processedData: data, shares: [] }
-  }
-
-  if (isBinaryData(data)) {
-    const hash = generateUploadHash(path || 'share')
-    return {
-      processedData: { [`__ape_share__`]: hash },
-      shares: [{ path, hash, data }]
-    }
-  }
-
-  if (Array.isArray(data)) {
-    const processedArray = []
-    const allShares = []
-
-    for (let i = 0; i < data.length; i++) {
-      const itemPath = path ? `${path}.${i}` : String(i)
-      const { processedData, shares } = processBinaryForSharing(data[i], itemPath)
-      processedArray.push(processedData)
-      allShares.push(...shares)
-    }
-
-    return { processedData: processedArray, shares: allShares }
-  }
-
-  if (typeof data === 'object') {
-    const processedObj = {}
-    const allShares = []
-
-    for (const key of Object.keys(data)) {
-      const itemPath = path ? `${path}.${key}` : key
-      const { processedData, shares } = processBinaryForSharing(data[key], itemPath)
-
-      // If this was binary data, mark the key with <!F> tag
-      if (shares.length > 0 && processedData?.__ape_share__) {
-        processedObj[`${key}<!F>`] = processedData.__ape_share__
-      } else {
-        processedObj[key] = processedData
-      }
-      allShares.push(...shares)
-    }
-
-    return { processedData: processedObj, shares: allShares }
-  }
-
-  return { processedData: data, shares: [] }
-}
-
-/**
- * Upload shared files via HTTP PUT
- * Uses different endpoint pattern for streaming files
- */
-async function uploadSharedFiles(shares) {
-  if (shares.length === 0) return
-
-  // Build base URL
-  const hostname = window.location.hostname
-  const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
-  const isHttps = window.location.protocol === "https:"
-  const port = window.location.port || (isLocal ? 9010 : (isHttps ? 443 : 80))
-  const protocol = isHttps ? "https" : "http"
-  const portSuffix = (port !== 80 && port !== 443) ? `:${port}` : ""
-  const baseUrl = `${protocol}://${hostname}${portSuffix}`
-
-  console.log(`🦍 Uploading ${shares.length} shared file(s)`)
-
-  await Promise.all(shares.map(async ({ hash, data }) => {
-    try {
-      // For shared files, use upload pattern with hash as both queryId and pathHash
-      const response = await fetch(`${baseUrl}/api/ape/data/_share/${hash}`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/octet-stream'
-        },
-        body: data
-      })
-
-      if (!response.ok) {
-        throw new Error(`Shared upload failed: ${response.status}`)
-      }
-    } catch (err) {
-      console.error(`🦍 Failed to upload shared file ${hash}:`, err)
-      throw err
-    }
-  }))
-}
-
-/**
- * Upload binary data via HTTP PUT
- */
-async function uploadBinaryData(queryId, uploads) {
-  if (uploads.length === 0) return
-
-  // Build base URL
-  const hostname = window.location.hostname
-  const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
-  const isHttps = window.location.protocol === "https:"
-  const port = window.location.port || (isLocal ? 9010 : (isHttps ? 443 : 80))
-  const protocol = isHttps ? "https" : "http"
-  const portSuffix = (port !== 80 && port !== 443) ? `:${port}` : ""
-  const baseUrl = `${protocol}://${hostname}${portSuffix}`
-
-  console.log(`🦍 Uploading ${uploads.length} binary file(s)`)
-
-  await Promise.all(uploads.map(async ({ hash, data }) => {
-    try {
-      const response = await fetch(`${baseUrl}/api/ape/data/${queryId}/${hash}`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/octet-stream'
-        },
-        body: data
-      })
-
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.status}`)
-      }
-    } catch (err) {
-      console.error(`🦍 Failed to upload binary at ${hash}:`, err)
-      throw err
-    }
-  }))
-}
-
-wsSend = function (type, data, createdAt, dirctCall) {
-  let rej, promiseIsLive = false;
-  const timeLetForReqToBeMade = (createdAt + totalRequestTimeout) - Date.now()
-
-  const timer = setTimeout(() => {
-    if (promiseIsLive) {
-      rej(new Error("Request Timedout for :" + type))
-    }
-  }, timeLetForReqToBeMade);
-
-  // Process binary data for upload
-  const { processedData, uploads } = processBinaryForUpload(data)
-
-  const payload = {
-    type,
-    data: processedData,
-    //referer:window.location.href,
-    createdAt: new Date(createdAt),
-    requestedAt: dirctCall ? undefined
-      : new Date()
-  }
-  const message = jss.stringify(payload)
-  const queryId = messageHash(message);
-
-  const replyPromise = new Promise((resolve, reject) => {
-    rej = reject
-    waitingOn[queryId] = (err, result) => {
-      clearTimeout(timer)
-      replyPromise.then = next.bind(replyPromise)
-      if (err) {
-        reject(err)
-      } else {
-        resolve(result)
-      }
-    }
-    __socket.send(message);
-
-    // Upload binary data after sending WS message
-    if (uploads.length > 0) {
-      uploadBinaryData(queryId, uploads).catch(err => {
-        console.error('🦍 Binary upload failed:', err)
-        // The server will timeout waiting for the upload
-      })
-    }
-  });
-  const next = replyPromise.then;
-  replyPromise.then = worker => {
-    promiseIsLive = true;
-    replyPromise.then = next.bind(replyPromise)
-    replyPromise.catch = err.bind(replyPromise)
-    return next.call(replyPromise, worker)
-  }
-  const err = replyPromise.catch;
-  replyPromise.catch = worker => {
-    promiseIsLive = true;
-    replyPromise.catch = err.bind(replyPromise)
-    replyPromise.then = next.bind(replyPromise)
-    return err.call(replyPromise, worker)
-  }
-  return replyPromise
-} // END wsSend
-
-
-const sender = (type, data) => {
-  if ("string" !== typeof type) {
-    throw new Error("Missing Path vaule")
-  }
-
-  const createdAt = Date.now()
-
-  if (ready) {
-    return wsSend(type, data, createdAt, true)
-  }
-
-  const timeLetForReqToBeMade = (createdAt + connectTimeout) - Date.now() // 5sec for reconnect
-
-  const timer = setTimeout(() => {
-    const errMessage = "Request not sent for :" + type
-    if (payload.waiting) {
-      payload.reject(new Error(errMessage))
-    } else {
-      throw new Error(errMessage)
-    }
-  }, timeLetForReqToBeMade);
-
-  const payload = { type, data, resolve: undefined, reject: undefined, waiting: false, createdAt, timer };
-  const waitingOnOpen = new Promise((res, rej) => { payload.resolve = res; payload.reject = rej; })
-
-  const waitingOnOpenThen = waitingOnOpen.then;
-  const waitingOnOpenCatch = waitingOnOpen.catch;
-  waitingOnOpen.then = worker => {
-    payload.waiting = true;
-    waitingOnOpen.then = waitingOnOpenThen.bind(waitingOnOpen)
-    waitingOnOpen.catch = waitingOnOpenCatch.bind(waitingOnOpen)
-    return waitingOnOpenThen.call(waitingOnOpen, worker)
-  }
-  waitingOnOpen.catch = worker => {
-    payload.waiting = true;
-    waitingOnOpen.catch = waitingOnOpenCatch.bind(waitingOnOpen)
-    waitingOnOpen.then = waitingOnOpenThen.bind(waitingOnOpen)
-    return waitingOnOpenCatch.call(waitingOnOpen, worker)
-  }
-
-  aWaitingSend.push(payload)
-  if (!__socket) {
-    connectSocket()
-  }
-
-  return waitingOnOpen
-} // END sender
-
-/**
- * Build the client interface object
+ * Build the public client interface object
+ *
+ * @returns {ClientInterface} The client interface
+ * @private
+ *
+ * @typedef {Object} ClientInterface
+ * @property {Proxy} sender - Proxied sender for calling server endpoints
+ * @property {function(string|function, function=): void} setOnReceiver - Register message handlers
+ * @property {function(function): function} onConnectionChange - Subscribe to connection state changes
+ * @property {'websocket'|'polling'|null} transport - Current transport type (read-only)
  */
 function buildClientInterface() {
   return {
+    /**
+     * Proxied sender object for calling server endpoints
+     *
+     * Properties accessed on this object are converted to API paths.
+     *
+     * @example
+     * // Calls /chat endpoint
+     * sender.chat({ message: 'Hi' })
+     *
+     * // Calls /users/123 endpoint
+     * sender.users('/123', { action: 'get' })
+     *
+     * @type {Proxy}
+     */
     sender: wrap(sender),
+
+    /**
+     * Register a message receiver/handler
+     *
+     * @param {string|function} onTypeStFn - Message type to listen for, or universal handler function
+     * @param {function=} handlerFn - Handler function (if first arg is type string)
+     *
+     * @example
+     * // Type-specific handler
+     * client.setOnReceiver('notification', (msg) => {
+     *   console.log('Got notification:', msg.data)
+     * })
+     *
+     * // Universal handler (receives all messages)
+     * client.setOnReceiver((msg) => {
+     *   console.log('Got message:', msg.type, msg.data)
+     * })
+     */
     setOnReceiver: (onTypeStFn, handlerFn) => {
-      if ("string" === typeof onTypeStFn) {
-        // Replace handler for this type (prevents duplicates in React StrictMode)
-        ofTypesOb[onTypeStFn] = [handlerFn]
-      } else {
-        // For general receivers, prevent duplicates by checking
-        if (!receiverArray.includes(onTypeStFn)) {
-          receiverArray.push(onTypeStFn)
-        }
+      if (typeof onTypeStFn === "string") {
+        ofTypesOb[onTypeStFn] = [handlerFn];
+      } else if (!receiverArray.includes(onTypeStFn)) {
+        receiverArray.push(onTypeStFn);
       }
     },
-    onConnectionChange: (handler) => {
-      connectionChangeListeners.push(handler)
-      // Immediately call with current state
-      handler(connectionState)
-      // Return unsubscribe function
-      return () => {
-        const idx = connectionChangeListeners.indexOf(handler)
-        if (idx > -1) connectionChangeListeners.splice(idx, 1)
-      }
+
+    /**
+     * Subscribe to connection state changes
+     * @type {function(function(ConnectionStateValue): void): function(): void}
+     */
+    onConnectionChange,
+
+    /**
+     * Current transport type
+     * @type {'websocket'|'polling'|null}
+     * @readonly
+     */
+    get transport() {
+      return currentTransport;
     },
-    // Expose current transport type (read-only)
-    get transport() { return currentTransport }
-  }
+  };
 }
 
-connectSocket.autoReconnect = () => reconnect = true
-connectSocket.ConnectionState = ConnectionState
-connect = connectSocket
+/**
+ * Enable automatic reconnection on connection loss
+ *
+ * When enabled, the client will automatically attempt to reconnect
+ * when the WebSocket connection is closed unexpectedly.
+ *
+ * @static
+ * @memberof connectSocket
+ *
+ * @example
+ * connectSocket.autoReconnect()
+ */
+connectSocket.autoReconnect = () => (reconnect = true);
 
-export default connect;
+/**
+ * Connection state enum reference
+ *
+ * @static
+ * @memberof connectSocket
+ * @type {typeof ConnectionState}
+ *
+ * @example
+ * client.onConnectionChange((state) => {
+ *   if (state === connectSocket.ConnectionState.Connected) {
+ *     console.log('Connected!')
+ *   }
+ * })
+ */
+connectSocket.ConnectionState = ConnectionState;
+
+export default connectSocket;
 export { ConnectionState };

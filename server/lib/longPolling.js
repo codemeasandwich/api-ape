@@ -1,233 +1,188 @@
-const { addClient, removeClient, broadcast, clients, updateClientEmbed } = require('./broadcast')
-const makeid = require('../utils/genId')
-const jss = require('../../utils/jss')
-const parseUserAgent = require('../utils/parseUserAgent')
+/**
+ * @fileoverview Long Polling Handler - HTTP Fallback for WebSocket
+ *
+ * This module provides HTTP long-polling as a fallback transport when WebSocket
+ * connections are not available. Long polling is essential for:
+ *
+ * - Clients behind restrictive firewalls that block WebSocket
+ * - Networks that don't support WebSocket protocol
+ * - Legacy browser support
+ * - Debugging and testing scenarios
+ *
+ * How Long Polling Works:
+ * 1. Client makes a GET request that is held open (streaming response)
+ * 2. Server sends events to client by writing to the response stream
+ * 3. Client sends messages via POST requests
+ * 4. Heartbeats keep the connection alive
+ * 5. Connection is recycled periodically to prevent timeouts
+ *
+ * This module coordinates the GET and POST handlers and maintains
+ * the client state map shared between them.
+ *
+ * @module server/lib/longPolling
+ * @see {@link module:server/lib/longPolling/getHandler} - GET handler for streaming responses
+ * @see {@link module:server/lib/longPolling/postHandler} - POST handler for client messages
+ * @see {@link module:server/lib/wiring} - WebSocket wiring (primary transport)
+ *
+ * @example
+ * // Create long polling handlers for api-ape server
+ * const { createLongPollingHandler } = require('./longPolling')
+ *
+ * const { handleStreamGet, handleStreamPost } = createLongPollingHandler(
+ *     controllers,
+ *     onConnect,
+ *     fileTransfer
+ * )
+ *
+ * // Use in HTTP server
+ * server.on('request', (req, res) => {
+ *     if (req.url === '/api/ape/poll' && req.method === 'GET') {
+ *         handleStreamGet(req, res)
+ *     } else if (req.url === '/api/ape/poll' && req.method === 'POST') {
+ *         handleStreamPost(req, res, controllers)
+ *     }
+ * })
+ */
 
-// Active streaming connections: clientId -> { res, messageQueue, heartbeatTimer }
-const streamClients = new Map()
-
-// Pending message handlers for POST requests: queryId -> { resolve, reject, timer }
-const pendingRequests = new Map()
+const {
+  createGetHandler,
+  ensureClientId,
+} = require("./longPolling/getHandler");
+const { createPostHandler, getClientId } = require("./longPolling/postHandler");
 
 /**
- * Set apeClientId cookie if not present
+ * Map of active long-polling client connections.
+ *
+ * Keyed by client ID (from cookie), values contain:
+ * - res: HTTP response stream
+ * - messageQueue: Pending messages
+ * - heartbeatTimer: Interval timer for keepalives
+ * - isActive: Whether the connection is still active
+ * - embed: Custom data attached during onConnect
+ * - onDisconnect: Cleanup callback
+ *
+ * @private
+ * @type {Map<string, Object>}
  */
-function ensureClientId(req, res) {
-    const cookies = req.headers.cookie || ''
-    const match = cookies.match(/(?:^|;\s*)apeClientId=([^;]*)/)
-
-    if (match) {
-        return match[1]
-    }
-
-    // Generate new clientId and set cookie
-    const clientId = makeid(20)
-    res.setHeader('Set-Cookie', `apeClientId=${clientId}; Path=/; HttpOnly; SameSite=Strict`)
-    return clientId
-}
+const streamClients = new Map();
 
 /**
- * Get clientId from cookie
+ * @typedef {Object} LongPollingHandlers
+ * Object containing the HTTP handlers for long polling.
+ *
+ * @property {Function} handleStreamGet - GET request handler for streaming responses.
+ *     Creates a long-lived HTTP response that streams events to the client.
+ * @property {Function} handleStreamPost - POST request handler for client messages.
+ *     Processes messages sent by clients and routes to controllers.
  */
-function getClientId(req) {
-    const cookies = req.headers.cookie || ''
-    const match = cookies.match(/(?:^|;\s*)apeClientId=([^;]*)/)
-    return match ? match[1] : null
-}
 
 /**
- * Send JSON response helper
+ * Creates the long polling HTTP handlers.
+ *
+ * This function sets up the GET and POST handlers that work together
+ * to provide bidirectional communication over HTTP:
+ *
+ * **GET Handler (Streaming Receive)**:
+ * - Client opens a long-lived HTTP connection
+ * - Server streams JSON events to the response
+ * - Heartbeats sent every 20 seconds to keep connection alive
+ * - Connection recycled after 25 seconds (client reconnects)
+ *
+ * **POST Handler (Send Messages)**:
+ * - Client sends JSON messages via POST
+ * - Messages are routed to appropriate controllers
+ * - Response contains the controller's return value
+ *
+ * Both handlers share the `streamClients` Map to coordinate state.
+ *
+ * @function createLongPollingHandler
+ * @param {Object<string, Function>} controllers - Map of controller functions keyed by endpoint
+ * @param {Function} [onConnect] - Optional callback when a client connects.
+ *     Receives (socket, req, send) and can return { onDisconnect, embed }.
+ * @param {import('./fileTransfer').FileTransferManager} fileTransfer - File transfer manager
+ * @param {Object} [options] - Optional configuration options
+ * @param {number} [options.heartbeatInterval=20000] - Interval in ms for heartbeat pings
+ * @param {number} [options.recycleTimeout=25000] - Timeout in ms before recycling connection
+ * @returns {LongPollingHandlers} Object with handleStreamGet and handleStreamPost
+ *
+ * @example
+ * // Basic setup
+ * const handlers = createLongPollingHandler(controllers, null, fileTransfer)
+ *
+ * // In request handler
+ * if (pathname === '/api/ape/poll') {
+ *     if (req.method === 'GET') {
+ *         handlers.handleStreamGet(req, res)
+ *     } else if (req.method === 'POST') {
+ *         handlers.handleStreamPost(req, res, controllers)
+ *     }
+ * }
+ *
+ * @example
+ * // With connection callback
+ * const handlers = createLongPollingHandler(
+ *     controllers,
+ *     async (socket, req, send) => {
+ *         // Authenticate user
+ *         const user = await authenticate(req)
+ *
+ *         // Send welcome message
+ *         send('welcome', { userId: user.id })
+ *
+ *         return {
+ *             embed: { userId: user.id },
+ *             onDisconnect: () => {
+ *                 console.log(`User ${user.id} disconnected`)
+ *             }
+ *         }
+ *     },
+ *     fileTransfer
+ * )
  */
-function sendJson(res, statusCode, data) {
-    res.writeHead(statusCode, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(data))
+function createLongPollingHandler(controllers, onConnect, fileTransfer, options = {}) {
+  /**
+   * GET handler for streaming responses.
+   * Creates a long-lived HTTP response that streams events to the client.
+   * @type {Function}
+   */
+  const handleStreamGet = createGetHandler(streamClients, onConnect, options);
+
+  /**
+   * POST handler for client messages.
+   * Processes incoming messages and routes them to controllers.
+   * @type {Function}
+   */
+  const handleStreamPost = createPostHandler(streamClients);
+
+  return {
+    handleStreamGet,
+    handleStreamPost,
+  };
 }
 
-/**
- * Create long polling handler
- */
-function createLongPollingHandler(controllers, onConnect, fileTransfer) {
+module.exports = {
+  /**
+   * Create long polling handlers for HTTP fallback transport.
+   * @function
+   */
+  createLongPollingHandler,
 
-    /**
-     * Handle GET /api/ape/poll - Streaming receive
-     * Keeps connection open and writes JSON messages as they arrive
-     */
-    function handleStreamGet(req, res) {
-        const clientId = ensureClientId(req, res)
+  /**
+   * Extract client ID from request cookies (POST handler utility).
+   * Returns null if no client ID cookie is present.
+   * @function
+   * @param {http.IncomingMessage} req - The HTTP request
+   * @returns {string|null} The client ID or null
+   */
+  getClientId,
 
-        // Set up streaming response headers
-        res.writeHead(200, {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'X-Accel-Buffering': 'no' // Disable nginx buffering
-        })
-
-        // Create message queue for this client
-        const clientState = {
-            res,
-            messageQueue: [],
-            heartbeatTimer: null,
-            isActive: true
-        }
-
-        // Send function for this streaming client
-        const send = (type, data, err) => {
-            if (!clientState.isActive) return
-
-            const message = jss.stringify({ type, data, err: err || undefined })
-            try {
-                res.write(message)
-            } catch (e) {
-                cleanup()
-            }
-        }
-        send.toString = () => clientId
-
-        // Clean up on close
-        const cleanup = () => {
-            if (!clientState.isActive) return
-            clientState.isActive = false
-
-            if (clientState.heartbeatTimer) {
-                clearInterval(clientState.heartbeatTimer)
-            }
-
-            streamClients.delete(clientId)
-            removeClient({ clientId })
-
-            // Notify disconnect handler if registered
-            if (clientState.onDisconnect) {
-                clientState.onDisconnect()
-            }
-        }
-
-        req.on('close', cleanup)
-        req.on('error', cleanup)
-        res.on('error', cleanup)
-
-        // Heartbeat to keep connection alive (every 20s)
-        clientState.heartbeatTimer = setInterval(() => {
-            if (!clientState.isActive) return
-            try {
-                // Send heartbeat as empty comment (client ignores)
-                res.write('{"type":"__heartbeat__"}')
-            } catch (e) {
-                cleanup()
-            }
-        }, 20000)
-
-        // Extract sessionId from cookies
-        const sessionIdMatch = (req.headers.cookie || '').match(/(?:^|;\s*)sessionId=([^;]*)/)
-        const sessionId = sessionIdMatch ? sessionIdMatch[1] : null
-
-        // Parse user agent
-        const agent = parseUserAgent(req.headers['user-agent'])
-
-        // Register client for broadcasts with full metadata
-        addClient({ clientId, sessionId, agent, send, embed: null })
-        streamClients.set(clientId, clientState)
-
-        // Call onConnect hook if provided
-        if (onConnect) {
-            Promise.resolve(onConnect(null, req, send))
-                .then(handlers => {
-                    if (handlers) {
-                        if (handlers.onDisconnect) {
-                            clientState.onDisconnect = handlers.onDisconnect
-                        }
-                        if (handlers.embed) {
-                            clientState.embed = handlers.embed
-                            updateClientEmbed(clientId, handlers.embed)
-                        }
-                    }
-                })
-                .catch(err => {
-                    console.error('onConnect error:', err)
-                })
-        }
-
-        // Close after 25 seconds (before typical proxy timeout)
-        // Client will immediately reconnect
-        setTimeout(() => {
-            cleanup()
-            try {
-                res.end()
-            } catch (e) { }
-        }, 25000)
-    }
-
-    /**
-     * Handle POST /api/ape/poll - Send messages
-     * Process message through controllers, return response
-     */
-    function handleStreamPost(req, res, controllers) {
-        const clientId = getClientId(req)
-
-        if (!clientId) {
-            return sendJson(res, 401, { error: 'Missing session. GET /api/ape/poll first.' })
-        }
-
-        // Collect body
-        const chunks = []
-        req.on('data', chunk => chunks.push(chunk))
-        req.on('end', async () => {
-            try {
-                const body = Buffer.concat(chunks).toString('utf8')
-                const { type: rawType, data, createdAt } = jss.parse(body)
-
-                // Normalize type
-                const type = rawType.replace(/^\//, '').toLowerCase()
-
-                // Find controller
-                const controller = controllers[type]
-                if (!controller) {
-                    return sendJson(res, 404, { error: `Controller "${type}" not found` })
-                }
-
-                // Get client state for embed values
-                const clientState = streamClients.get(clientId)
-                const embedValues = clientState?.embed || {}
-
-                // Extract sessionId from cookies (set by outer framework)
-                const sessionIdMatch = (req.headers.cookie || '').match(/(?:^|;\s*)sessionId=([^;]*)/)
-                const sessionId = sessionIdMatch ? sessionIdMatch[1] : null
-
-                // Build controller context
-                const context = {
-                    ...embedValues,
-                    clientId,
-                    sessionId,  // Session ID from cookie (set by outer framework)
-                    req,
-                    broadcast: (t, d) => broadcast(t, d),
-                    broadcastOthers: (t, d) => broadcast(t, d, clientId),
-                    clients
-                }
-
-                // Execute controller
-                const result = await controller.call(context, data)
-
-                // Send response
-                const responsePayload = { data: result }
-                res.writeHead(200, { 'Content-Type': 'application/json' })
-                res.end(jss.stringify(responsePayload))
-
-            } catch (err) {
-                const errorMessage = err.message || String(err)
-                sendJson(res, 500, { error: errorMessage })
-            }
-        })
-
-        req.on('error', (err) => {
-            sendJson(res, 500, { error: err.message })
-        })
-    }
-
-    return {
-        handleStreamGet,
-        handleStreamPost,
-        getStreamClients: () => streamClients
-    }
-}
-
-module.exports = { createLongPollingHandler, getClientId, ensureClientId }
+  /**
+   * Get or create a client ID from request/response (GET handler utility).
+   * Sets a cookie if no client ID exists.
+   * @function
+   * @param {http.IncomingMessage} req - The HTTP request
+   * @param {http.ServerResponse} res - The HTTP response
+   * @returns {string} The client ID
+   */
+  ensureClientId,
+};

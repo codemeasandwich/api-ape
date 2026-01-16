@@ -10,15 +10,17 @@ Matches the NextJs example structure and features.
 Vite/
 ├── src/
 │   ├── App.vue              # Main chat component
-│   ├── components/
-│   │   └── Info.vue         # How api-ape works explanation
 │   ├── main.ts              # Vue app entry
-│   └── style.css            # Styles
+│   ├── style.css            # Styles
+│   ├── vite-env.d.ts        # Vite TypeScript declarations
+│   └── components/
+│       └── Info.vue         # How api-ape works explanation
 ├── ape/
 │   ├── client.ts            # api-ape client wrapper (singleton)
 │   └── onConnect.ts         # Connection lifecycle hooks
 ├── api/
 │   └── message.ts           # Message handler with broadcastOthers
+├── index.html               # HTML entry point
 ├── server.ts                # Bun backend server
 ├── vite.config.ts           # Vite config with proxy
 └── package.json

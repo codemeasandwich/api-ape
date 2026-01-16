@@ -1,273 +1,219 @@
-//JsonSuperSet
+/**
+ * @fileoverview JSON Super Set (JSS) - Extended JSON Serialization
+ *
+ * JSS extends standard JSON to support additional JavaScript types that
+ * JSON.stringify/parse cannot handle. This enables api-ape to transparently
+ * serialize and deserialize rich data types over WebSocket connections.
+ *
+ * ## Supported Types
+ *
+ * | Type           | Tag | Description                           |
+ * |----------------|-----|---------------------------------------|
+ * | Date           | `D` | Serialized as timestamp               |
+ * | RegExp         | `R` | Serialized as string pattern          |
+ * | Error          | `E` | Preserves name, message, and stack    |
+ * | undefined      | `U` | Explicitly represents undefined       |
+ * | Map            | `M` | Converted to/from object entries      |
+ * | Set            | `S` | Converted to/from array               |
+ * | Circular Refs  | `P` | Preserved via path pointers           |
+ *
+ * ## Wire Format
+ *
+ * JSS encodes type information into object keys using a tag suffix:
+ *
+ * ```javascript
+ * // Original object
+ * { createdAt: new Date('2024-01-01'), pattern: /hello/i }
+ *
+ * // JSS encoded
+ * { "createdAt<!D>": 1704067200000, "pattern<!R>": "/hello/i" }
+ * ```
+ *
+ * ## Usage
+ *
+ * JSS provides a drop-in replacement for JSON.stringify/parse:
+ *
+ * ```javascript
+ * const jss = require('./jss')
+ *
+ * // Stringify (like JSON.stringify but handles extended types)
+ * const str = jss.stringify({ date: new Date(), regex: /test/ })
+ *
+ * // Parse (like JSON.parse but restores extended types)
+ * const obj = jss.parse(str)
+ * // obj.date is a Date instance
+ * // obj.regex is a RegExp instance
+ * ```
+ *
+ * ## API Methods
+ *
+ * - `stringify(obj)` - Convert object to JSS string (high-level)
+ * - `parse(str)` - Parse JSS string back to object (high-level)
+ * - `encode(obj)` - Convert object to JSS-encoded plain object
+ * - `decode(obj)` - Convert JSS-encoded object back to original
+ *
+ * ## Circular Reference Handling
+ *
+ * JSS can handle circular references using path pointers:
+ *
+ * ```javascript
+ * const obj = { name: 'root' }
+ * obj.self = obj  // Circular reference
+ *
+ * const str = jss.stringify(obj)  // No error!
+ * const restored = jss.parse(str)
+ * console.log(restored.self === restored)  // true
+ * ```
+ *
+ * @module utils/jss
+ * @see {@link module:utils/jss/encode} for encoding implementation
+ * @see {@link module:utils/jss/decode} for decoding implementation
+ *
+ * @example
+ * // Basic usage with dates
+ * const jss = require('./jss')
+ *
+ * const data = {
+ *   user: 'Alice',
+ *   loginAt: new Date(),
+ *   settings: new Map([['theme', 'dark'], ['lang', 'en']])
+ * }
+ *
+ * const serialized = jss.stringify(data)
+ * // Can be sent over WebSocket
+ *
+ * const restored = jss.parse(serialized)
+ * console.log(restored.loginAt instanceof Date)  // true
+ * console.log(restored.settings instanceof Map)  // true
+ *
+ * @example
+ * // Error serialization
+ * const jss = require('./jss')
+ *
+ * try {
+ *   throw new TypeError('Invalid input')
+ * } catch (err) {
+ *   const serialized = jss.stringify({ error: err })
+ *   const restored = jss.parse(serialized)
+ *
+ *   console.log(restored.error instanceof TypeError)  // true
+ *   console.log(restored.error.message)  // 'Invalid input'
+ *   console.log(restored.error.stack)    // Original stack trace
+ * }
+ *
+ * @example
+ * // Low-level encode/decode for inspection
+ * const jss = require('./jss')
+ *
+ * const encoded = jss.encode({
+ *   date: new Date('2024-01-01'),
+ *   items: new Set([1, 2, 3])
+ * })
+ *
+ * console.log(encoded)
+ * // {
+ * //   "date<!D>": 1704067200000,
+ * //   "items<!S>": [1, 2, 3]
+ * // }
+ *
+ * const decoded = jss.decode(encoded)
+ * // Original types restored
+ */
 
-// TODO: add tests
-// check for any repeated ref not just cyclical references
-// support nasted array a<![,,[D]]>:["a","b",[Date]]
-// support array for the same type a<![*D]>:[Date,Date,Date]
+const { encode, stringify } = require("./jss/encode");
+const { decode, parse } = require("./jss/decode");
+const { register: custom, clearPlugins } = require("./jss/plugins");
 
-function encode(obj) {
-    const tagLookup = {
-        '[object RegExp]': 'R',
-        '[object Date]': 'D',
-        '[object Error]': 'E',
-        "[object Undefined]": 'U',
-        "[object Map]": 'M',
-        "[object Set]": 'S',
-    };
-    const visited = new WeakMap();
+/**
+ * Parse a JSS-encoded string back into an object with restored types
+ *
+ * This is the primary method for deserializing JSS data. It combines
+ * JSON.parse with type restoration for Date, RegExp, Error, Map, Set,
+ * undefined, and circular references.
+ *
+ * @function parse
+ * @param {string} encoded - JSS-encoded JSON string
+ * @returns {any} Decoded object with original types restored
+ * @throws {SyntaxError} If the string is not valid JSON
+ *
+ * @example
+ * const obj = jss.parse('{"date<!D>":1704067200000}')
+ * console.log(obj.date instanceof Date)  // true
+ */
 
-    function encodeValue(value, path = '') {
-        const type = typeof value;
-        const tag = tagLookup[Object.prototype.toString.call(value)];
-        // console.log({tag,value,path})
-        if (tag !== undefined) {
-            if ('D' === tag) return [tag, value.valueOf()];
-            if ('E' === tag) return [tag, [value.name, value.message, value.stack]];
-            if ('R' === tag) return [tag, value.toString()];
-            if ('U' === tag) return [tag, null];
-            if ('S' === tag) return [tag, Array.from(value)];
-            if ('M' === tag) return [tag, Object.fromEntries(value)];
+/**
+ * Convert an object to a JSS-encoded JSON string
+ *
+ * This is the primary method for serializing objects with extended types.
+ * It handles Date, RegExp, Error, Map, Set, undefined, and circular
+ * references that would cause JSON.stringify to fail or lose information.
+ *
+ * @function stringify
+ * @param {any} obj - Object to serialize
+ * @returns {string} JSS-encoded JSON string
+ *
+ * @example
+ * const str = jss.stringify({
+ *   when: new Date(),
+ *   pattern: /\d+/g,
+ *   items: new Set([1, 2, 3])
+ * })
+ */
 
-            return [tag, JSON.stringify(value)];
-        } else if (type === 'object' && value !== null) {
-            /*if (value.$ID) {
-              return ['', value.$ID];
-            }*/
-            if (visitedEncode.has(value)) {
-                return ['P', visitedEncode.get(value)];
-            }
-            visitedEncode.set(value, path);
-            const isArray = Array.isArray(value);
-            // keep index with undefined in Array
-            const keys = isArray ? Array.from(Array(value.length).keys()) : Object.keys(value);
-            const result = isArray ? [] : {};
-            const typesFound = [];
-            for (let i = 0; i < keys.length; i++) {
-                const key = keys[i];
-                const [t, v] = encodeValue(value[key], key);
-                // console.log([t, v])
-                if (isArray) {
-                    typesFound.push(t);
-                    result.push(v);
-                    // remove key with undefined from Objects
-                } else if (value[key] !== undefined) {
-                    result[key + (t ? `<!${t}>` : '')] = v;
-                }
-            }
+/**
+ * Encode an object to JSS format (without stringifying)
+ *
+ * Low-level method that converts extended types to their tagged
+ * representations. Useful for inspection or custom serialization.
+ *
+ * @function encode
+ * @param {any} obj - Object to encode
+ * @returns {Object} Plain object with tagged keys for extended types
+ *
+ * @example
+ * const encoded = jss.encode({ date: new Date() })
+ * // { "date<!D>": 1704067200000 }
+ */
 
-            visited.delete(value);
-            if (isArray && typesFound.find((t) => !!t)) {
-                return [`[${typesFound.join()}]`, result];
-            }
-            return ['', result];
-        } else {
-            return ['', value];
-        }
-    } // END encodeValue
+/**
+ * Decode a JSS-encoded object (without parsing from string)
+ *
+ * Low-level method that restores extended types from their tagged
+ * representations. Useful when working with already-parsed data.
+ *
+ * @function decode
+ * @param {Object} data - JSS-encoded plain object
+ * @returns {any} Object with original types restored
+ *
+ * @example
+ * const decoded = jss.decode({ "date<!D>": 1704067200000 })
+ * console.log(decoded.date instanceof Date)  // true
+ */
 
-    let keys = [];
-    // console.log(obj)
-    if (Array.isArray(obj)) {
-        keys = Array.from(Array(obj.length).keys())
-    } else {
-        keys = Object.keys(obj);
-    }
+/**
+ * Register a custom type handler plugin
+ *
+ * Plugins extend JSS to handle custom types beyond the built-in set.
+ * Each plugin is identified by a single-character tag that appears in
+ * the serialized format (e.g., `"key<!X>": value`).
+ *
+ * @function custom
+ * @param {string} tag - Single character tag identifier (e.g., 'X', 'Z')
+ * @param {Object} config - Plugin configuration object
+ * @param {function(string|number, any): boolean} config.check - Determines if plugin handles value
+ * @param {function(string[], string|number, any, Object): any} config.encode - Transform for serialization
+ * @param {function(any, string[], Object): any} config.decode - Restore from serialization
+ * @param {function=} config.onSend - Optional send lifecycle hook
+ * @param {function=} config.onReceive - Optional receive lifecycle hook
+ * @throws {Error} If tag conflicts with built-in or existing custom type
+ *
+ * @example
+ * // Register a custom BigInt handler
+ * jss.custom('B', {
+ *   check: (key, value) => typeof value === 'bigint',
+ *   encode: (path, key, value) => value.toString(),
+ *   decode: (value) => BigInt(value)
+ * })
+ */
 
-    // Track root object to handle self-references
-    const visitedEncode = new WeakMap();
-    visitedEncode.set(obj, []);  // Root path is empty array
-
-    function encodeValueWithVisited(value, path = []) {
-        const type = typeof value;
-        const tag = tagLookup[Object.prototype.toString.call(value)];
-        if (tag !== undefined) {
-            if ('D' === tag) return [tag, value.valueOf()];
-            if ('E' === tag) return [tag, [value.name, value.message, value.stack]];
-            if ('R' === tag) return [tag, value.toString()];
-            if ('U' === tag) return [tag, null];
-            if ('S' === tag) return [tag, Array.from(value)];
-            if ('M' === tag) return [tag, Object.fromEntries(value)];
-            return [tag, JSON.stringify(value)];
-        } else if (type === 'object' && value !== null) {
-            if (visitedEncode.has(value)) {
-                return ['P', visitedEncode.get(value)];  // Return array path
-            }
-            visitedEncode.set(value, path);
-            const isArray = Array.isArray(value);
-            const objKeys = isArray ? Array.from(Array(value.length).keys()) : Object.keys(value);
-            const result = isArray ? [] : {};
-            const typesFound = [];
-            for (let i = 0; i < objKeys.length; i++) {
-                const key = objKeys[i];
-                const [t, v] = encodeValueWithVisited(value[key], [...path, key]);  // Append key to path array
-                if (isArray) {
-                    typesFound.push(t);
-                    result.push(v);
-                } else if (value[key] !== undefined) {
-                    result[key + (t ? `<!${t}>` : '')] = v;
-                }
-            }
-            if (isArray && typesFound.find((t) => !!t)) {
-                return [`[${typesFound.join()}]`, result];
-            }
-            return ['', result];
-        } else {
-            return ['', value];
-        }
-    }
-
-    const result = {};
-    for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-        // remove key with undefined from Objects
-        if (obj[key] !== undefined) {
-            const [t, v] = encodeValueWithVisited(obj[key], [key]);  // Start path with single key
-            result[key + (t ? `<!${t}>` : '')] = v;
-        }
-    }
-    return result;
-} // END encode
-
-function stringify(obj) {
-    return JSON.stringify(encode(obj))
-}
-
-
-function parse(encoded) {
-    return decode(JSON.parse(encoded))
-}
-
-function decode(data) {
-    const result = {};
-    const pointers2Res = [];
-    const tagLookup = {
-        R: (s) => new RegExp(s),
-        D: (n) => new Date(n),
-        P: function (sourceToPointAt, replaceAtThisPlace) {
-            // Both paths are now arrays
-            pointers2Res.push([sourceToPointAt, replaceAtThisPlace]);
-            return null;  // Placeholder, will be replaced by changeAttributeReference
-        },
-        E: ([name, message, stack]) => {
-            let err;
-            try {
-                err = new global[name](message);
-                if (err instanceof Error) err.stack = stack;
-                else throw {};
-            } catch (e) {
-                err = new Error(message);
-                err.name = name;
-                err.stack = stack;
-            }
-            return err;
-        },
-        U: () => undefined,
-        S: (a) => new Set(a),
-        M: (o) => new Map(Object.entries(o))
-    };
-    const visited = new Map();
-
-    function decodeValue(name, tag, val) {
-        // this is now an array path
-        const currentPath = Array.isArray(this) ? this : [];
-
-        if (tag in tagLookup) {
-            return tagLookup[tag](val, currentPath);
-        } else if (Array.isArray(val)) {
-            if (tag && tag.startsWith('[')) {
-                const typeTags = tag.slice(1, -1).split(',');
-                const res = [];
-                for (let i = 0; i < val.length; i++) {
-                    // Pass path with array index appended
-                    const itemPath = [...currentPath, i];
-                    const decodedValue = decodeValue.call(
-                        itemPath,
-                        i.toString(),
-                        typeTags[i],
-                        val[i]
-                    );
-                    res.push(decodedValue);
-                }
-                return res;
-            } else {
-                const res = [];
-                for (let i = 0; i < val.length; i++) {
-                    const decodedValue = decodeValue.call([...currentPath, i], '', '', val[i]);
-                    res.push(decodedValue);
-                }
-                return res;
-            }
-        } else if ('object' === typeof val && val !== null) {
-            if (visited.has(val)) {
-                return visited.get(val);
-            }
-            visited.set(val, {});
-            const res = {};
-            for (const key in val) {
-                const [nam, t] = parseKeyWithTags(key);
-                const decodedValue = decodeValue.call(
-                    [...currentPath, nam],
-                    nam,
-                    t,
-                    val[key]
-                );
-                res[nam] = decodedValue;
-            }
-            visited.set(val, res);
-            return res;
-        } else {
-            return val;
-        }
-    } // END decodeValue
-
-    function parseKeyWithTags(key) {
-        const match = key.match(/(.+)(<!(.)>)/);
-        if (match) {
-            return [match[1], match[3]];
-        }
-        // Try multi-character tags like array types [,D,]
-        const multiMatch = key.match(/(.+)(<!!(.+)>)/);
-        if (multiMatch) {
-            return [multiMatch[1], multiMatch[3]];
-        }
-        // Also handle array type tags that start with [
-        const arrayMatch = key.match(/(.+)(<!\[(.*)>)/);
-        if (arrayMatch) {
-            return [arrayMatch[1], '[' + arrayMatch[3]];
-        }
-        return [key, undefined];
-    } // END parseKeyWithTags
-
-    for (const key in data) {
-        const [name, tag] = parseKeyWithTags(key);
-        // Start with path containing just the key name
-        result[name] = decodeValue.call([name], name, tag, data[key]);
-    }
-    pointers2Res.forEach(changeAttributeReference.bind(null, result));
-    return result;
-} // END decode
-
-function changeAttributeReference(obj, [refPath, attrPath]) {
-    // refPath and attrPath are now arrays, no splitting needed
-    const refKeys = refPath || [];
-    const attrKeys = attrPath || [];
-
-    // Get the reference target by traversing refPath
-    let ref = obj;
-    for (let i = 0; i < refKeys.length; i++) {
-        ref = ref[refKeys[i]];
-    }
-
-    // Get the parent of the attribute to set
-    let attr = obj;
-    for (let i = 0; i < attrKeys.length - 1; i++) {
-        attr = attr[attrKeys[i]];
-    }
-
-    // Set the attribute to point to the reference
-    attr[attrKeys[attrKeys.length - 1]] = ref;
-    return obj;
-} // END changeAttributeReference
-
-
-module.exports = { parse, stringify, encode, decode };
+module.exports = { parse, stringify, encode, decode, custom, clearPlugins };

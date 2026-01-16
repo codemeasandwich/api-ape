@@ -1,6 +1,20 @@
-# APE Cluster Adapters
+# 🌲 Forest Cluster Adapters
 
-Connect multiple api-ape server instances via a shared database for horizontal scaling.
+## Overview
+
+The adapters module provides database integrations for api-ape's Forest distributed mesh system. These adapters enable horizontal scaling by connecting multiple api-ape server instances through a shared backend, allowing clients on different servers to communicate seamlessly.
+
+**Key capabilities:**
+
+- **Client discovery** — Track which server hosts each connected client
+- **Message routing** — Route messages directly to the target server (no broadcast spam)
+- **Real-time push** — Use database-native pub/sub for instant message delivery
+- **Auto-detection** — Automatically detect database type from client instance
+- **Zero configuration** — Creates namespaced keys/tables automatically
+
+Supported backends: **Redis** (recommended), **MongoDB**, **PostgreSQL**, **Supabase**, and **Firebase**.
+
+> **Contributing?** See [`files.md`](./files.md) for directory structure and file descriptions.
 
 ## Quick Start
 
@@ -21,7 +35,6 @@ That's it. APE will:
 - Create namespaced keys/tables (`ape:*` or `ape_*`)
 - Route messages between servers automatically
 
----
 
 ## How It Works
 
@@ -47,7 +60,6 @@ That's it. APE will:
 
 Messages are routed **directly** to the server hosting the client. No broadcast spam.
 
----
 
 ## Adapter Interface
 
@@ -74,7 +86,6 @@ interface AdapterInstance {
 }
 ```
 
----
 
 ## Supported Databases
 
@@ -96,7 +107,6 @@ ape.joinVia(redis);
 - `ape:channel:{serverId}` — PUB/SUB channel
 - `ape:channel:ALL` — broadcast channel
 
----
 
 ### MongoDB
 
@@ -116,7 +126,6 @@ ape.joinVia(mongo);
 - Collection: `clients` — client→server mapping
 - Collection: `events` — message bus (change streams)
 
----
 
 ### PostgreSQL
 
@@ -135,7 +144,6 @@ ape.joinVia(pool);
 - Table: `clients` — client→server mapping
 - Channel: `ape_events` — LISTEN/NOTIFY channel
 
----
 
 ### Supabase
 
@@ -153,7 +161,6 @@ ape.joinVia(supabase);
 - Create table: `ape_clients (client_id TEXT PRIMARY KEY, server_id TEXT, updated_at TIMESTAMP)`
 - Enable Realtime on your project
 
----
 
 ### Firebase Realtime Database
 
@@ -174,7 +181,6 @@ ape.joinVia(database);
 - `/ape/channels/{serverId}` — message channels
 - `/ape/channels/ALL` — broadcast channel
 
----
 
 ## Custom Adapters
 
@@ -215,7 +221,6 @@ ape.joinVia({
 });
 ```
 
----
 
 ## Options
 
@@ -226,7 +231,6 @@ ape.joinVia(redis, {
 });
 ```
 
----
 
 ## Lifecycle
 
@@ -246,7 +250,6 @@ process.on('SIGINT', async () => {
 });
 ```
 
----
 
 ## Message Format
 
@@ -273,3 +276,9 @@ Messages sent via `channels.push`:
   excludeClientId: 'user-456'
 }
 ```
+
+## See Also
+
+- [`../README.md`](../README.md) — Main server documentation
+- [`../lib/broadcast.js`](../lib/broadcast.js) — Broadcast utilities used with adapters
+- [`../lib/wiring.js`](../lib/wiring.js) — WebSocket connection setup with cluster integration

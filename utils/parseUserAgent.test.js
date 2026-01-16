@@ -699,6 +699,43 @@ const TEST_CASES = {
                 cpu: { architecture: null },
                 isBot: false
             }
+        },
+        'Safari fallback detection (no Version prefix, no Chrome)': {
+            // This UA has Safari but not Chrome and no Version/ prefix - triggers fallback Safari detection
+            ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Safari/605.1.15',
+            output: {
+                browser: { name: 'Safari', version: '605.1.15', major: '605' },
+                engine: { name: 'WebKit', version: '605.1.15' },
+                os: { name: 'macOS', version: '10.15.7' },
+                device: { type: null, vendor: 'Apple', model: null },
+                cpu: { architecture: null },
+                isBot: false
+            }
+        }
+    },
+
+    'Android - Legacy Google Devices': {
+        'Google Nexus 5': {
+            ua: 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Mobile Safari/537.36',
+            output: {
+                browser: { name: 'Chrome', version: '89.0.4389.82', major: '89' },
+                engine: { name: 'Blink', version: '89.0.4389.82' },
+                os: { name: 'Android', version: '6.0' },
+                device: { type: 'mobile', vendor: 'Google', model: 'Nexus 5' },
+                cpu: { architecture: null },
+                isBot: false
+            }
+        },
+        'Google Nexus 7': {
+            ua: 'Mozilla/5.0 (Linux; Android 5.1.1; Nexus7 Build/LMY47V) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.158 Safari/537.36',
+            output: {
+                browser: { name: 'Chrome', version: '66.0.3359.158', major: '66' },
+                engine: { name: 'Blink', version: '66.0.3359.158' },
+                os: { name: 'Android', version: '5.1.1' },
+                device: { type: 'tablet', vendor: 'Google', model: 'Nexus7' },
+                cpu: { architecture: null },
+                isBot: false
+            }
         }
     }
 };

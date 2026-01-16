@@ -1,239 +1,199 @@
-const messageHash = require('../../utils/messageHash')
-const { broadcast, clients } = require('../lib/broadcast')
-const jss = require('../../utils/jss')
+/**
+ * @fileoverview WebSocket Message Receive Handler for api-ape Server
+ *
+ * Handles incoming WebSocket messages: parsing, binary uploads, routing, responses.
+ *
+ * @module server/socket/receive
+ * @see {@link module:server/socket/receiveContext} for controller context
+ */
+
+const messageHash = require("../../utils/messageHash");
+const { subscribe, unsubscribe } = require("../lib/broadcast");
+const jss = require("../../utils/jss");
+const {
+  findUploadTags,
+  findFileTags,
+  cleanUploadTags,
+  setValueAtPath,
+} = require("./tagUtils");
+const { processPluginReceive, findPluginTags } = require("./pluginHooks");
+const { getAllPlugins } = require("../../utils/jss/plugins");
+const { getSessionId, createControllerContext } = require("./receiveContext");
+const { createAuthMessageHandler } = require("../security/auth/handlers/auth-messages");
+const { isAuthMessage } = require("../security/auth");
 
 /**
- * Find B/A tagged properties in data (indicating pending uploads)
- * Returns array of { path, hash, tag }
+ * Create a message receive handler for a WebSocket connection
+ *
+ * @param {Object} ape - The connection context object
+ * @returns {Function} Async function that handles incoming messages
  */
-function findUploadTags(obj, path = '') {
-    const uploads = []
-
-    if (obj === null || obj === undefined || typeof obj !== 'object') {
-        return uploads
-    }
-
-    if (Array.isArray(obj)) {
-        for (let i = 0; i < obj.length; i++) {
-            uploads.push(...findUploadTags(obj[i], path ? `${path}.${i}` : String(i)))
-        }
-        return uploads
-    }
-
-    for (const key of Object.keys(obj)) {
-        // Check for B or A tag (binary upload markers)
-        const bMatch = key.match(/^(.+)<!B>$/)
-        const aMatch = key.match(/^(.+)<!A>$/)
-
-        if (bMatch) {
-            uploads.push({
-                path: path ? `${path}.${bMatch[1]}` : bMatch[1],
-                hash: obj[key],
-                tag: 'B',
-                originalKey: key
-            })
-        } else if (aMatch) {
-            uploads.push({
-                path: path ? `${path}.${aMatch[1]}` : aMatch[1],
-                hash: obj[key],
-                tag: 'A',
-                originalKey: key
-            })
-        } else {
-            uploads.push(...findUploadTags(obj[key], path ? `${path}.${key}` : key))
-        }
-    }
-
-    return uploads
-}
-
-/**
- * Find F-tagged properties in data (indicating client-to-client file sharing)
- * Returns array of { path, hash }
- */
-function findFileTags(obj, path = '') {
-    const files = []
-
-    if (obj === null || obj === undefined || typeof obj !== 'object') {
-        return files
-    }
-
-    if (Array.isArray(obj)) {
-        for (let i = 0; i < obj.length; i++) {
-            files.push(...findFileTags(obj[i], path ? `${path}.${i}` : String(i)))
-        }
-        return files
-    }
-
-    for (const key of Object.keys(obj)) {
-        // Check for F tag (client-to-client file sharing marker)
-        const fMatch = key.match(/^(.+)<!F>$/)
-
-        if (fMatch) {
-            files.push({
-                path: path ? `${path}.${fMatch[1]}` : fMatch[1],
-                hash: obj[key],
-                originalKey: key
-            })
-        } else {
-            files.push(...findFileTags(obj[key], path ? `${path}.${key}` : key))
-        }
-    }
-
-    return files
-}
-
-/**
- * Clean upload tags from data (rename key<!B> to key)
- */
-function cleanUploadTags(obj) {
-    if (obj === null || obj === undefined || typeof obj !== 'object') {
-        return obj
-    }
-
-    if (Array.isArray(obj)) {
-        return obj.map(cleanUploadTags)
-    }
-
-    const cleaned = {}
-    for (const key of Object.keys(obj)) {
-        const bMatch = key.match(/^(.+)<!B>$/)
-        const aMatch = key.match(/^(.+)<!A>$/)
-
-        if (bMatch) {
-            cleaned[bMatch[1]] = obj[key] // Will be replaced with actual data
-        } else if (aMatch) {
-            cleaned[aMatch[1]] = obj[key] // Will be replaced with actual data
-        } else {
-            cleaned[key] = cleanUploadTags(obj[key])
-        }
-    }
-    return cleaned
-}
-
-/**
- * Set value at nested path
- */
-function setValueAtPath(obj, path, value) {
-    const parts = path.split('.')
-    let current = obj
-
-    for (let i = 0; i < parts.length - 1; i++) {
-        current = current[parts[i]]
-    }
-
-    current[parts[parts.length - 1]] = value
-}
-
-/**
- * Extract sessionId cookie from request headers
- */
-function getSessionId(req) {
-    const cookies = req?.headers?.cookie || ''
-    const match = cookies.match(/(?:^|;\s*)sessionId=([^;]*)/)
-    return match ? match[1] : null
-}
-
 module.exports = function receiveHandler(ape) {
-    const { send, checkReply, events, controllers, sharedValues, clientId, embedValues, fileTransfer } = ape
+  const {
+    send,
+    checkReply,
+    events,
+    controllers,
+    sharedValues,
+    clientId,
+    embedValues,
+    fileTransfer,
+    socketAuth,
+    authMiddleware,
+  } = ape;
 
-    // Extract sessionId from request cookies (set by outer framework session management)
-    const sessionId = getSessionId(sharedValues.req)
+  const sessionId = getSessionId(sharedValues.req);
+  const that = createControllerContext({ sharedValues, embedValues, clientId, sessionId, socketAuth });
 
-    // Build `this` context for controllers
-    // Includes: client metadata + api-ape utilities
-    const that = {
-        ...sharedValues,
-        ...embedValues,
-        // api-ape utilities available via `this`
-        broadcast: (type, data) => broadcast(type, data),
-        broadcastOthers: (type, data) => broadcast(type, data, clientId), // exclude self
-        clients,
-        clientId,
-        sessionId  // Session ID from cookie (set by outer framework)
-    }
+  // Create auth message handler if auth is configured
+  const handleAuthMessage = socketAuth
+    ? createAuthMessageHandler(socketAuth, send)
+    : null;
 
-    return async function onReceive(msg) {
-        // Convert Buffer to string - WebSocket messages may arrive as binary
-        const msgString = typeof msg === 'string' ? msg : msg.toString('utf8');
-        const queryId = messageHash(msgString);
-        try {
-            const { type: rawType, data, referer, createdAt, requestedAt } = jss.parse(msgString);
+  return async function onReceive(msg) {
+    const msgString = typeof msg === "string" ? msg : msg.toString("utf8");
+    const queryId = messageHash(msgString);
 
-            // Normalize type: strip leading slash, lowercase
-            const type = rawType.replace(/^\//, '').toLowerCase()
+    try {
+      const rawParsed = JSON.parse(msgString);
+      const rawData = rawParsed.data;
 
-            // Call onReceive hook - it should return a finish callback
-            const onFinish = events.onReceive(queryId, data, type) || (() => { })
+      // Handle subscribe/unsubscribe messages
+      if (rawParsed.subscribe) {
+        const channel = rawParsed.subscribe;
+        const result = subscribe(clientId, channel);
+        if (result?.lastMessage) {
+          try {
+            send(false, result.channel, result.lastMessage, false);
+          } catch (sendErr) {
+            // Socket likely closed
+          }
+        }
+        return;
+      }
 
-            // Check for pending uploads (B/A tags)
-            let processedData = data
-            if (fileTransfer && data) {
-                const uploadTags = findUploadTags(data)
+      if (rawParsed.unsubscribe) {
+        unsubscribe(clientId, rawParsed.unsubscribe);
+        return;
+      }
 
-                if (uploadTags.length > 0) {
-                    console.log(`📤 Waiting for ${uploadTags.length} upload(s) for ${type}`)
+      const { type: rawType, data, createdAt } = jss.parse(msgString);
+      const type = rawType.replace(/^\//, "");
 
-                    // Clean the data object
-                    processedData = cleanUploadTags(data)
+      // Handle authentication messages first (before any other processing)
+      if (handleAuthMessage && isAuthMessage(type)) {
+        const handled = await handleAuthMessage(queryId, type, data);
+        if (handled) {
+          return; // Auth message was handled, don't route to controllers
+        }
+      }
 
-                    // Wait for all uploads
-                    try {
-                        await Promise.all(uploadTags.map(async ({ path, hash }) => {
-                            const uploadData = await fileTransfer.registerUpload(queryId, hash, clientId)
-                            setValueAtPath(processedData, path, uploadData)
-                        }))
-                    } catch (uploadErr) {
-                        console.error(`📤 Upload wait failed:`, uploadErr)
-                        send(queryId, false, false, uploadErr)
-                        if (typeof onFinish === 'function') {
-                            onFinish(uploadErr, true)
-                        }
-                        return
-                    }
-                }
+      const onFinish = events.onReceive(queryId, data, type) || (() => {});
 
-                // Check for F-tagged files (client-to-client sharing)
-                // Register them but DON'T wait - controller invoked immediately
-                const fileTags = findFileTags(data)
-                if (fileTags.length > 0) {
-                    console.log(`📁 Registering ${fileTags.length} streaming file(s) for ${type}`)
-                    fileTags.forEach(({ hash }) => {
-                        fileTransfer.registerStreamingFile(hash, clientId)
-                    })
-                }
+      // Check authorization if middleware is configured
+      if (authMiddleware && socketAuth) {
+        const authzResult = authMiddleware.check(socketAuth, type, { queryId, data });
+        if (!authzResult.allowed) {
+          const failResponse = authMiddleware.createFailResponse(authzResult);
+          try {
+            send(queryId, failResponse.type, failResponse, null);
+          } catch (sendErr) {
+            // Socket likely closed
+          }
+          if (typeof onFinish === "function") onFinish(failResponse, true);
+          return;
+        }
+      }
+
+      let processedData = data;
+
+      if (fileTransfer && rawData) {
+        const pluginTags = findPluginTags(rawData);
+
+        if (getAllPlugins().size > 0 && pluginTags.length > 0) {
+          const context = {
+            queryId,
+            clientId,
+            fileTransfer,
+            direction: "receive",
+          };
+
+          try {
+            processedData = await processPluginReceive(data, rawData, context);
+          } catch (pluginErr) {
+            try {
+              send(queryId, false, false, pluginErr);
+            } catch (sendErr) {}
+            if (typeof onFinish === "function") onFinish(pluginErr, true);
+            return;
+          }
+        } else {
+          const uploadTags = findUploadTags(rawData);
+
+          if (uploadTags.length > 0) {
+            processedData = cleanUploadTags(data);
+
+            try {
+              await Promise.all(
+                uploadTags.map(async ({ path, hash }) => {
+                  const uploadData = await fileTransfer.registerUpload(
+                    queryId,
+                    hash,
+                    clientId,
+                  );
+                  setValueAtPath(processedData, path, uploadData);
+                }),
+              );
+            } catch (uploadErr) {
+              try {
+                send(queryId, false, false, uploadErr);
+              } catch (sendErr) {}
+              if (typeof onFinish === "function") onFinish(uploadErr, true);
+              return;
             }
+          }
 
-            const result = new Promise((resolve, reject) => {
-                try {
-                    const controller = controllers[type]
-                    if (!controller) {
-                        throw `TypeError: "${type}" was not found`
-                    }
-                    checkReply(queryId, createdAt)
-                    resolve(controller.call(that, processedData))
-                } catch (err) {
-                    reject(err)
-                }
-            })
-            result.then(val => {
-                if (undefined !== val) {
-                    send(queryId, false, val, false)
-                }
-                if (typeof onFinish === 'function') {
-                    onFinish(false, val)
-                }
-            }).catch(err => {
-                send(queryId, false, false, err)
-                if (typeof onFinish === 'function') {
-                    onFinish(err, true)
-                }
-            })
+          const fileTags = findFileTags(rawData);
+          if (fileTags.length > 0) {
+            fileTags.forEach(({ hash }) =>
+              fileTransfer.registerStreamingFile(hash, clientId),
+            );
+          }
+        }
+      }
 
+      const result = new Promise((resolve, reject) => {
+        try {
+          const controller = controllers[type];
+
+          if (!controller) {
+            throw `TypeError: "${type}" was not found`;
+          }
+
+          checkReply(queryId, createdAt);
+          resolve(controller.call(that, processedData));
         } catch (err) {
-            const errMessage = err.message || err
-            events.onError(clientId, queryId, errMessage)
-        } // END catch
+          reject(err);
+        }
+      });
 
-    } // END onReceive
-} // END receiveHandler
+      result
+        .then((val) => {
+          if (undefined !== val) {
+            try {
+              send(queryId, false, val, false);
+            } catch (sendErr) {}
+          }
+          if (typeof onFinish === "function") onFinish(false, val);
+        })
+        .catch((err) => {
+          try {
+            send(queryId, false, false, err);
+          } catch (sendErr) {}
+          if (typeof onFinish === "function") onFinish(err, true);
+        });
+    } catch (err) {
+      events.onError(clientId, queryId, err.message || err);
+    }
+  };
+};

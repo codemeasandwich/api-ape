@@ -1,286 +1,348 @@
 /**
- * Robust User-Agent Parser
- * Zero-dependency replacement for ua-parser-js
- * Handles browsers, OS, devices, bots (including AI), and edge cases
+ * @fileoverview Robust User-Agent Parser - Zero Dependencies
+ *
+ * This module provides a comprehensive User-Agent string parser that extracts
+ * detailed information about the client's browser, operating system, device,
+ * CPU architecture, and bot status. It has zero external dependencies and
+ * handles a wide variety of user agents including:
+ *
+ * - Modern browsers (Chrome, Firefox, Safari, Edge, Opera, Brave, etc.)
+ * - Mobile browsers (iOS Safari, Chrome Mobile, Samsung Internet, etc.)
+ * - AI bots (ChatGPT, Claude, GPTBot, Perplexity, etc.)
+ * - Traditional crawlers (Googlebot, Bingbot, etc.)
+ * - Headless browsers (HeadlessChrome, PhantomJS, Puppeteer, etc.)
+ * - In-app browsers (Facebook, Instagram, WhatsApp, etc.)
+ * - Game consoles (PlayStation, Xbox, Nintendo)
+ * - Smart TVs and set-top boxes
+ *
+ * The parser is designed to be:
+ * - **Fast**: Simple regex matching with early termination
+ * - **Accurate**: Handles edge cases and common variations
+ * - **Safe**: Returns null values instead of throwing errors
+ * - **Comprehensive**: Extracts browser, engine, OS, device, and CPU info
+ *
+ * @module server/utils/parseUserAgent
+ * @see {@link module:server/utils/userAgent/patterns} - Pattern definitions
+ *
+ * @example
+ * const parseUserAgent = require('./parseUserAgent')
+ *
+ * const result = parseUserAgent(
+ *     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+ *     '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+ * )
+ *
+ * console.log(result)
+ * // {
+ * //   browser: { name: 'Chrome', version: '120.0.0.0', major: '120' },
+ * //   engine: { name: 'Blink', version: '120.0.0.0' },
+ * //   os: { name: 'Windows', version: '10' },
+ * //   device: { type: null, vendor: null, model: null },
+ * //   cpu: { architecture: 'amd64' },
+ * //   isBot: false,
+ * //   raw: '...'
+ * // }
+ *
+ * @example
+ * // Detect AI bots
+ * const result = parseUserAgent('ClaudeBot/1.0')
+ * console.log(result.browser.name) // 'ClaudeBot'
+ * console.log(result.isBot)        // true
+ *
+ * @example
+ * // Handle mobile devices
+ * const result = parseUserAgent(
+ *     'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ...'
+ * )
+ * console.log(result.device.type)   // 'mobile'
+ * console.log(result.device.vendor) // 'Apple'
+ * console.log(result.os.name)       // 'iOS'
  */
 
-// Browser detection patterns - ORDER MATTERS (specific before generic)
-const BROWSERS = [
-    // AI Bots first (most specific)
-    { name: 'ChatGPT-User', pattern: /ChatGPT-User\/?([\d.]*)/i },
-    { name: 'GPTBot', pattern: /GPTBot\/?([\d.]*)/i },
-    { name: 'OAI-SearchBot', pattern: /OAI-SearchBot\/?([\d.]*)/i },
-    { name: 'ClaudeBot', pattern: /ClaudeBot\/?([\d.]*)/i },
-    { name: 'Claude-User', pattern: /Claude-User\/?([\d.]*)/i },
-    { name: 'Claude-SearchBot', pattern: /Claude-SearchBot\/?([\d.]*)/i },
-    { name: 'Claude-Web', pattern: /Claude-Web\/?([\d.]*)/i },
-    { name: 'PerplexityBot', pattern: /PerplexityBot\/?([\d.]*)/i },
-    { name: 'Perplexity-User', pattern: /Perplexity-User\/?([\d.]*)/i },
-    { name: 'Google-Extended', pattern: /Google-Extended/i },
-
-    // Traditional bots
-    { name: 'Googlebot', pattern: /Googlebot\/?([\d.]*)/i },
-    { name: 'Bingbot', pattern: /bingbot\/?([\d.]*)/i },
-    { name: 'YandexBot', pattern: /YandexBot\/?([\d.]*)/i },
-    { name: 'DuckDuckBot', pattern: /DuckDuckBot\/?([\d.]*)/i },
-    { name: 'Slurp', pattern: /Slurp/i },
-    { name: 'Baiduspider', pattern: /Baiduspider\/?([\d.]*)/i },
-    { name: 'curl', pattern: /curl\/?([\d.]*)/i },
-    { name: 'wget', pattern: /Wget\/?([\d.]*)/i },
-    { name: 'HeadlessChrome', pattern: /HeadlessChrome\/?([\d.]*)/i },
-    { name: 'PhantomJS', pattern: /PhantomJS\/?([\d.]*)/i },
-    { name: 'Puppeteer', pattern: /Puppeteer/i },
-    { name: 'Playwright', pattern: /Playwright/i },
-
-    // WebViews / In-app browsers (before generic browsers)
-    { name: 'Facebook', pattern: /\bFB[\w_]*\/?([\d.]*)/i },
-    { name: 'Instagram', pattern: /Instagram\s?([\d.]*)/i },
-    { name: 'Twitter', pattern: /Twitter/i },
-    { name: 'TikTok', pattern: /TikTok/i },
-    { name: 'Snapchat', pattern: /Snapchat/i },
-    { name: 'LinkedIn', pattern: /LinkedInApp/i },
-    { name: 'Pinterest', pattern: /Pinterest/i },
-    { name: 'WhatsApp', pattern: /WhatsApp\/?([\d.]*)/i },
-    { name: 'Telegram', pattern: /TelegramBot/i },
-
-    // Chromium-based (before Chrome)
-    { name: 'Edge', pattern: /Edg(?:e|A|iOS)?\/?([\d.]*)/i },
-    { name: 'Opera', pattern: /(?:OPR|Opera)\/?([\d.]*)/i },
-    { name: 'Brave', pattern: /Brave\/?([\d.]*)/i },
-    { name: 'Vivaldi', pattern: /Vivaldi\/?([\d.]*)/i },
-    { name: 'Yandex', pattern: /YaBrowser\/?([\d.]*)/i },
-    { name: 'Samsung Internet', pattern: /SamsungBrowser\/?([\d.]*)/i },
-    { name: 'UC Browser', pattern: /UCBrowser\/?([\d.]*)/i },
-    { name: 'QQ Browser', pattern: /QQBrowser\/?([\d.]*)/i },
-    { name: 'Whale', pattern: /Whale\/?([\d.]*)/i },
-
-    // Major browsers
-    { name: 'Chrome', pattern: /(?:Chrome|CriOS)\/?([\d.]*)/i },
-    { name: 'Firefox', pattern: /(?:Firefox|FxiOS)\/?([\d.]*)/i },
-    { name: 'Safari', pattern: /Version\/([\d.]*)\s.*Safari/i },
-
-    // Legacy IE
-    { name: 'IE', pattern: /(?:MSIE\s|Trident.*rv:)([\d.]*)/i },
-];
-
-// OS detection patterns - ORDER MATTERS (specific before generic)
-const OS_PATTERNS = [
-    { name: 'iOS', pattern: /(?:iPhone|iPad|iPod).*?OS\s([\d_]+)/i, versionSep: '_' },
-    // Android - exclude "like Android" (e.g., Kindle UA)
-    { name: 'Android', pattern: /(?<!like\s)Android\s?([\d.]*)/i },
-    { name: 'macOS', pattern: /Mac OS X\s?([\d_\.]*)/i, versionSep: '_' },
-    {
-        name: 'Windows', pattern: /Windows NT\s?([\d.]*)/i, versionMap: {
-            '10.0': '10', '6.3': '8.1', '6.2': '8', '6.1': '7', '6.0': 'Vista', '5.1': 'XP'
-        }
-    },
-    { name: 'Chrome OS', pattern: /CrOS\s\w+\s([\d.]*)/i },
-    // Specific distros before generic Linux
-    { name: 'Ubuntu', pattern: /Ubuntu/i },
-    { name: 'Fedora', pattern: /Fedora/i },
-    { name: 'FreeBSD', pattern: /FreeBSD/i },
-    { name: 'Linux', pattern: /Linux/i },
-];
-
-// Engine detection patterns
-const ENGINES = [
-    { name: 'Blink', pattern: /Chrome\/([\d.]+)/i }, // Modern Chrome, Edge, Opera
-    { name: 'Gecko', pattern: /Gecko\/([\d.]+)/i },
-    { name: 'WebKit', pattern: /AppleWebKit\/([\d.]+)/i },
-    { name: 'Trident', pattern: /Trident\/([\d.]+)/i },
-    { name: 'EdgeHTML', pattern: /Edge\/([\d.]+)/i },
-    { name: 'Presto', pattern: /Presto\/([\d.]+)/i },
-];
-
-// Device type patterns - ORDER MATTERS (console before tablet/mobile to catch Xbox/PlayStation first)
-const DEVICE_PATTERNS = [
-    { type: 'console', pattern: /PlayStation|Xbox|Nintendo/i },
-    { type: 'tablet', pattern: /iPad|Android(?!.*Mobile)|Tablet|PlayBook/i },
-    { type: 'mobile', pattern: /Mobile|Android.*Mobile|iPhone|iPod|BlackBerry|IEMobile|Opera Mini|Opera Mobi/i },
-    { type: 'smarttv', pattern: /SmartTV|Smart-TV|GoogleTV|AppleTV|BRAVIA|WebOS|Tizen|HbbTV|NetCast/i },
-    { type: 'wearable', pattern: /Watch|Fitbit/i },
-    { type: 'embedded', pattern: /Embedded/i },
-];
-
-// Device vendor/model patterns
-const DEVICE_VENDORS = [
-    { vendor: 'Apple', pattern: /iPhone|iPad|iPod|Macintosh|AppleTV/i },
-    { vendor: 'Samsung', pattern: /Samsung|SM-|GT-/i },
-    { vendor: 'Huawei', pattern: /Huawei|HUAWEI/i },
-    // Xiaomi: brand names + model codes (e.g., 24030PN60G, M2102J20SG)
-    { vendor: 'Xiaomi', pattern: /Xiaomi|Mi\s|Redmi|\b\d{5}[A-Z]{2}\d{2}[A-Z]\b|\bM\d{4}[A-Z]\d{2}[A-Z]{2}\b/i },
-    { vendor: 'Google', pattern: /Pixel|Nexus/i },
-    { vendor: 'OnePlus', pattern: /OnePlus|ONEPLUS/i },
-    { vendor: 'LG', pattern: /LG[-;\/\s]/i },
-    // Sony: brand + Xperia + tablet codes (SGP)
-    { vendor: 'Sony', pattern: /Sony|Xperia|PlayStation|\bSGP\d+\b/i },
-    { vendor: 'Motorola', pattern: /Motorola|Moto\s|\bmoto\s/i },
-    { vendor: 'HTC', pattern: /HTC/i },
-    { vendor: 'Nokia', pattern: /Nokia/i },
-    { vendor: 'Oppo', pattern: /OPPO/i },
-    { vendor: 'Vivo', pattern: /vivo/i },
-    { vendor: 'Realme', pattern: /RMX\d/i },
-    // Microsoft: Xbox, Surface, and "Microsoft;" in UA
-    { vendor: 'Microsoft', pattern: /Xbox|Surface|Microsoft;/i },
-    { vendor: 'Nintendo', pattern: /Nintendo/i },
-];
-
-// CPU architecture patterns
-const CPU_PATTERNS = [
-    { architecture: 'arm64', pattern: /aarch64|arm64/i },
-    { architecture: 'arm', pattern: /arm(?!64)/i },
-    { architecture: 'amd64', pattern: /x64|x86_64|amd64|Win64|WOW64/i },
-    { architecture: 'ia32', pattern: /x86|i[36]86/i },
-];
-
-// Bot detection - comprehensive list
-const BOT_PATTERNS = [
-    // AI bots
-    /ChatGPT|GPTBot|OAI-SearchBot|ClaudeBot|Claude-User|Claude-SearchBot|PerplexityBot|Perplexity-User|Google-Extended/i,
-    // Traditional search
-    /bot|crawl|spider|slurp|search|fetch|monitor|check|scan/i,
-    // Specific bots
-    /Googlebot|Bingbot|YandexBot|DuckDuckBot|Baiduspider|Sogou|Exabot|facebot|ia_archiver/i,
-    // Tools
-    /curl|wget|python|java|perl|ruby|php|http|node|axios|got\//i,
-    // Headless
-    /HeadlessChrome|PhantomJS|Puppeteer|Playwright|Selenium|WebDriver/i,
-];
-
-// Model extraction patterns
-const MODEL_PATTERNS = [
-    // Apple devices - including iPad16,3 format
-    { pattern: /(iPad\d+,\d+|iPhone\d+,\d+|iPod\d+,\d+)/, extract: (m) => m[1].replace(/\d+,\d+/, '') },
-    { pattern: /(iPhone|iPad|iPod)[\s;]/, extract: (m) => m[1] },
-    // Samsung
-    { pattern: /(SM-[A-Z0-9]+|GT-[A-Z0-9]+)/i, extract: (m) => m[1] },
-    // Google Pixel
-    { pattern: /(Pixel[\s]?\d*[a-z]?\s?(?:Pro|XL)?)/i, extract: (m) => m[1].trim() },
-    // Nexus
-    { pattern: /(Nexus\s?\d+[a-z]?)/i, extract: (m) => m[1] },
-    // Generic Android - "Build/MODEL" or "; MODEL Build"
-    { pattern: /;\s*([^;)]+)\s*Build\//i, extract: (m) => m[1].trim() },
-];
+const {
+  BROWSERS,
+  OS_PATTERNS,
+  ENGINES,
+  DEVICE_PATTERNS,
+  DEVICE_VENDORS,
+  CPU_PATTERNS,
+  BOT_PATTERNS,
+  MODEL_PATTERNS,
+} = require("./userAgent/patterns");
 
 /**
- * Parse a User-Agent string and extract browser, OS, device, and bot info
- * @param {string|null|undefined} ua - The User-Agent string
- * @returns {Object} Parsed results matching ua-parser-js structure
+ * @typedef {Object} BrowserInfo
+ * Information about the detected browser.
+ *
+ * @property {string|null} name - Browser name (e.g., 'Chrome', 'Firefox', 'Safari')
+ * @property {string|null} version - Full version string (e.g., '120.0.0.0')
+ * @property {string|null} major - Major version number (e.g., '120')
  */
-function parseUserAgent(ua) {
-    // Handle null/undefined
-    if (ua == null || typeof ua !== 'string') {
-        return createEmptyResult(ua);
-    }
 
-    const result = {
-        browser: { name: null, version: null, major: null },
-        engine: { name: null, version: null },
-        os: { name: null, version: null },
-        device: { type: null, vendor: null, model: null },
-        cpu: { architecture: null },
-        isBot: false,
-        raw: ua,
-    };
+/**
+ * @typedef {Object} EngineInfo
+ * Information about the browser's rendering engine.
+ *
+ * @property {string|null} name - Engine name (e.g., 'Blink', 'Gecko', 'WebKit')
+ * @property {string|null} version - Engine version string
+ */
 
-    // Detect browser
-    for (const { name, pattern } of BROWSERS) {
-        const match = ua.match(pattern);
-        if (match) {
-            result.browser.name = name;
-            result.browser.version = match[1] || null;
-            result.browser.major = match[1] ? match[1].split('.')[0] : null;
-            break;
-        }
-    }
+/**
+ * @typedef {Object} OSInfo
+ * Information about the operating system.
+ *
+ * @property {string|null} name - OS name (e.g., 'Windows', 'macOS', 'iOS', 'Android')
+ * @property {string|null} version - OS version (e.g., '10', '14.0', '17.0')
+ */
 
-    // Fallback: Safari without version
-    if (!result.browser.name && /Safari/i.test(ua) && !/Chrome/i.test(ua)) {
-        result.browser.name = 'Safari';
-        const safariMatch = ua.match(/Safari\/([\d.]+)/i);
-        result.browser.version = safariMatch ? safariMatch[1] : null;
-        result.browser.major = result.browser.version ? result.browser.version.split('.')[0] : null;
-    }
+/**
+ * @typedef {Object} DeviceInfo
+ * Information about the device.
+ *
+ * @property {string|null} type - Device type: 'mobile', 'tablet', 'console', 'smarttv', 'wearable', 'embedded', or null for desktop
+ * @property {string|null} vendor - Device manufacturer (e.g., 'Apple', 'Samsung', 'Google')
+ * @property {string|null} model - Device model (e.g., 'iPhone', 'Pixel 8 Pro', 'SM-G998B')
+ */
 
-    // Detect engine
-    for (const { name, pattern } of ENGINES) {
-        const match = ua.match(pattern);
-        if (match) {
-            result.engine.name = name;
-            result.engine.version = match[1] || null;
-            break;
-        }
-    }
+/**
+ * @typedef {Object} CPUInfo
+ * Information about the CPU architecture.
+ *
+ * @property {string|null} architecture - CPU architecture: 'arm64', 'arm', 'amd64', 'ia32', or null
+ */
 
-    // Detect OS
-    for (const { name, pattern, versionSep, versionMap } of OS_PATTERNS) {
-        const match = ua.match(pattern);
-        if (match) {
-            result.os.name = name;
-            let version = match[1] || null;
-            if (version && versionSep) {
-                version = version.replace(new RegExp(versionSep, 'g'), '.');
-            }
-            if (version && versionMap && versionMap[version]) {
-                version = versionMap[version];
-            }
-            result.os.version = version;
-            break;
-        }
-    }
+/**
+ * @typedef {Object} ParsedUserAgent
+ * Complete result from parsing a User-Agent string.
+ *
+ * @property {BrowserInfo} browser - Browser information
+ * @property {EngineInfo} engine - Rendering engine information
+ * @property {OSInfo} os - Operating system information
+ * @property {DeviceInfo} device - Device information
+ * @property {CPUInfo} cpu - CPU architecture information
+ * @property {boolean} isBot - True if the user agent appears to be a bot/crawler
+ * @property {string|null} raw - The original User-Agent string
+ */
 
-    // Detect device type (check tablet before mobile due to iPad containing 'Mobile')
-    for (const { type, pattern } of DEVICE_PATTERNS) {
-        if (pattern.test(ua)) {
-            result.device.type = type;
-            break;
-        }
-    }
-
-    // Detect device vendor
-    for (const { vendor, pattern } of DEVICE_VENDORS) {
-        if (pattern.test(ua)) {
-            result.device.vendor = vendor;
-            break;
-        }
-    }
-
-    // Detect device model
-    for (const { pattern, extract } of MODEL_PATTERNS) {
-        const match = ua.match(pattern);
-        if (match) {
-            result.device.model = extract(match);
-            break;
-        }
-    }
-
-    // Detect CPU architecture
-    for (const { architecture, pattern } of CPU_PATTERNS) {
-        if (pattern.test(ua)) {
-            result.cpu.architecture = architecture;
-            break;
-        }
-    }
-
-    // Detect bot
-    result.isBot = BOT_PATTERNS.some(pattern => pattern.test(ua));
-
-    return result;
+/**
+ * Creates an empty result object with all null values.
+ *
+ * Used as the default return value and as a base for building results.
+ *
+ * @private
+ * @function createEmptyResult
+ * @param {string|null} ua - The original User-Agent string to store in `raw`
+ * @returns {ParsedUserAgent} Empty result object with all null values
+ */
+function createEmptyResult(ua) {
+  return {
+    browser: { name: null, version: null, major: null },
+    engine: { name: null, version: null },
+    os: { name: null, version: null },
+    device: { type: null, vendor: null, model: null },
+    cpu: { architecture: null },
+    isBot: false,
+    raw: ua || null,
+  };
 }
 
 /**
- * Create an empty result for null/undefined/empty UA
+ * Parses a User-Agent string and extracts detailed client information.
+ *
+ * This function analyzes the User-Agent string to determine:
+ * - **Browser**: Name, version, and major version number
+ * - **Engine**: Rendering engine (Blink, Gecko, WebKit, etc.)
+ * - **OS**: Operating system name and version
+ * - **Device**: Type (mobile/tablet/etc.), vendor, and model
+ * - **CPU**: Architecture (arm64, amd64, etc.)
+ * - **Bot status**: Whether this appears to be an automated client
+ *
+ * The parser handles many edge cases:
+ * - Safari detection when Chrome isn't present
+ * - Version number normalization (e.g., Windows NT versions)
+ * - Multiple bot detection patterns (AI bots, crawlers, headless browsers)
+ *
+ * @function parseUserAgent
+ * @param {string|null|undefined} ua - The User-Agent string to parse
+ * @returns {ParsedUserAgent} Parsed information about the client
+ *
+ * @example
+ * // Parse a Chrome user agent
+ * const result = parseUserAgent(
+ *     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' +
+ *     'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+ * )
+ *
+ * console.log(result.browser.name)    // 'Chrome'
+ * console.log(result.browser.major)   // '120'
+ * console.log(result.os.name)         // 'macOS'
+ * console.log(result.os.version)      // '10.15.7'
+ * console.log(result.device.type)     // null (desktop)
+ * console.log(result.isBot)           // false
+ *
+ * @example
+ * // Parse a mobile Safari user agent
+ * const result = parseUserAgent(
+ *     'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ' +
+ *     'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+ * )
+ *
+ * console.log(result.browser.name)    // 'Safari'
+ * console.log(result.os.name)         // 'iOS'
+ * console.log(result.device.type)     // 'mobile'
+ * console.log(result.device.vendor)   // 'Apple'
+ * console.log(result.device.model)    // 'iPhone'
+ *
+ * @example
+ * // Detect an AI bot
+ * const result = parseUserAgent('ChatGPT-User')
+ *
+ * console.log(result.browser.name)    // 'ChatGPT-User'
+ * console.log(result.isBot)           // true
+ *
+ * @example
+ * // Handle null/undefined input
+ * const result = parseUserAgent(null)
+ *
+ * console.log(result.browser.name)    // null
+ * console.log(result.raw)             // null
+ *
+ * @example
+ * // Use in request handler
+ * app.use((req, res, next) => {
+ *     req.userAgent = parseUserAgent(req.headers['user-agent'])
+ *
+ *     // Block bots from certain endpoints
+ *     if (req.userAgent.isBot && req.path.startsWith('/api/')) {
+ *         return res.status(403).json({ error: 'Bots not allowed' })
+ *     }
+ *
+ *     // Serve mobile-optimized content
+ *     if (req.userAgent.device.type === 'mobile') {
+ *         req.isMobile = true
+ *     }
+ *
+ *     next()
+ * })
  */
-function createEmptyResult(ua) {
-    return {
-        browser: { name: null, version: null, major: null },
-        engine: { name: null, version: null },
-        os: { name: null, version: null },
-        device: { type: null, vendor: null, model: null },
-        cpu: { architecture: null },
-        isBot: false,
-        raw: ua || null,
-    };
+function parseUserAgent(ua) {
+  // Handle null, undefined, or non-string input
+  if (ua == null || typeof ua !== "string") {
+    return createEmptyResult(ua);
+  }
+
+  const result = createEmptyResult(ua);
+  result.raw = ua;
+
+  // =========================================================================
+  // BROWSER DETECTION
+  // =========================================================================
+  // Try each browser pattern in priority order (most specific first)
+  for (const { name, pattern } of BROWSERS) {
+    const match = ua.match(pattern);
+    if (match) {
+      result.browser.name = name;
+      result.browser.version = match[1] || null;
+      result.browser.major = match[1] ? match[1].split(".")[0] : null;
+      break;
+    }
+  }
+
+  // Special case: Safari detection when Chrome isn't present
+  // Many browsers include "Safari" in their UA, but real Safari doesn't have "Chrome"
+  if (!result.browser.name && /Safari/i.test(ua) && !/Chrome/i.test(ua)) {
+    result.browser.name = "Safari";
+    const m = ua.match(/Safari\/([\d.]+)/i);
+    result.browser.version = m ? m[1] : null;
+    result.browser.major = result.browser.version
+      ? result.browser.version.split(".")[0]
+      : null;
+  }
+
+  // =========================================================================
+  // ENGINE DETECTION
+  // =========================================================================
+  for (const { name, pattern } of ENGINES) {
+    const match = ua.match(pattern);
+    if (match) {
+      result.engine.name = name;
+      result.engine.version = match[1] || null;
+      break;
+    }
+  }
+
+  // =========================================================================
+  // OS DETECTION
+  // =========================================================================
+  for (const { name, pattern, versionSep, versionMap } of OS_PATTERNS) {
+    const match = ua.match(pattern);
+    if (match) {
+      result.os.name = name;
+      let version = match[1] || null;
+
+      // Replace version separator (e.g., "_" with "." for iOS/macOS)
+      if (version && versionSep) {
+        version = version.replace(new RegExp(versionSep, "g"), ".");
+      }
+
+      // Map version numbers (e.g., "6.1" to "7" for Windows)
+      if (version && versionMap && versionMap[version]) {
+        version = versionMap[version];
+      }
+
+      result.os.version = version;
+      break;
+    }
+  }
+
+  // =========================================================================
+  // DEVICE TYPE DETECTION
+  // =========================================================================
+  for (const { type, pattern } of DEVICE_PATTERNS) {
+    if (pattern.test(ua)) {
+      result.device.type = type;
+      break;
+    }
+  }
+
+  // =========================================================================
+  // DEVICE VENDOR DETECTION
+  // =========================================================================
+  for (const { vendor, pattern } of DEVICE_VENDORS) {
+    if (pattern.test(ua)) {
+      result.device.vendor = vendor;
+      break;
+    }
+  }
+
+  // =========================================================================
+  // DEVICE MODEL DETECTION
+  // =========================================================================
+  for (const { pattern, extract } of MODEL_PATTERNS) {
+    const match = ua.match(pattern);
+    if (match) {
+      result.device.model = extract(match);
+      break;
+    }
+  }
+
+  // =========================================================================
+  // CPU ARCHITECTURE DETECTION
+  // =========================================================================
+  for (const { architecture, pattern } of CPU_PATTERNS) {
+    if (pattern.test(ua)) {
+      result.cpu.architecture = architecture;
+      break;
+    }
+  }
+
+  // =========================================================================
+  // BOT DETECTION
+  // =========================================================================
+  // Check all bot patterns - any match indicates a bot
+  result.isBot = BOT_PATTERNS.some((pattern) => pattern.test(ua));
+
+  return result;
 }
 
 module.exports = parseUserAgent;

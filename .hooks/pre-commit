@@ -1,3 +1,72 @@
 #!/usr/bin/env bash
-# .hooks/pre-commit - No-op (build happens during release only)
+# .hooks/pre-commit - Pre-commit validation orchestrator for api-ape
+# This script runs all check scripts in .hooks/pre-commit.d/
+# Each check script must exit 0 on success, non-zero on failure.
+
+# Only run on main branch
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ "$CURRENT_BRANCH" != "main" ]; then
+    echo "🦍 Skipping pre-commit checks on branch: $CURRENT_BRANCH (checks only run on main)"
+    exit 0
+fi
+
+HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
+CHECKS_DIR="$HOOKS_DIR/pre-commit.d"
+
+ERROR=0
+
+# Run each check script
+run_check() {
+    local script="$1"
+    local name=$(basename "$script" .sh)
+
+    if [ -x "$script" ]; then
+        if ! "$script"; then
+            ERROR=1
+        fi
+    else
+        # Try running with bash if not executable
+        if ! bash "$script"; then
+            ERROR=1
+        fi
+    fi
+}
+
+# Header
+echo "🦍 Running pre-commit checks..."
+echo ""
+
+# Run check-line-count.sh
+if [ -f "$CHECKS_DIR/check-line-count.sh" ]; then
+    run_check "$CHECKS_DIR/check-line-count.sh"
+fi
+
+# Run check-docs.sh
+if [ -f "$CHECKS_DIR/check-docs.sh" ]; then
+    run_check "$CHECKS_DIR/check-docs.sh"
+fi
+
+# Run check-jsdoc.sh
+if [ -f "$CHECKS_DIR/check-jsdoc.sh" ]; then
+    run_check "$CHECKS_DIR/check-jsdoc.sh"
+fi
+
+# Run check-coverage.sh (simulator tests with 100% coverage requirement)
+if [ -f "$CHECKS_DIR/check-coverage.sh" ]; then
+    run_check "$CHECKS_DIR/check-coverage.sh"
+fi
+
+# Run check-integration.sh (cross-runtime integration tests)
+if [ -f "$CHECKS_DIR/check-integration.sh" ]; then
+    run_check "$CHECKS_DIR/check-integration.sh"
+fi
+
+# Final result
+if [ $ERROR -eq 1 ]; then
+    echo ""
+    echo "⚠️  Commit blocked: One or more checks failed"
+    exit 1
+fi
+
+echo "✅ All pre-commit checks passed"
 exit 0
