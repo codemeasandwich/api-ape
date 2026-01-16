@@ -25,7 +25,7 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Run tests with coverage threshold
         run: |
@@ -76,7 +76,7 @@ jobs:
           deno-version: ${{ matrix.version }}
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Run Node.js integration
         if: matrix.runtime == 'node'
@@ -113,10 +113,10 @@ jobs:
           node-version: '20'
 
       - name: Install main dependencies
-        run: npm ci
+        run: npm install
 
       - name: Install framework dependencies
-        run: cd integration/${{ matrix.framework }} && npm ci
+        run: cd integration/${{ matrix.framework }} && npm install
 
       - name: Run ${{ matrix.framework }} integration
         working-directory: integration
@@ -142,7 +142,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build browser bundle
         run: npx esbuild client/browser.js --bundle --minify --sourcemap --outfile=dist/ape.js
