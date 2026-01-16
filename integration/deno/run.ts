@@ -72,14 +72,23 @@ async function main() {
         scenarios,
     });
 
-    // Cleanup
-    httpServer.close();
+    // Cleanup - wait for server to close
+    await new Promise<void>((resolve) => {
+        httpServer.close(() => resolve());
+    });
 
-    // Exit with appropriate code
-    Deno.exit(failed > 0 ? 1 : 0);
+    // Exit with appropriate code (use both Deno and process.exit for Node compat)
+    const exitCode = failed > 0 ? 1 : 0;
+    if (typeof process !== "undefined" && process.exit) {
+        process.exit(exitCode);
+    }
+    Deno.exit(exitCode);
 }
 
 main().catch((err) => {
     console.error("Integration test failed:", err);
+    if (typeof process !== "undefined" && process.exit) {
+        process.exit(1);
+    }
     Deno.exit(1);
 });
