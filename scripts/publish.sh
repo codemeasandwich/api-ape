@@ -63,12 +63,9 @@ if [[ $ORIGIN_VERSION_CMP -eq 1 ]]; then
   # Amend the last commit with both files
   echo "   📝 Amending last commit with version files..."
   git add package.json
-  if [[ -f "package-lock.json" ]]; then
-    git add package-lock.json
-  fi
   git commit --amend --no-edit
   echo "   ✅ Commit amended"
-  
+
   # Force push to origin
   echo "   🚀 Force pushing to origin..."
   git push --force-with-lease origin HEAD
@@ -177,9 +174,6 @@ elif [[ $VERSION_CMP -eq 0 ]]; then
 
   # Amend the last commit with the version bump
   git add package.json
-  if [[ -f "package-lock.json" ]]; then
-    git add package-lock.json
-  fi
   git commit --amend --no-edit
   git push --force-with-lease
 
@@ -220,12 +214,9 @@ else
   
   # Amend the last commit with the version bump
   git add package.json
-  if [[ -f "package-lock.json" ]]; then
-    git add package-lock.json
-  fi
   git commit --amend --no-edit
   git push --force-with-lease
-  
+
   LOCAL_VERSION="$NEW_VERSION"
   echo "✅ Version bumped and commit amended"
 fi
