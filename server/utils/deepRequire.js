@@ -247,29 +247,39 @@ module.exports = function (dirname, selector) {
   });
 
   // Watch for new and changed controller files and hot-load them
-  fs.watch(dirname, { recursive: true }, (eventType, filename) => {
-    // Handle both new files (rename) and changes (change)
-    if (!filename) return;
+  // Note: recursive watch is only supported on macOS/Windows, or Linux with Node 20+
+  const platform = process.platform;
+  const nodeVersion = parseInt(process.versions.node.split(".")[0], 10);
+  const supportsRecursiveWatch =
+    platform === "darwin" ||
+    platform === "win32" ||
+    (platform === "linux" && nodeVersion >= 20);
 
-    // Check extension matches selector
-    if (!selector.some((ext) => filename.endsWith(`.${ext}`))) return;
+  if (supportsRecursiveWatch) {
+    fs.watch(dirname, { recursive: true }, (eventType, filename) => {
+      // Handle both new files (rename) and changes (change)
+      if (!filename) return;
 
-    const filePath = path.join(dirname, filename);
+      // Check extension matches selector
+      if (!selector.some((ext) => filename.endsWith(`.${ext}`))) return;
 
-    // Check file exists (rename fires for both add and delete)
-    if (!fs.existsSync(filePath)) return;
+      const filePath = path.join(dirname, filename);
 
-    // Normalize to /foo/bar.js format for computeEndpoint
-    const normalizedFile = "/" + filename.split(path.sep).join("/");
-    const endpoint = computeEndpoint(normalizedFile);
-    if (!endpoint) return;
+      // Check file exists (rename fires for both add and delete)
+      if (!fs.existsSync(filePath)) return;
 
-    // Clear require cache to ensure fresh module load
-    delete require.cache[require.resolve(filePath)];
-    const isNew = !packages[endpoint];
-    packages[endpoint] = require(filePath);
-    console.log(`🦍 ${isNew ? "Hot-loaded" : "Reloaded"}: ${endpoint}`);
-  });
+      // Normalize to /foo/bar.js format for computeEndpoint
+      const normalizedFile = "/" + filename.split(path.sep).join("/");
+      const endpoint = computeEndpoint(normalizedFile);
+      if (!endpoint) return;
+
+      // Clear require cache to ensure fresh module load
+      delete require.cache[require.resolve(filePath)];
+      const isNew = !packages[endpoint];
+      packages[endpoint] = require(filePath);
+      console.log(`🦍 ${isNew ? "Hot-loaded" : "Reloaded"}: ${endpoint}`);
+    });
+  }
 
   return packages;
 };

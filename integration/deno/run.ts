@@ -9,9 +9,10 @@
 
 import { resolve, relative } from "https://deno.land/std@0.208.0/path/mod.ts";
 
-// Import api-ape using npm: specifier
+// Import api-ape from local server directory using file URL
+const serverPath = resolve(Deno.cwd(), "server/index.js");
 // @ts-ignore - Dynamic import
-const { ape } = await import("npm:../../server/index.js");
+const { ape } = await import(`file://${serverPath}`);
 
 // Import shared test infrastructure
 // @ts-ignore - CommonJS modules
