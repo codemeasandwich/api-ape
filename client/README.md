@@ -1,5 +1,7 @@
 # 🦍 api-ape Client
 
+![api-ape mascot](../assets/friend.jpg)
+
 ## Overview
 
 The client module provides the browser-side WebSocket client for api-ape. It enables seamless communication with api-ape servers through a proxy-based API that converts method calls like `api.users.list()` into WebSocket messages.
