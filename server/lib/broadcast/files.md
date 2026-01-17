@@ -15,7 +15,8 @@ broadcast/
 ├── clients.js      # Client tracking with read-only proxy
 ├── index.js        # Module entry point, wires pub/sub cleanup
 ├── publishProxy.js # Chained publish proxy for fluent syntax
-└── pubsub.js       # Channel subscription and publishing
+├── pubsub.js       # Channel subscription and publishing
+└── sendProxy.js    # Chained send proxy for client.send
 ```
 
 ## Files
@@ -51,3 +52,7 @@ Channel-based pub/sub system for targeted messaging:
 ### `publishProxy.js`
 
 Creates a Proxy-based API for fluent publish syntax (`ape.publish.news.banking(data)`). Intercepts property access to build channel paths dynamically. Supports both chained syntax and legacy direct function call (`ape.publish('/channel', data)`).
+
+### `sendProxy.js`
+
+Creates a Proxy-based API for fluent client send syntax (`client.send.news.banking(data)`). Mirrors `publishProxy.js` pattern but wraps a client's send function. Supports both chained syntax and direct function call (`client.send('channel', data)`).

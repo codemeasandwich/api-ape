@@ -246,6 +246,56 @@ unsub2()
 | `broadcastOthers(type, data)` | All EXCEPT caller | Chat messages (don't echo back) |
 | `publish(channel, data)` | Only subscribers of that channel | Targeted updates, topics |
 
+## Direct Client Messaging
+
+Access connected clients via `ape.clients` to send messages to specific clients.
+
+### Accessing Clients
+
+```js
+const { ape } = require('api-ape')
+
+// Iterate all connected clients
+for (const [clientId, client] of ape.clients) {
+  console.log(`Client ${clientId} connected`)
+}
+
+// Get a specific client
+const client = ape.clients.get(clientId)
+
+// Check client count
+console.log(`${ape.clients.size} clients connected`)
+```
+
+### Sending to a Client
+
+Each client wrapper has a `send` function that supports both direct and chained syntax:
+
+```js
+const client = ape.clients.get(clientId)
+
+// Direct syntax
+client.send('news/banking', { headline: 'Market Update' })
+
+// Chained syntax (same result)
+client.send.news.banking({ headline: 'Market Update' })
+
+// Deep nesting works too
+client.send.stocks.nasdaq.tech({ price: 100 })
+```
+
+### Client Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `clientId` | `string` | Unique client identifier |
+| `sessionId` | `string\|null` | Session ID from cookie |
+| `embed` | `object` | Values from onConnect's `embed` return |
+| `agent` | `object` | Parsed user-agent (browser, os, device) |
+| `isAuthenticated` | `boolean` | Whether client is authenticated |
+| `authTier` | `number` | Authentication tier (0-3) |
+| `send` | `function` | Send message to this client |
+
 ## Authentication
 
 api-ape includes a tiered authentication system with OPAQUE/PAKE support (server never learns raw passwords).

@@ -7,6 +7,8 @@
  * @see {@link module:server/lib/broadcast} for the main broadcast module
  */
 
+const createSendProxy = require("./sendProxy");
+
 /**
  * Internal Map of connected clients
  * @type {Map<string, ClientWrapper>}
@@ -67,10 +69,14 @@ function createClientWrapper(clientInfo) {
     },
     /**
      * Send a message to this client
-     * @param {string} type - Message type identifier
-     * @param {any} data - Data payload to send
+     *
+     * Supports both direct and chained syntax:
+     * - client.send('news/banking', data)
+     * - client.send.news.banking(data)
+     *
+     * @type {Function & Proxy}
      */
-    send(type, data) {
+    send: createSendProxy((type, data) => {
       if (clientInfo.send) {
         try {
           clientInfo.send(false, type, data, false);
@@ -82,7 +88,7 @@ function createClientWrapper(clientInfo) {
           );
         }
       }
-    },
+    }),
   };
 }
 

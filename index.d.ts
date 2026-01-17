@@ -452,6 +452,19 @@ export { connectSocket }
 export declare const clients: ReadonlyMap<string, ClientWrapper>
 
 /**
+ * Chainable send function for client.send
+ * Supports both direct and chained syntax:
+ * - client.send('news/banking', data)
+ * - client.send.news.banking(data)
+ */
+export interface ClientSendFunction {
+    /** Direct call: send(type, data) */
+    (type: string, data: any): void
+    /** Chained access for path building */
+    [key: string]: ClientSendFunction & ((data?: any) => void)
+}
+
+/**
  * Client wrapper providing client info and send function
  */
 export interface ClientWrapper {
@@ -467,6 +480,11 @@ export interface ClientWrapper {
         os: { name?: string; version?: string }
         device: { type?: string; vendor?: string; model?: string }
     }
-    /** Send a message to this specific client */
-    send(type: string, data: any): void
+    /**
+     * Send a message to this specific client
+     * Supports both direct and chained syntax:
+     * - client.send('news/banking', data)
+     * - client.send.news.banking(data)
+     */
+    send: ClientSendFunction
 }
