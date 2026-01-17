@@ -1,5 +1,5 @@
 /**
- * Runtime Detection Controller - Tests wsProvider runtime detection
+ * @file Runtime Detection Controller - Tests wsProvider runtime detection
  *
  * Provides endpoints to test and override runtime detection for coverage.
  *
@@ -11,19 +11,23 @@ const wsProvider = require('../../server/lib/wsProvider');
 /**
  * Get current runtime information and provider details
  *
- * Also supports broadcast action for testing this.broadcast()
+ * Also supports sendToAll action for testing this.clients
  *
  * @param {Object} data - Request data
  * @param {Object} [data.override] - Runtime override to set before checking
- * @param {string} [data.action] - Action to perform ('broadcast')
- * @param {string} [data.type] - Message type for broadcast
- * @param {any} [data.data] - Data for broadcast
- * @returns {Object} Runtime and provider information or broadcast result
+ * @param {string} [data.action] - Action to perform ('broadcast' sends to all)
+ * @param {string} [data.type] - Message type for send
+ * @param {any} [data.data] - Data for send
+ * @returns {Object} Runtime and provider information or send result
  */
 module.exports = function(data) {
-    // Handle broadcast action - tests receive.js line 238
+    // Handle send-to-all action - sends to all connected clients
     if (data?.action === 'broadcast') {
-        this.broadcast(data.type || 'runtime-broadcast', data.data || {});
+        const type = data.type || 'runtime-broadcast';
+        const payload = data.data || {};
+        this.clients.forEach((client) => {
+            client.sendTo(type, payload);
+        });
         return { broadcasted: true, type: data.type };
     }
 

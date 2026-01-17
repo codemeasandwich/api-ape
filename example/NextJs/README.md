@@ -85,16 +85,16 @@ app.prepare().then(() => {
 ### Connection Lifecycle (ape/onConnect.js)
 
 ```js
-const { ape } = require('api-ape')  // For ape.clients, ape.broadcast, ape.publish
+const { ape } = require('api-ape')  // For ape.clients, ape.publish
 
 module.exports.onConnect = (socket, req, send) => {
   // Send initial data to new client
   send('init', { history: messages, users: ape.clients.size })
-  ape.broadcast('users', { count: ape.clients.size })
+  ape.publish.users({ count: ape.clients.size })
 
   return {
     onDisconnect: () => {
-      ape.broadcast('users', { count: ape.clients.size })
+      ape.publish.users({ count: ape.clients.size })
     }
   }
 }
@@ -108,7 +108,7 @@ import api from 'api-ape'
 // Send message - just call the method!
 await api.message({ user: 'Alice', text: 'Hello!' })
 
-// Listen for broadcasts
+// Listen for messages
 api.on('message', ({ data }) => {
   setMessages(prev => [...prev, data])
 })

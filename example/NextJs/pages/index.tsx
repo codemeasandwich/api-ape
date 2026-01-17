@@ -1,20 +1,20 @@
 /**
  * 🦍 api-ape Next.js Chat Example
- * 
+ *
  * This component demonstrates how to use api-ape in a React/Next.js application:
- * 
+ *
  * 1. **Unified Import**: Just `import api from 'api-ape'` - no async setup!
  * 2. **Proxy Pattern**: Use `api.message()` to call server functions
- * 3. **Event Listeners**: Listen for server broadcasts using `api.on()`
+ * 3. **Event Listeners**: Listen for server messages using `api.on()`
  * 4. **Promise-based Calls**: Server functions return Promises automatically
- * 
- * Server-side: api/message.js handles incoming messages and broadcasts to other clients
- * Client-side: This component sends messages and receives broadcasts
- * 
+ *
+ * Server-side: api/message.js handles incoming messages and sends to other clients
+ * Client-side: This component sends messages and receives server pushes
+ *
  * Key api-ape concepts:
  * - `api` is a Proxy - accessing `api.message()` calls server function
  * - Property name (`message`) maps to server file: `api/message.js`
- * - `api.on(type, handler)` listens for server broadcasts
+ * - `api.on(type, handler)` listens for server messages
  * - All calls return Promises - server response is automatically matched by queryId
  * - Calls are buffered until the connection is ready - no need for getApeClient().then()!
  */
@@ -55,16 +55,15 @@ export default function Home() {
     const unsubscribe = api.onConnectionChange(setConnectionState)
 
     /**
-     * Set up event listeners for server broadcasts
-     * 
-     * `api.on(type, handler)` listens for broadcasts from the server.
-     * The server can broadcast using `this.broadcast()` or `this.broadcastOthers()`
-     * in controller functions (see api/message.js).
-     * 
-     * Broadcast types:
+     * Set up event listeners for server messages
+     *
+     * `api.on(type, handler)` listens for messages from the server.
+     * The server can send messages using `client.sendTo()` or pub/sub channels.
+     *
+     * Message types:
      * - 'init': Initial data when client connects (history, user count)
      * - 'message': New message from another client
-     * - 'users': Updated user count
+     * - 'users': Updated user count (via pub/sub)
      */
     api.on('init', ({ data }) => {
       // Server sent initial data (happens on connect)
@@ -74,12 +73,12 @@ export default function Home() {
     })
 
     api.on('message', ({ data }) => {
-      // Server broadcasted a new message from another client
+      // Server sent a new message from another client
       setMessages(prev => [...prev, data.message])
     })
 
     api.on('users', ({ data }) => {
-      // Server broadcasted updated user count
+      // Server published updated user count
       setUserCount(data.count)
     })
 
@@ -88,19 +87,19 @@ export default function Home() {
 
   /**
    * Send a message to the server
-   * 
+   *
    * This demonstrates the api-ape Proxy pattern:
-   * 
+   *
    * 1. Access `api.message()` - the property name 'message' maps to `api/message.js`
    * 2. Call it with data - returns a Promise
    * 3. Server processes the request in `api/message.js`
    * 4. Server can:
    *    - Return a value (fulfills the Promise)
-   *    - Broadcast to other clients using `this.broadcastOthers()`
+   *    - Send to other clients using `this.clients.forEach()`
    *    - Throw an error (rejects the Promise)
-   * 
+   *
    * The Promise resolves with whatever the server function returns.
-   * The server also broadcasts to other clients (see api/message.js).
+   * The server also sends to other clients (see api/message.js).
    */
   const sendMessage = (e) => {
     e.preventDefault()
@@ -110,18 +109,18 @@ export default function Home() {
 
     /**
      * Call server function using Proxy pattern
-     * 
+     *
      * `api.message({ user, text })`
      * - Calls the `message` function in `api/message.js`
      * - Sends `{ user, text }` as the function argument
      * - Returns a Promise that resolves with the server's return value
-     * - Server automatically broadcasts to other clients (see api/message.js)
+     * - Server sends to other clients (see api/message.js)
      * - Calls are buffered until connected - no need to check connection status!
-     * 
+     *
      * The server function receives the data and can:
      * - Validate input
      * - Store the message
-     * - Broadcast to others: `this.broadcastOthers('message', { message: msg })`
+     * - Send to others: `this.clients.forEach(c => c.sendTo(...))`
      * - Return a response: `return { ok: true, message: msg }`
      */
     api.message({ user: username, text: input })

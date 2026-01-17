@@ -1,11 +1,20 @@
 /**
- * User Create Controller - Tests broadcast functionality
+ * @file User Create Controller - Tests send-to-all functionality
+ */
+
+/**
+ * Create a user and notify all connected clients
+ *
+ * @param {Object} data - User data
+ * @returns {Object} Success response with user data
  */
 module.exports = function(data) {
-    // Broadcast to all clients
-    this.broadcast('test-broadcast', {
-        action: 'user-created',
-        user: data
+    // Send to all connected clients
+    this.clients.forEach((client) => {
+        client.sendTo('test-broadcast', {
+            action: 'user-created',
+            user: data
+        });
     });
 
     return {

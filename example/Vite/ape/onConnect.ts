@@ -31,16 +31,16 @@ export function onConnect(socket: any, req: any, send: any) {
         console.error(`❌ Failed to send init:`, e)
     }
 
-    // Broadcast updated user count to all clients
-    ape.broadcast('users', { count: ape.clients.size })
+    // Publish updated user count to subscribers
+    ape.publish.users({ count: ape.clients.size })
 
     return {
         onDisconnect: () => {
             console.info(`👋 Disconnected [${clientID}]`)
-            // Broadcast updated user count after disconnect
+            // Publish updated user count after disconnect
             // Use setTimeout to ensure client is removed first
             setTimeout(() => {
-                ape.broadcast('users', { count: ape.clients.size })
+                ape.publish.users({ count: ape.clients.size })
             }, 50)
         }
     }

@@ -1,6 +1,6 @@
 /**
  * Chat controller for api-ape
- * Uses this.broadcastOthers from api-ape
+ * Uses this.clients to send to all other connected clients
  */
 const { ape } = require('api-ape')
 
@@ -10,7 +10,7 @@ const MAX_MESSAGES = 100
 
 /**
  * Message controller - called when client sends type="message"
- * Uses this.broadcastOthers to send to all OTHER clients
+ * Uses this.clients to send to all OTHER clients
  */
 function message(data) {
     const { user, text } = data
@@ -31,9 +31,12 @@ function message(data) {
         messages.shift()
     }
 
-    // Broadcast to all OTHER clients (exclude sender)
-    // this.broadcastOthers is provided by api-ape!
-    this.broadcastOthers('message', { message: msg })
+    // Send to all OTHER clients (exclude sender)
+    this.clients.forEach((client) => {
+        if (client.clientId !== this.clientId) {
+            client.sendTo('message', { message: msg })
+        }
+    })
 
     // Return to sender (fulfills promise)
     return { ok: true, message: msg }

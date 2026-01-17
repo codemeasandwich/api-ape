@@ -44,30 +44,8 @@ function removeClient(clientIdOrInfo) {
   _removeClient(clientIdOrInfo, cleanupClientSubscriptions);
 }
 
-/**
- * Broadcast a message to all connected clients
- *
- * @param {string} type - Message type identifier
- * @param {any} data - Data payload to send
- * @param {string} [excludeClientId] - Optional clientId to exclude
- */
-function broadcast(type, data, excludeClientId) {
-  console.log(
-    `📢 Broadcasting "${type}" to ${_clients.size} clients`,
-    excludeClientId ? `(excluding ${excludeClientId})` : "",
-  );
-
-  _clients.forEach((wrapper, clientId) => {
-    if (excludeClientId && clientId === excludeClientId) {
-      return;
-    }
-    wrapper.sendTo(type, data);
-  });
-}
-
 module.exports = {
   clients,
-  broadcast,
   publish,
   subscribe,
   unsubscribe,

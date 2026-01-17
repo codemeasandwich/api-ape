@@ -31,7 +31,7 @@ npm start
 
 **Key Files:**
 - `backend.js` — Server setup (22 lines)
-- `api/message.js` — Message handler with `this.broadcastOthers()`
+- `api/message.js` — Message handler using `this.clients`
 - `index.html` — Browser client using `window.ape`
 
 ---

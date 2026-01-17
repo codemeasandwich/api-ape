@@ -1,8 +1,8 @@
 /**
  * Message controller for api-ape
  * Called when client sends type="message"
- * 
- * Uses this.broadcastOthers from api-ape to broadcast to all other clients
+ *
+ * Uses this.clients to send to all other connected clients
  */
 
 // In-memory message store
@@ -14,13 +14,19 @@ interface MessageData {
     text: string
 }
 
+interface ClientWrapper {
+    clientId: string
+    sendTo: (type: string, data: any) => void
+}
+
 interface MessageContext {
-    broadcastOthers: (type: string, data: any) => void
+    clientId: string
+    clients: Map<string, ClientWrapper>
 }
 
 /**
  * Message handler - receives { user, text } from client
- * Broadcasts to all OTHER clients, returns to sender
+ * Sends to all OTHER clients, returns to sender
  */
 function message(this: MessageContext, data: MessageData) {
     const { user, text } = data
@@ -41,9 +47,12 @@ function message(this: MessageContext, data: MessageData) {
         messages.shift()
     }
 
-    // Broadcast to all OTHER clients (exclude sender)
-    // this.broadcastOthers is provided by api-ape!
-    this.broadcastOthers('message', { message: msg })
+    // Send to all OTHER clients (exclude sender)
+    this.clients.forEach((client) => {
+        if (client.clientId !== this.clientId) {
+            client.sendTo('message', { message: msg })
+        }
+    })
 
     // Return to sender (fulfills promise)
     return { ok: true, message: msg }

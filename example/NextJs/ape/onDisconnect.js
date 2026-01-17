@@ -2,12 +2,12 @@
  * api-ape onDisconnect handler
  */
 
-const { broadcast, online } = require('./logic/chat')
+const { ape } = require('api-ape')
 
 function onDisconnect(clientID, unsubscribe) {
     console.info(`👋 Disconnected [${clientID}]`)
     unsubscribe()
-    broadcast('users', { count: online() })
+    ape.publish.users({ count: ape.clients.size })
 }
 
 module.exports = { onDisconnect }

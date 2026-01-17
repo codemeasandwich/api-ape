@@ -49,7 +49,7 @@
  * console.log('Response:', result.data)
  */
 
-const { broadcast, clients } = require("../broadcast");
+const { clients } = require("../broadcast");
 const jss = require("../../../utils/jss");
 const messageHash = require("../../../utils/messageHash");
 
@@ -278,20 +278,6 @@ function createPostHandler(streamClients) {
 
           // Request object for advanced use cases
           req,
-
-          /**
-           * Broadcast a message to all connected clients.
-           * @param {string} t - Message type
-           * @param {*} d - Message data
-           */
-          broadcast: /* istanbul ignore next */ (t, d) => broadcast(t, d),
-
-          /**
-           * Broadcast a message to all clients except this one.
-           * @param {string} t - Message type
-           * @param {*} d - Message data
-           */
-          broadcastOthers: /* istanbul ignore next */ (t, d) => broadcast(t, d, clientId),
 
           // Access to all connected clients
           clients,

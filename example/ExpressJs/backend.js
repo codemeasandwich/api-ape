@@ -29,10 +29,10 @@ findPort(3000, port => {
     onConnect: (socket, req, send) => {
       const { _messages } = require('./api/message')
       send('init', { history: _messages, users: ape.clients.size })
-      ape.broadcast('users', { count: ape.clients.size })
+      ape.publish.users({ count: ape.clients.size })
 
       return {
-        onDisconnect: () => ape.broadcast('users', { count: ape.clients.size })
+        onDisconnect: () => ape.publish.users({ count: ape.clients.size })
       }
     }
   })

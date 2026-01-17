@@ -7,7 +7,7 @@
  * @see {@link module:server/socket/receive} for the message handler
  */
 
-const { broadcast, clients, publish } = require("../lib/broadcast");
+const { clients, publish } = require("../lib/broadcast");
 
 /**
  * Extract session ID from request cookies
@@ -38,8 +38,6 @@ function createControllerContext({ sharedValues, embedValues, clientId, sessionI
   const context = {
     ...sharedValues,
     ...embedValues,
-    broadcast: (type, data) => broadcast(type, data),
-    broadcastOthers: (type, data) => broadcast(type, data, clientId),
     publish: (channel, data) => publish(channel, data),
     clients,
     clientId,

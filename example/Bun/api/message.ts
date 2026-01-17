@@ -1,9 +1,14 @@
 const messages: Array<{ user: string; text: string }> = []
 
-// Send message → broadcast to others
+// Send message → send to all other clients
 module.exports = function (this: any, data: { user: string; text: string }) {
     messages.push(data)
-    this.broadcastOthers('message', data)
+    // Send to all clients except the sender
+    this.clients.forEach((client: any) => {
+        if (client.clientId !== this.clientId) {
+            client.sendTo('message', data)
+        }
+    })
     return data
 }
 

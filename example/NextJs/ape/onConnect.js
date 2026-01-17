@@ -37,8 +37,8 @@ function onConnect(socket, req, send) {
         console.error(`❌ Failed to send init:`, e)
     }
 
-    // Broadcast updated user count to all clients
-    ape.broadcast('users', { count: ape.clients.size })
+    // Publish updated user count to subscribers
+    ape.publish.users({ count: ape.clients.size })
 
     return {
         embed,
@@ -54,8 +54,8 @@ function onConnect(socket, req, send) {
 
         onDisconnect: () => {
             console.info(`👋 Disconnected [${clientID}]`)
-            // Client is already removed from broadcast list, safe to broadcast new count
-            ape.broadcast('users', { count: ape.clients.size })
+            // Client is already removed, safe to publish new count
+            ape.publish.users({ count: ape.clients.size })
         }
     }
 }

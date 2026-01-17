@@ -117,7 +117,7 @@
  */
 
 const serverApe = require("./lib/main");
-const { broadcast, clients, publish } = require("./lib/broadcast");
+const { clients, publish } = require("./lib/broadcast");
 const createPublishProxy = require("./lib/broadcast/publishProxy");
 const api = require("./client");
 const { _queueOrSend } = require("./client");
@@ -130,14 +130,13 @@ const { _queueOrSend } = require("./client");
 const publishProxy = createPublishProxy();
 
 /**
- * Attach broadcast utilities to the serverApe function for convenience access
+ * Attach pub/sub utilities to the serverApe function for convenience access
  *
- * This allows users to access broadcast functionality directly from the
- * server setup function: `ape.broadcast('type', data)`
+ * This allows users to access pub/sub functionality directly from the
+ * server setup function: `ape.publish.channel(data)`
  *
  * @private
  */
-serverApe.broadcast = broadcast;
 serverApe.clients = clients;
 serverApe.publish = publishProxy;
 
@@ -223,26 +222,6 @@ function ape(firstArg, ...rest) {
   // API call mode - directly call the internal queueOrSend
   return _queueOrSend("/ape", firstArg);
 }
-
-/**
- * Broadcast a message to all connected clients
- *
- * Sends a message of the specified type to every connected WebSocket client.
- * Optionally excludes a specific client (useful for not echoing back to sender).
- *
- * @function broadcast
- * @param {string} type - Message type identifier
- * @param {any} data - Data payload to send
- * @param {string} [excludeClientId] - Optional client ID to exclude from broadcast
- *
- * @example
- * // Broadcast to everyone
- * ape.broadcast('announcement', { text: 'Server restarting in 5 minutes' })
- *
- * // Broadcast to everyone except the sender
- * ape.broadcast('chat', { user: 'Alice', message: 'Hello!' }, senderClientId)
- */
-ape.broadcast = broadcast;
 
 /**
  * Publish a message to all subscribers of a channel
@@ -351,14 +330,13 @@ module.exports = api;
  *
  * @example
  * // CommonJS destructuring
- * const { ape, broadcast, clients } = require('api-ape')
+ * const { ape, clients } = require('api-ape')
  *
  * // ES Modules
- * import api, { ape, broadcast, clients } from 'api-ape'
+ * import api, { ape, clients } from 'api-ape'
  */
 module.exports.ape = ape;
 module.exports.api = api;
-module.exports.broadcast = broadcast;
 module.exports.publish = publishProxy;
 module.exports.clients = clients;
 module.exports.default = api;

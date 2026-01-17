@@ -16,8 +16,8 @@
           <pre class="code">• Proxy Pattern: api.message() → api/message.js
 • Auto-wiring: Drop files in api/ folder, they become endpoints
 • Promises: All calls return Promises automatically
-• Broadcasts: Use this.broadcast() or this.broadcastOthers()
-• Context: this.broadcast, this.hostId, this.req available in controllers
+• Pub/Sub: Use ape.publish.channel(data) for channel subscribers
+• Context: this.clients, this.clientId, this.req available in controllers
 • Auto-reconnect: Client reconnects automatically on disconnect</pre>
         </div>
 
@@ -48,20 +48,20 @@
             </div>
             <div class="server-box-span2">api/message.js</div>
 
-            <!-- Step 3: Server broadcasts -->
+            <!-- Step 3: Server sends to others -->
             <div class="empty-grid-cell-row4"></div>
             <div class="arrow-container-row4">
               <div class="arrow-line-broadcast"></div>
-              <span class="arrow-label-green">Broadcast</span>
+              <span class="arrow-label-green">Send</span>
               <div class="arrow-head-right"></div>
             </div>
-            <div class="server-box-span3">Broadcast to others</div>
+            <div class="server-box-span3">Send to others</div>
 
             <!-- Step 4: Other clients receive -->
             <div class="client-box-single">Other clients</div>
             <div class="arrow-container-row5">
               <div class="arrow-head-left-blue"></div>
-              <span class="arrow-label-blue">Broadcast</span>
+              <span class="arrow-label-blue">Receive</span>
               <div class="arrow-line-broadcast-return"></div>
             </div>
             <div class="empty-grid-cell-row5"></div>
@@ -87,11 +87,11 @@ api.message({ user: 'Alice', text: 'Hello!' })
     console.error('Error:', err)
   })
 
-// 3. Listen for server broadcasts
+// 3. Listen for server messages
 client.setOnReceiver('message', ({ data }) => {
-  // Server called: this.broadcastOthers('message', data)
-  // This fires for ALL clients except the sender
-  console.log('Broadcast received:', data.message)
+  // Server sent to this client
+  // This fires for clients the server sends to
+  console.log('Message received:', data.message)
 })</pre>
         </div>
 
@@ -103,21 +103,25 @@ client.setOnReceiver('message', ({ data }) => {
 
 module.exports = function message(data) {
   const { user, text } = data
-  
+
   // Validate input
   if (!user || !text) {
     throw new Error('Missing user or text')
   }
-  
+
   const msg = {
     user,
     text,
     time: new Date().toISOString()
   }
-  
-  // Broadcast to ALL OTHER clients (not the sender)
-  this.broadcastOthers('message', { message: msg })
-  
+
+  // Send to ALL OTHER clients (not the sender)
+  this.clients.forEach((client) => {
+    if (client.clientId !== this.clientId) {
+      client.sendTo('message', { message: msg })
+    }
+  })
+
   // Return response to sender (fulfills Promise)
   return { ok: true, message: msg }
 }</pre>

@@ -1,5 +1,5 @@
 /**
- * File Upload Controller - Handles binary file uploads
+ * @file File Upload Controller - Handles binary file uploads
  *
  * Tests binary data handling via api-ape file transfer system.
  *
@@ -50,13 +50,17 @@ module.exports = function (data) {
         uploadedBy: this.clientId
     });
 
-    // Broadcast to others that a file was shared
+    // Send to others that a file was shared
     if (data.broadcast !== false) {
-        this.broadcastOthers('file-shared', {
-            hash,
-            name: data.name,
-            size: buffer.length,
-            from: this.clientId
+        this.clients.forEach((client) => {
+            if (client.clientId !== this.clientId) {
+                client.sendTo('file-shared', {
+                    hash,
+                    name: data.name,
+                    size: buffer.length,
+                    from: this.clientId
+                });
+            }
         });
     }
 

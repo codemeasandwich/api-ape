@@ -28,10 +28,8 @@ export interface ApeWebSocket {
  * Controller context available as `this` inside controller functions
  */
 export interface ControllerContext {
-    /** Send to ALL connected clients */
-    broadcast(type: string, data: any): void
-    /** Send to all clients EXCEPT the caller */
-    broadcastOthers(type: string, data: any): void
+    /** Publish to channel subscribers */
+    publish(channel: string, data: any): void
     /** Get count of connected clients */
     online(): number
     /** Get array of connected clientIds */
@@ -227,8 +225,15 @@ export interface ForestOptions {
 declare function ape(server: HttpServer, options: ApeServerOptions): void
 
 declare namespace ape {
-    /** Broadcast to all connected clients */
-    export function broadcast(type: string, data: any, excludeClientId?: string): void
+    /**
+     * Publish to channel subscribers
+     * Supports chained syntax: ape.publish.channel.name(data)
+     * Or direct call: ape.publish('/channel', data)
+     */
+    export const publish: {
+        (channel: string, data: any): void
+        [key: string]: any
+    }
 
     /**
      * Read-only Map of connected clients
@@ -441,10 +446,9 @@ declare const connectSocket: ConnectSocket
 export { connectSocket }
 
 // =============================================================================
-// BROADCAST MODULE
+// CLIENTS MODULE
 // =============================================================================
 
-export declare const broadcast: (type: string, data: any) => void
 export declare const clients: ReadonlyMap<string, ClientWrapper>
 
 /**

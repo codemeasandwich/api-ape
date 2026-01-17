@@ -1,7 +1,7 @@
 /**
- * Message Controller - Handles messages with broadcasting
+ * @file Message Controller - Handles messages with client targeting
  *
- * Used for testing broadcast functionality (broadcastOthers, etc.)
+ * Used for testing send-to-others functionality via this.clients
  *
  * @module test-api/message
  */
@@ -10,7 +10,7 @@
 const _messages = [];
 
 /**
- * Handle incoming message and broadcast to other clients
+ * Handle incoming message and send to other clients
  *
  * @param {Object} data - Message data
  * @param {string} data.text - The message text
@@ -33,8 +33,12 @@ module.exports = function (data) {
     _messages.shift();
   }
 
-  // Broadcast to all other connected clients
-  this.broadcastOthers('message', message);
+  // Send to all other connected clients (not the sender)
+  this.clients.forEach((client) => {
+    if (client.clientId !== this.clientId) {
+      client.sendTo('message', message);
+    }
+  });
 
   return {
     success: true,

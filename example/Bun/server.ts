@@ -42,10 +42,10 @@ ape(server, {
     where: 'api',
     onConnect: (socket: any, req: any, send: (type: string, data: any) => void) => {
         send('init', { history: _messages, users: ape.clients.size })
-        ape.broadcast('users', { count: ape.clients.size })
+        ape.publish.users({ count: ape.clients.size })
 
         return {
-            onDisconnect: () => ape.broadcast('users', { count: ape.clients.size })
+            onDisconnect: () => ape.publish.users({ count: ape.clients.size })
         }
     }
 })

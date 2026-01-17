@@ -6,7 +6,7 @@ This module contains test controllers that api-ape loads during testing. These a
 
 - **Minimal implementation** — Controllers should do the minimum needed to test the feature
 - **Document purpose** — Each controller should have a brief JSDoc explaining its test purpose
-- **Use context** — Access `this.clientId`, `this.broadcast()`, etc. as needed for tests
+- **Use context** — Access `this.clientId`, `this.clients`, etc. as needed for tests
 - **No side effects** — Controllers should be stateless and idempotent
 
 ## Directory Structure
@@ -14,11 +14,12 @@ This module contains test controllers that api-ape loads during testing. These a
 ```
 test-api/
 ├── echo.js           # Returns input unchanged (basic RPC)
-├── message.js        # Broadcasts message to other clients
+├── message.js        # Sends message to other clients
 ├── delay.js          # Async controller with configurable delay
 ├── errors.js         # Throws various error types
 ├── types.js          # Returns JSS types for serialization testing
 ├── circular.js       # Tests circular reference handling
+├── runtime.js        # Runtime detection and send-to-all testing
 ├── users/            # Nested route examples
 │   ├── index.js      # User list endpoint
 │   └── profile.js    # User profile endpoint
@@ -42,7 +43,7 @@ Returns whatever data is sent to it unchanged. Used for basic RPC and JSS round-
 
 ### `message.js`
 
-Broadcasts the received message to all other connected clients using `this.broadcastOthers()`.
+Sends the received message to all other connected clients using `this.clients.forEach()`.
 
 ### `delay.js`
 
@@ -59,6 +60,10 @@ Returns various JSS types (Date, RegExp, Error, Set, Map) for serialization test
 ### `circular.js`
 
 Tests handling of circular object references in serialization.
+
+### `runtime.js`
+
+Tests runtime detection (Node/Bun/Deno) and provides a send-to-all action for testing `this.clients`.
 
 ### `users/`
 

@@ -48,7 +48,7 @@ ape(server, {
   where: 'api',
   onConnect: (socket, req, send) => {
     send('init', { history: [], users: ape.clients.size })
-    return { onDisconnect: () => ape.broadcast('users', { count: ape.clients.size }) }
+    return { onDisconnect: () => ape.publish.users({ count: ape.clients.size }) }
   }
 })
 ```
@@ -72,5 +72,5 @@ ape(server, {
 | Auto-wiring | `ape(server, { where: 'api' })` loads `api/*.js` |
 | onConnect hook | `onConnect: (socket, req, send) => { ... }` |
 | Push on connect | `send('init', { history, users })` |
-| Broadcast all | `broadcast('users', { count })` |
-| Broadcast others | `this.broadcastOthers('message', data)` |
+| Publish to channel | `ape.publish.users({ count })` |
+| Send to specific clients | `this.clients.forEach(c => c.sendTo(...))` |

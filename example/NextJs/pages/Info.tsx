@@ -16,8 +16,8 @@ export default function Info() {
               {`• Proxy Pattern: api.message() → api/message.js
 • Auto-wiring: Drop files in api/ folder, they become endpoints
 • Promises: All calls return Promises automatically
-• Broadcasts: Use this.broadcast() or this.broadcastOthers()
-• Context: this.broadcast, this.clientId, this.req available in controllers
+• Pub/Sub: Use ape.publish.channel(data) for channel subscribers
+• Context: this.clients, this.clientId, this.req available in controllers
 • Auto-reconnect: Client reconnects automatically on disconnect`}
             </pre>
           </div>
@@ -59,15 +59,15 @@ export default function Info() {
                 api/message.js
               </div>
 
-              {/* Step 3: Server broadcasts */}
+              {/* Step 3: Server sends to others */}
               <div className={styles.emptyGridCellRow4}></div>
               <div className={styles.arrowContainerRow4}>
                 <div className={styles.arrowLineBroadcast}></div>
-                <span className={styles.arrowLabelGreen}>Broadcast</span>
+                <span className={styles.arrowLabelGreen}>Send</span>
                 <div className={styles.arrowHeadRight}></div>
               </div>
               <div className={styles.serverBoxSpan3}>
-                Broadcast to others
+                Send to others
               </div>
 
               {/* Step 4: Other clients receive */}
@@ -76,7 +76,7 @@ export default function Info() {
               </div>
               <div className={styles.arrowContainerRow5}>
                 <div className={styles.arrowHeadLeftBlue}></div>
-                <span className={styles.arrowLabelBlue}>Broadcast</span>
+                <span className={styles.arrowLabelBlue}>Receive</span>
                 <div className={styles.arrowLineBroadcastReturn}></div>
               </div>
               <div className={styles.emptyGridCellRow5}></div>
@@ -106,11 +106,11 @@ api.message({ user: 'Alice', text: 'Hello!' })
     console.error('Error:', err)
   })
 
-// 3. Listen for server broadcasts
+// 3. Listen for server messages
 client.setOnReceiver('message', ({ data }) => {
-  // Server called: this.broadcastOthers('message', data)
-  // This fires for ALL clients except the sender
-  console.log('Broadcast received:', data.message)
+  // Server sent to this client
+  // This fires for clients the server sends to
+  console.log('Message received:', data.message)
 })`}
             </pre>
           </div>
@@ -126,21 +126,25 @@ client.setOnReceiver('message', ({ data }) => {
 
 module.exports = function message(data) {
   const { user, text } = data
-  
+
   // Validate input
   if (!user || !text) {
     throw new Error('Missing user or text')
   }
-  
+
   const msg = {
     user,
     text,
     time: new Date().toISOString()
   }
-  
-  // Broadcast to ALL OTHER clients (not the sender)
-  this.broadcastOthers('message', { message: msg })
-  
+
+  // Send to ALL OTHER clients (not the sender)
+  this.clients.forEach((client) => {
+    if (client.clientId !== this.clientId) {
+      client.sendTo('message', { message: msg })
+    }
+  })
+
   // Return response to sender (fulfills Promise)
   return { ok: true, message: msg }
 }`}

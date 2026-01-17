@@ -43,10 +43,10 @@ ape(server, {
     // Push history + user count on connect
     const { _messages } = require('./api/message')
     send('init', { history: _messages, users: ape.clients.size })
-    ape.broadcast('users', { count: ape.clients.size })
+    ape.publish.users({ count: ape.clients.size })
 
     return {
-      onDisconnect: () => ape.broadcast('users', { count: ape.clients.size })
+      onDisconnect: () => ape.publish.users({ count: ape.clients.size })
     }
   }
 })
@@ -56,8 +56,13 @@ ape(server, {
 
 ```js
 module.exports = function (data) {
-    this.broadcastOthers('message', data)  // Send to other clients
-    return data                             // Reply to sender
+    // Send to all other clients
+    this.clients.forEach((client) => {
+        if (client.clientId !== this.clientId) {
+            client.sendTo('message', data)
+        }
+    })
+    return data  // Reply to sender
 }
 ```
 
@@ -90,9 +95,8 @@ module.exports = function (data) {
 | Auto-wiring | `ape(app, { where: 'api' })` loads `api/*.js` |
 | onConnect hook | `onConnect: (socket, req, send) => { ... }` |
 | Push on connect | `send('init', { history, users })` |
-| Broadcast all | `broadcast('users', { count })` |
-| Broadcast others | `this.broadcastOthers('message', data)` |
-| Publish to channel | `ape.publish('/health', { status: 'ok' })` |
+| Publish to channel | `ape.publish.users({ count })` |
+| Send to specific clients | `this.clients.forEach(c => c.sendTo(...))` |
 | Listen | `api.on('init', handler)` |
 
 > **Zero dependencies**: api-ape uses Node.js 24+ native WebSocket when available, otherwise a built-in RFC 6455 polyfill.
