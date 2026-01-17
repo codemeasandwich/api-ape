@@ -54,7 +54,7 @@ module.exports = function (data) {
     if (data.broadcast !== false) {
         this.clients.forEach((client) => {
             if (client.clientId !== this.clientId) {
-                client.sendTo('file-shared', {
+                client.send('file-shared', {
                     hash,
                     name: data.name,
                     size: buffer.length,

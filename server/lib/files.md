@@ -52,7 +52,7 @@ Manages connected clients and provides messaging utilities:
 - `publish(channel, data)` — Send to all subscribers of a channel
 - `subscribe(clientId, channel)` — Subscribe a client to a channel
 - `unsubscribe(clientId, channel)` — Unsubscribe a client from a channel
-- `clients` — Read-only Map of connected clients with `sendTo()` method
+- `clients` — Read-only Map of connected clients with `send()` method
 
 ### `bun.js`
 

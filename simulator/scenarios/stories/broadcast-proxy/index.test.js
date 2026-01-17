@@ -127,10 +127,10 @@ describe('Broadcast Proxy User Stories', () => {
             expect(result.agent).toBeDefined();
         });
 
-        test('can sendTo client', async () => {
+        test('can send client', async () => {
             const { client } = await harness.createPair({ where: 'test-api' });
 
-            const result = await client.call('broadcast-test', { action: 'sendTo' });
+            const result = await client.call('broadcast-test', { action: 'send' });
 
             expect(result.success).toBe(true);
             expect(result.sentMessage).toBe(true);

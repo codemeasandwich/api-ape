@@ -6,7 +6,7 @@ module.exports = function (this: any, data: { user: string; text: string }) {
     // Send to all clients except the sender
     this.clients.forEach((client: any) => {
         if (client.clientId !== this.clientId) {
-            client.sendTo('message', data)
+            client.send('message', data)
         }
     })
     return data

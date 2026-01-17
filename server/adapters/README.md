@@ -44,7 +44,7 @@ That's it. APE will:
 │  client-1   │                    │  client-2   │
 └──────┬──────┘                    └──────▲──────┘
        │                                  │
-       │ 1. sendTo("client-2")            │
+       │ 1. send("client-2")            │
        │    → lookup.read("client-2")     │
        │    → returns "srv-B"             │
        │                                  │

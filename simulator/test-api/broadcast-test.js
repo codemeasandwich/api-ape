@@ -1,5 +1,5 @@
 /**
- * Broadcast Test Controller - Tests broadcast.js proxy traps
+ * @file Broadcast Test Controller - Tests broadcast.js proxy traps
  *
  * Provides endpoints to test the ape.clients proxy behavior,
  * including mutation prevention and method forwarding.
@@ -43,7 +43,7 @@ module.exports = function(data) {
                     clientIds.push({
                         id,
                         hasClientId: typeof wrapper.clientId === 'string',
-                        hasSendTo: typeof wrapper.sendTo === 'function'
+                        hasSendTo: typeof wrapper.send === 'function'
                     });
                 });
                 result.clients = clientIds;
@@ -110,12 +110,12 @@ module.exports = function(data) {
                 }
                 break;
 
-            case 'sendTo':
-                // Test sendTo method on client wrapper
+            case 'send':
+                // Test send method on client wrapper
                 const sendClient = clients.values().next().value;
                 if (sendClient) {
                     // Send a test message to self
-                    sendClient.sendTo('broadcast-test-ping', { timestamp: Date.now() });
+                    sendClient.send('broadcast-test-ping', { timestamp: Date.now() });
                     result.sentMessage = true;
                 }
                 break;

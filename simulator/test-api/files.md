@@ -20,6 +20,7 @@ test-api/
 ├── types.js          # Returns JSS types for serialization testing
 ├── circular.js       # Tests circular reference handling
 ├── runtime.js        # Runtime detection and send-to-all testing
+├── broadcast-test.js # Tests clients proxy behavior
 ├── users/            # Nested route examples
 │   ├── index.js      # User list endpoint
 │   └── profile.js    # User profile endpoint
@@ -64,6 +65,10 @@ Tests handling of circular object references in serialization.
 ### `runtime.js`
 
 Tests runtime detection (Node/Bun/Deno) and provides a send-to-all action for testing `this.clients`.
+
+### `broadcast-test.js`
+
+Tests the clients proxy behavior including read operations (size, forEach, get, has, keys, values, entries), client wrapper properties (sessionId, agent), the send method, and mutation blocking (set, delete, clear should throw).
 
 ### `users/`
 

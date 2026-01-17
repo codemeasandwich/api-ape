@@ -266,7 +266,7 @@ ape.publish = publishProxy;
  * // Send to specific client
  * const client = ape.clients.get(clientId)
  * if (client) {
- *   client.sendTo('notification', { message: 'Hello!' })
+ *   client.send('notification', { message: 'Hello!' })
  * }
  *
  * // Access client properties

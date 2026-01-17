@@ -11,7 +11,7 @@
 module.exports = function(data) {
     // Send to all connected clients
     this.clients.forEach((client) => {
-        client.sendTo('test-broadcast', {
+        client.send('test-broadcast', {
             action: 'user-created',
             user: data
         });

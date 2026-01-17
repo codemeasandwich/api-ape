@@ -34,7 +34,7 @@ function message(data) {
     // Send to all OTHER clients (exclude sender)
     this.clients.forEach((client) => {
         if (client.clientId !== this.clientId) {
-            client.sendTo('message', { message: msg })
+            client.send('message', { message: msg })
         }
     })
 

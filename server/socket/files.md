@@ -7,7 +7,7 @@ This module handles WebSocket message processing for api-ape servers. It manages
 - **JSS encoding** — Always use `utils/jss` for message parsing/serialization; never raw `JSON.parse/stringify`
 - **QueryId correlation** — Every response must include the original `queryId` for client-side Promise resolution
 - **Binary tag system** — Use `tagUtils.js` for all binary data detection; don't implement custom tag parsing
-- **Controller context** — Controllers receive `this` with `clientId`, `broadcast`, `sendTo`, and embedded data
+- **Controller context** — Controllers receive `this` with `clientId`, `broadcast`, `send`, and embedded data
 - **Error handling** — Catch all controller errors and send error responses; never let exceptions crash the connection
 - **Security first** — All connections must pass `open.js` validation before processing messages
 

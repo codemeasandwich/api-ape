@@ -28,7 +28,7 @@ async function toAll({ server, type, data }) {
   const clients = server.clients || server._ape?.clients;
   if (clients && typeof clients.forEach === 'function') {
     clients.forEach((client) => {
-      client.sendTo(type, data);
+      client.send(type, data);
     });
   } else {
     throw new Error('toAll: server does not have clients map');

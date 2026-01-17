@@ -15,7 +15,7 @@
 const _clients = new Map();
 
 /**
- * Create a ClientWrapper that exposes client info and sendTo function
+ * Create a ClientWrapper that exposes client info and send function
  *
  * @param {Object} clientInfo - Raw client info from wiring/longPolling
  * @returns {Object} Public client interface
@@ -70,14 +70,14 @@ function createClientWrapper(clientInfo) {
      * @param {string} type - Message type identifier
      * @param {any} data - Data payload to send
      */
-    sendTo(type, data) {
+    send(type, data) {
       if (clientInfo.send) {
         try {
           clientInfo.send(false, type, data, false);
         } catch (e) {
           /* istanbul ignore next */
           console.error(
-            `📢 sendTo failed for ${clientInfo.clientId}:`,
+            `📢 send failed for ${clientInfo.clientId}:`,
             e.message,
           );
         }

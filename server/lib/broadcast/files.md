@@ -26,7 +26,7 @@ Client tracking with a read-only proxy for external access:
 
 - Stores connected clients in a Map keyed by `clientId`
 - Creates `ClientWrapper` objects exposing `clientId`, `sessionId`, `embed`, `authState`
-- Provides `sendTo(type, data)` method on each wrapper for direct messaging
+- Provides `send(type, data)` method on each wrapper for direct messaging
 - Exposes read-only proxy that blocks `set`, `delete`, `clear` operations
 - Internal functions: `addClient`, `removeClient`, `updateClientEmbed`, `updateClientSend`, `updateClientAuth`
 

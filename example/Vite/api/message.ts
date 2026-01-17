@@ -16,7 +16,7 @@ interface MessageData {
 
 interface ClientWrapper {
     clientId: string
-    sendTo: (type: string, data: any) => void
+    send: (type: string, data: any) => void
 }
 
 interface MessageContext {
@@ -50,7 +50,7 @@ function message(this: MessageContext, data: MessageData) {
     // Send to all OTHER clients (exclude sender)
     this.clients.forEach((client) => {
         if (client.clientId !== this.clientId) {
-            client.sendTo('message', { message: msg })
+            client.send('message', { message: msg })
         }
     })
 

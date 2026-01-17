@@ -237,7 +237,7 @@ declare namespace ape {
 
     /**
      * Read-only Map of connected clients
-     * Each ClientWrapper provides: clientId, sessionId, embed, agent, sendTo(type, data)
+     * Each ClientWrapper provides: clientId, sessionId, embed, agent, send(type, data)
      */
     export const clients: ReadonlyMap<string, ClientWrapper>
 
@@ -452,7 +452,7 @@ export { connectSocket }
 export declare const clients: ReadonlyMap<string, ClientWrapper>
 
 /**
- * Client wrapper providing client info and sendTo function
+ * Client wrapper providing client info and send function
  */
 export interface ClientWrapper {
     /** Unique client identifier */
@@ -468,5 +468,5 @@ export interface ClientWrapper {
         device: { type?: string; vendor?: string; model?: string }
     }
     /** Send a message to this specific client */
-    sendTo(type: string, data: any): void
+    send(type: string, data: any): void
 }

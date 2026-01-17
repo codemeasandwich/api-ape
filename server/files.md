@@ -7,7 +7,7 @@ This module provides the backend infrastructure for api-ape's WebSocket-based Re
 - **Multi-runtime support** — Code must work on Node.js, Bun, and Deno; use runtime detection via `lib/wsProvider.js`
 - **Zero dependencies** — Avoid external packages; use built-in WebSocket polyfill when native unavailable
 - **JSS encoding** — Always use `utils/jss` for message serialization to preserve extended types
-- **Controller context** — Controllers receive `this` context with `clientId`, `broadcast`, `sendTo`, and embedded data
+- **Controller context** — Controllers receive `this` context with `clientId`, `broadcast`, `send`, and embedded data
 - **Binary transfers** — Use the tag system (`<!B>`, `<!A>`, `<!F>`) for file handling
 
 ## Directory Structure

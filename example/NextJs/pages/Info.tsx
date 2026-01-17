@@ -141,7 +141,7 @@ module.exports = function message(data) {
   // Send to ALL OTHER clients (not the sender)
   this.clients.forEach((client) => {
     if (client.clientId !== this.clientId) {
-      client.sendTo('message', { message: msg })
+      client.send('message', { message: msg })
     }
   })
 

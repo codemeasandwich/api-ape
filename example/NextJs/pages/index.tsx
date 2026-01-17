@@ -58,7 +58,7 @@ export default function Home() {
      * Set up event listeners for server messages
      *
      * `api.on(type, handler)` listens for messages from the server.
-     * The server can send messages using `client.sendTo()` or pub/sub channels.
+     * The server can send messages using `client.send()` or pub/sub channels.
      *
      * Message types:
      * - 'init': Initial data when client connects (history, user count)
@@ -120,7 +120,7 @@ export default function Home() {
      * The server function receives the data and can:
      * - Validate input
      * - Store the message
-     * - Send to others: `this.clients.forEach(c => c.sendTo(...))`
+     * - Send to others: `this.clients.forEach(c => c.send(...))`
      * - Return a response: `return { ok: true, message: msg }`
      */
     api.message({ user: username, text: input })

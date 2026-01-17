@@ -103,7 +103,7 @@ function publish(channel, data) {
   subscribers.forEach((clientId) => {
     const wrapper = _clients.get(clientId);
     if (wrapper) {
-      wrapper.sendTo(channel, data);
+      wrapper.send(channel, data);
     }
   });
 }

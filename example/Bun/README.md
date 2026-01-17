@@ -73,4 +73,4 @@ ape(server, {
 | onConnect hook | `onConnect: (socket, req, send) => { ... }` |
 | Push on connect | `send('init', { history, users })` |
 | Publish to channel | `ape.publish.users({ count })` |
-| Send to specific clients | `this.clients.forEach(c => c.sendTo(...))` |
+| Send to specific clients | `this.clients.forEach(c => c.send(...))` |

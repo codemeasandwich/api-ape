@@ -26,7 +26,7 @@ module.exports = function(data) {
         const type = data.type || 'runtime-broadcast';
         const payload = data.data || {};
         this.clients.forEach((client) => {
-            client.sendTo(type, payload);
+            client.send(type, payload);
         });
         return { broadcasted: true, type: data.type };
     }

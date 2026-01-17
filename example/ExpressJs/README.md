@@ -59,7 +59,7 @@ module.exports = function (data) {
     // Send to all other clients
     this.clients.forEach((client) => {
         if (client.clientId !== this.clientId) {
-            client.sendTo('message', data)
+            client.send('message', data)
         }
     })
     return data  // Reply to sender
@@ -96,7 +96,7 @@ module.exports = function (data) {
 | onConnect hook | `onConnect: (socket, req, send) => { ... }` |
 | Push on connect | `send('init', { history, users })` |
 | Publish to channel | `ape.publish.users({ count })` |
-| Send to specific clients | `this.clients.forEach(c => c.sendTo(...))` |
+| Send to specific clients | `this.clients.forEach(c => c.send(...))` |
 | Listen | `api.on('init', handler)` |
 
 > **Zero dependencies**: api-ape uses Node.js 24+ native WebSocket when available, otherwise a built-in RFC 6455 polyfill.
