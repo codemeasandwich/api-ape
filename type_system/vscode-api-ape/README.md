@@ -67,7 +67,7 @@ Get instant feedback on invalid endpoints:
 ### Manual Installation
 
 ```bash
-cd packages/vscode-api-ape
+cd type_system/vscode-api-ape
 npm install
 npm run compile
 code --install-extension vscode-api-ape-1.0.0.vsix
@@ -346,7 +346,7 @@ Logs include:
 ```bash
 # Clone the repository
 git clone https://github.com/your-org/api-ape.git
-cd api-ape/packages/vscode-api-ape
+cd api-ape/type_system/vscode-api-ape
 
 # Install dependencies
 npm install
