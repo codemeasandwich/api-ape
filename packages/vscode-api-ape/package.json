@@ -1,0 +1,81 @@
+{
+  "name": "vscode-api-ape",
+  "displayName": "api-ape IntelliSense",
+  "description": "IntelliSense, type checking, and completions for api-ape WebSocket APIs",
+  "version": "1.0.0",
+  "publisher": "api-ape",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "api-ape",
+    "websocket",
+    "rpc",
+    "intellisense",
+    "typescript"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/package.json"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "api-ape",
+      "properties": {
+        "apiApe.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:3000",
+          "description": "URL of the api-ape server for schema introspection"
+        },
+        "apiApe.controllersPath": {
+          "type": "string",
+          "default": "api",
+          "description": "Path to the controllers directory"
+        },
+        "apiApe.autoGenerateTypes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically generate .d.ts files when schema changes"
+        },
+        "apiApe.typesOutputPath": {
+          "type": "string",
+          "default": ".api-ape",
+          "description": "Output directory for generated type definitions"
+        },
+        "apiApe.validateOnType": {
+          "type": "boolean",
+          "default": true,
+          "description": "Validate api-ape calls as you type"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "apiApe.refreshSchema",
+        "title": "api-ape: Refresh Schema"
+      },
+      {
+        "command": "apiApe.generateTypes",
+        "title": "api-ape: Generate Type Definitions"
+      },
+      {
+        "command": "apiApe.configureServer",
+        "title": "api-ape: Configure Server URL"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "echo 'No compile step needed'"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0"
+  }
+}

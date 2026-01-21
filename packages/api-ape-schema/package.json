@@ -1,0 +1,27 @@
+{
+  "name": "@api-ape/schema",
+  "version": "1.0.0",
+  "description": "Schema generator for api-ape - extracts endpoint metadata from controller files",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "jest"
+  },
+  "keywords": [
+    "api-ape",
+    "schema",
+    "typescript",
+    "jsdoc"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "comment-parser": "^1.4.1"
+  },
+  "devDependencies": {
+    "jest": "^29.3.1"
+  }
+}

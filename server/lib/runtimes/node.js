@@ -99,6 +99,7 @@ const {
   serveClientBundle,
   serveSourceMap,
 } = require("../httpUtils");
+const { createSchemaHandler } = require("../schema");
 
 /**
  * @typedef {Object} NodeServerResult
@@ -217,6 +218,13 @@ function initNodeServer(server, options, core) {
    */
   const wss = new WebSocketServer({ noServer: true });
 
+  /**
+   * Schema endpoint path and handler for IntelliSense support.
+   * @type {string}
+   */
+  const schemaPath = `/${options.where}/ape/schema`;
+  const schemaHandler = createSchemaHandler(core.controllersDir);
+
   // Connect WebSocket server to api-ape wiring handler
   wss.on("connection", core.wiringHandler);
 
@@ -273,6 +281,20 @@ function initNodeServer(server, options, core) {
     // Health check endpoint
     if (pathname === core.pingPath && req.method === "GET") {
       return sendJson(res, 200, { ok: true, ts: Date.now() });
+    }
+
+    // Schema endpoint for IntelliSense/LSP
+    if (pathname === schemaPath && req.method === "GET") {
+      return schemaHandler(req, res);
+    }
+
+    // Handle CORS preflight for schema endpoint
+    if (pathname === schemaPath && req.method === "OPTIONS") {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      res.writeHead(204);
+      return res.end();
     }
 
     // Long polling GET - streaming response

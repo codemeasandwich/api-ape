@@ -187,6 +187,8 @@ function _resetForTesting() {
  * // core.wsPath = '/api/ape'
  */
 function createApeCore({ where, onConnect, fileTransferOptions, longPollingOptions }) {
+  const path = require("path");
+  const controllersDir = path.join(process.cwd(), where);
   const controllers = loader(where);
   const fileTransfer = getFileTransferManager(fileTransferOptions);
   const wiringHandler = wiring(controllers, onConnect, fileTransfer);
@@ -199,6 +201,7 @@ function createApeCore({ where, onConnect, fileTransferOptions, longPollingOptio
 
   return {
     controllers,
+    controllersDir,
     fileTransfer,
     wiringHandler,
     handleStreamGet,
