@@ -472,8 +472,15 @@ echo "   Changelog generated!"
 # Create GitHub release (triggers the publish workflow)
 echo "🚀 Creating GitHub release..."
 
-REPO_OWNER="codemeasandwich"
-REPO_NAME="api-ape"
+# Extract repo owner and name from git remote
+REMOTE_URL=$(git remote get-url origin)
+if [[ "$REMOTE_URL" =~ github\.com[:/]([^/]+)/([^/.]+)(\.git)?$ ]]; then
+  REPO_OWNER="${BASH_REMATCH[1]}"
+  REPO_NAME="${BASH_REMATCH[2]}"
+else
+  echo "❌ Error: Could not parse GitHub repository from remote URL: $REMOTE_URL"
+  exit 1
+fi
 
 # Try gh CLI first, fall back to curl
 if command -v gh &> /dev/null; then
