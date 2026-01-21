@@ -81,6 +81,7 @@
       "utils/**/*.js",
       "!**/node_modules/**",
       "!**/example/**",
+      "!**/__fixtures__/**",
       "!server/adapters/**",
       "!server/lib/ws/adapters/**",
       "!server/lib/bun.js",

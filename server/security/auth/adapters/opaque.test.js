@@ -18,6 +18,39 @@ describe("OPAQUE Adapter", () => {
   });
 
   describe("Registration Flow", () => {
+    test("handleRegStart rejects invalid username", async () => {
+      await expect(
+        adapter.handleRegStart({
+          clientId: "test-client",
+          user: null,
+          clientNonce: "nonce",
+          regRequest: "req",
+        })
+      ).rejects.toMatchObject({ code: OpaqueError.INVALID_MESSAGE });
+    });
+
+    test("handleRegStart rejects non-string username", async () => {
+      await expect(
+        adapter.handleRegStart({
+          clientId: "test-client",
+          user: 123,
+          clientNonce: "nonce",
+          regRequest: "req",
+        })
+      ).rejects.toMatchObject({ code: OpaqueError.INVALID_MESSAGE });
+    });
+
+    test("handleRegFinish rejects when no pending registration", async () => {
+      await expect(
+        adapter.handleRegFinish({
+          clientId: "test-client",
+          user: "noregistration",
+          clientNonce: "nonce",
+          regRecord: "record",
+        })
+      ).rejects.toMatchObject({ code: OpaqueError.INVALID_STATE });
+    });
+
     test("handleRegStart returns registration response", async () => {
       const result = await adapter.handleRegStart({
         clientId: "test-client",
@@ -135,6 +168,33 @@ describe("OPAQUE Adapter", () => {
       ).rejects.toMatchObject({ code: OpaqueError.USER_NOT_FOUND });
     });
 
+    test("handleAuthStart rejects invalid username", async () => {
+      await expect(
+        adapter.handleAuthStart({
+          clientId: "auth-client",
+          user: null,
+          clientNonce: "nonce",
+        })
+      ).rejects.toMatchObject({ code: OpaqueError.INVALID_MESSAGE });
+    });
+
+    test("handleAuthFinish rejects mismatched nonce", async () => {
+      await adapter.handleAuthStart({
+        clientId: "auth-client",
+        user: "testuser",
+        clientNonce: "correct-nonce",
+      });
+
+      await expect(
+        adapter.handleAuthFinish({
+          clientId: "auth-client",
+          user: "testuser",
+          clientNonce: "wrong-nonce",
+          clientAuth: "proof",
+        })
+      ).rejects.toMatchObject({ code: OpaqueError.NONCE_MISMATCH });
+    });
+
     test("handleAuthFinish returns success (mock mode)", async () => {
       await adapter.handleAuthStart({
         clientId: "auth-client",
@@ -177,6 +237,75 @@ describe("OPAQUE Adapter", () => {
       });
 
       expect(binding).toBe("client-123|cn|sn|alice|1234567890");
+    });
+  });
+
+  describe("Session Expiry", () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    test("handleRegFinish rejects expired session via timeout cleanup", async () => {
+      await adapter.handleRegStart({
+        clientId: "test-client",
+        user: "expire-user",
+        clientNonce: "nonce",
+        regRequest: "req",
+      });
+
+      // The session cleanup timeout runs after nonceExpiry + 1000ms
+      // nonceExpiry default is 5 minutes = 300000ms
+      // So advancing past that triggers the cleanup, resulting in INVALID_STATE
+      jest.advanceTimersByTime(5 * 60 * 1000 + 1001);
+
+      await expect(
+        adapter.handleRegFinish({
+          clientId: "test-client",
+          user: "expire-user",
+          clientNonce: "nonce",
+          regRecord: "record",
+        })
+      ).rejects.toMatchObject({ code: OpaqueError.INVALID_STATE });
+    });
+
+    test("handleAuthFinish rejects expired session via timeout cleanup", async () => {
+      // Setup user first with real timers
+      jest.useRealTimers();
+      await adapter.handleRegStart({
+        clientId: "test-client",
+        user: "auth-expire-user",
+        clientNonce: "reg-nonce",
+        regRequest: "req",
+      });
+      await adapter.handleRegFinish({
+        clientId: "test-client",
+        user: "auth-expire-user",
+        clientNonce: "reg-nonce",
+        regRecord: "record",
+      });
+      jest.useFakeTimers();
+
+      await adapter.handleAuthStart({
+        clientId: "auth-client",
+        user: "auth-expire-user",
+        clientNonce: "auth-nonce",
+      });
+
+      // The session cleanup timeout runs after nonceExpiry + 1000ms
+      jest.advanceTimersByTime(5 * 60 * 1000 + 1001);
+
+      await expect(
+        adapter.handleAuthFinish({
+          clientId: "auth-client",
+          user: "auth-expire-user",
+          clientNonce: "auth-nonce",
+          clientAuth: "proof",
+        })
+      ).rejects.toMatchObject({ code: OpaqueError.INVALID_STATE });
     });
   });
 

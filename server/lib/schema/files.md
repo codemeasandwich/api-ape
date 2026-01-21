@@ -6,6 +6,8 @@ HTTP endpoint and utilities for schema introspection in api-ape servers.
 
 ```
 schema/
+├── __fixtures__/     # Test fixtures
+│   └── test-endpoint.js
 ├── files.md          # This file
 ├── index.js          # Schema HTTP handler and generator
 ├── jsdoc-parser.js   # JSDoc parsing utilities
@@ -32,3 +34,7 @@ JSDoc parsing for controller documentation extraction.
 ### `README.md`
 
 Documentation for the schema module.
+
+### `__fixtures__/test-endpoint.js`
+
+Test fixture for schema introspection tests. Simple endpoint function used to verify schema generation.

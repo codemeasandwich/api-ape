@@ -17,6 +17,7 @@ server/
 ├── index.js      # Entry point (exports lib/main)
 ├── client/       # Server-side client (index.js + connection management)
 ├── lib/          # Core server implementation
+├── plugins/      # Binary data handling plugins
 ├── adapters/     # 🌲 Forest distributed mesh adapters
 ├── socket/       # WebSocket message handlers
 ├── security/     # Origin validation & CSRF protection
@@ -36,6 +37,10 @@ Server-side WebSocket client module for outbound connections. Contains the main 
 ### `lib/`
 
 Core server implementation including initialization, controller loading, broadcasting, and WebSocket handling. See [`lib/files.md`](./lib/files.md).
+
+### `plugins/`
+
+Binary data handling utilities. See [`plugins/files.md`](./plugins/files.md).
 
 ### `adapters/`
 
