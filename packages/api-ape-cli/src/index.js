@@ -23,6 +23,7 @@ const extRegex = /(?:\.([^.]+))?$/;
  * @param {string} dir - Root directory to scan
  * @param {string[]} extensions - File extensions (with dots)
  * @returns {string[]} Array of file paths relative to dir
+ * @throws {Error} If directory cannot be read or accessed
  */
 function getFilesFromDir(dir, extensions) {
   const files = [];
@@ -33,11 +34,39 @@ function getFilesFromDir(dir, extensions) {
    * @param {string} currentPath - Current directory path
    */
   function walkDir(currentPath) {
-    const entries = fs.readdirSync(currentPath);
+    let entries;
+    try {
+      entries = fs.readdirSync(currentPath);
+    } catch (err) {
+      if (err.code === "EACCES") {
+        console.error(`Permission denied: ${currentPath}`);
+        return;
+      }
+      if (err.code === "ENOENT") {
+        console.error(`Directory not found: ${currentPath}`);
+        return;
+      }
+      throw new Error(`Failed to read directory ${currentPath}: ${err.message}`);
+    }
 
     for (const entry of entries) {
       const fullPath = path.join(currentPath, entry);
-      const stat = fs.statSync(fullPath);
+
+      let stat;
+      try {
+        stat = fs.statSync(fullPath);
+      } catch (err) {
+        if (err.code === "EACCES") {
+          console.error(`Permission denied: ${fullPath}`);
+          continue;
+        }
+        if (err.code === "ENOENT") {
+          // File was removed between readdir and stat, skip it
+          continue;
+        }
+        console.error(`Failed to stat ${fullPath}: ${err.message}`);
+        continue;
+      }
 
       if (stat.isFile() && extensions.includes(path.extname(entry))) {
         files.push(fullPath.replace(dir, ""));

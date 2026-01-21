@@ -1,6 +1,6 @@
-# LSP Server Source
+# LSP Source
 
-Core implementation for @api-ape/lsp.
+Language Server Protocol implementation source code.
 
 ## Directory Structure
 
@@ -8,13 +8,19 @@ Core implementation for @api-ape/lsp.
 src/
 ├── files.md      # This file
 ├── server.js     # LSP server entry point
-├── analysis/     # Document analysis
+├── analysis/     # Document analysis module
 ├── providers/    # LSP feature providers
-└── schema/       # Schema management
+├── schema/       # Schema management
+└── utils/        # Shared utilities
 ```
 
 ## Files
 
 ### `server.js`
 
-LSP server entry point. Handles initialization, request routing, and document synchronization.
+LSP server entry point. Initializes the language server, registers providers, handles document synchronization, and manages schema state.
+
+- Creates LSP connection
+- Registers completion, hover, definition, signature, and code action providers
+- Handles workspace/executeCommand requests
+- Manages document change notifications

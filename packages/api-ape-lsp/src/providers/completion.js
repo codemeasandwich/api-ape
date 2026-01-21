@@ -5,6 +5,7 @@
  */
 
 const { CompletionItemKind, InsertTextFormat } = require("vscode-languageserver/node");
+const { formatTypeForCompletion } = require("../utils/typeFormatter");
 
 /**
  * Get completions for the current position
@@ -121,7 +122,7 @@ function resolveCompletion(item, schema) {
     docParts.push("");
     docParts.push("**Input:**");
     docParts.push("```typescript");
-    docParts.push(formatType(endpoint.input));
+    docParts.push(formatTypeForCompletion(endpoint.input));
     docParts.push("```");
   }
 
@@ -129,7 +130,7 @@ function resolveCompletion(item, schema) {
     docParts.push("");
     docParts.push("**Returns:**");
     docParts.push("```typescript");
-    docParts.push(formatType(endpoint.output));
+    docParts.push(formatTypeForCompletion(endpoint.output));
     docParts.push("```");
   }
 
@@ -147,48 +148,6 @@ function resolveCompletion(item, schema) {
   };
 
   return item;
-}
-
-/**
- * Format a type definition as a string
- *
- * @param {object} typeDef - Type definition object
- * @returns {string} Formatted type string
- */
-function formatType(typeDef) {
-  if (!typeDef) return "any";
-
-  switch (typeDef.kind) {
-    case "primitive":
-      return typeDef.name;
-
-    case "reference":
-      return typeDef.name === "Object" ? "Record<string, any>" : typeDef.name;
-
-    case "array":
-      return `${formatType(typeDef.items)}[]`;
-
-    case "union":
-      return typeDef.types.map(formatType).join(" | ");
-
-    case "promise":
-      return `Promise<${formatType(typeDef.resolves)}>`;
-
-    case "object":
-      if (!typeDef.properties || Object.keys(typeDef.properties).length === 0) {
-        return "Record<string, any>";
-      }
-      const props = Object.entries(typeDef.properties)
-        .map(([name, prop]) => {
-          const opt = prop.optional ? "?" : "";
-          return `  ${name}${opt}: ${formatType(prop)}`;
-        })
-        .join(",\n");
-      return `{\n${props}\n}`;
-
-    default:
-      return "any";
-  }
 }
 
 module.exports = {

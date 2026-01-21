@@ -1,6 +1,6 @@
-# Schema Management
+# Schema Module
 
-Schema fetching and caching for the LSP.
+Schema management for the api-ape LSP server.
 
 ## Directory Structure
 
@@ -14,4 +14,9 @@ schema/
 
 ### `manager.js`
 
-SchemaManager class for fetching schema from server or loading from local files.
+Schema manager for loading and caching endpoint schemas.
+
+- `SchemaManager` class - Manages schema state and updates
+- `loadSchema()` - Load schema from server or file
+- `refreshSchema()` - Refresh cached schema
+- `getEndpoint(path)` - Get endpoint by path

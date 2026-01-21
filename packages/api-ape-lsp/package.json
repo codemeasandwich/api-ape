@@ -4,7 +4,8 @@
   "description": "Language Server Protocol implementation for api-ape",
   "main": "src/server.js",
   "files": [
-    "src"
+    "src",
+    "README.md"
   ],
   "scripts": {
     "test": "jest"
@@ -19,7 +20,8 @@
   "license": "MIT",
   "dependencies": {
     "vscode-languageserver": "^9.0.1",
-    "vscode-languageserver-textdocument": "^1.0.11"
+    "vscode-languageserver-textdocument": "^1.0.11",
+    "vscode-uri": "^3.0.8"
   },
   "devDependencies": {
     "jest": "^29.3.1"

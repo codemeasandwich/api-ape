@@ -49,6 +49,19 @@ function typeDefToString(typeDef) {
         .join(";\n    ");
       return `{\n    ${props}\n  }`;
 
+    case "literal":
+      // String or number literal type
+      if (typeof typeDef.value === "string") {
+        return `"${typeDef.value}"`;
+      }
+      return String(typeDef.value);
+
+    case "record":
+      // Index signature / Record type
+      const keyType = typeDefToString(typeDef.key) || "string";
+      const valueType = typeDefToString(typeDef.value) || "any";
+      return `Record<${keyType}, ${valueType}>`;
+
     case "any":
     default:
       return "any";

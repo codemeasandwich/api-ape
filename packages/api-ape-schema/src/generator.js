@@ -8,7 +8,11 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { parseJSDoc } = require("./jsdoc-parser");
+const {
+  extractSchema,
+  getSupportedExtensions,
+  shouldProcessFile,
+} = require("./extractor");
 
 /**
  * Regular expression to extract file extension
@@ -53,21 +57,24 @@ function getFilesFromDir(dir, extensions) {
 /**
  * Compute endpoint path from file path
  *
- * @param {string} file - File path like '/users/list.js'
+ * @param {string} file - File path like '/users/list.js' or '/users/list.ts'
  * @returns {string|null} Endpoint like 'users/list', or null if should be skipped
  */
 function computeEndpoint(file) {
-  // Skip root index.js
-  if (file === "/index.js") return null;
+  // Skip root index files
+  if (file === "/index.js" || file === "/index.ts") return null;
 
   // Skip underscore-prefixed files/directories (private)
   if (file.includes("/_")) return null;
+
+  // Skip .d.ts files (they're companions, not controllers)
+  if (file.endsWith(".d.ts")) return null;
 
   // Remove extension and leading slash
   const ext = extRegex.exec(file)[0];
   const pathParts = file.replace(ext, "").split("/").slice(1);
 
-  // index.js maps to parent directory
+  // index.js/index.ts maps to parent directory
   if (pathParts[pathParts.length - 1] === "index") {
     pathParts.pop();
   }
@@ -99,13 +106,13 @@ function generateVersionHash(endpoints) {
  *
  * @param {string} controllersDir - Absolute path to controllers directory
  * @param {object} [options] - Generation options
- * @param {string[]} [options.extensions=['js']] - File extensions to include
+ * @param {string[]} [options.extensions] - File extensions to include (defaults to ['js', 'ts'])
  * @returns {ApeSchema}
  */
 function generateSchema(controllersDir, options = {}) {
-  const extensions = (options.extensions || ["js"]).map((ext) =>
-    ext.startsWith(".") ? ext : `.${ext}`
-  );
+  const extensions = options.extensions
+    ? options.extensions.map((ext) => (ext.startsWith(".") ? ext : `.${ext}`))
+    : getSupportedExtensions();
 
   const files = getFilesFromDir(controllersDir, extensions);
   const endpoints = [];
@@ -115,17 +122,22 @@ function generateSchema(controllersDir, options = {}) {
     if (!endpoint) continue;
 
     const fullPath = path.join(controllersDir, file);
-    const doc = parseJSDoc(fullPath);
+
+    // Skip files that shouldn't be processed
+    if (!shouldProcessFile(fullPath)) continue;
+
+    const schema = extractSchema(fullPath);
 
     endpoints.push({
       path: endpoint,
       filePath: fullPath,
-      line: doc.line,
+      line: schema.line || 1,
       column: 1,
-      description: doc.description,
-      input: doc.input,
-      output: doc.output,
-      throws: doc.throws,
+      description: schema.description,
+      input: schema.input,
+      output: schema.output,
+      throws: schema.throws || [],
+      schemaSource: schema.source,
     });
   }
 

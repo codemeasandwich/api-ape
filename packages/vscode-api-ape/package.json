@@ -4,11 +4,17 @@
   "description": "IntelliSense, type checking, and completions for api-ape WebSocket APIs",
   "version": "1.0.0",
   "publisher": "api-ape",
+  "icon": "extension.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codemeasandwich/api-ape"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "Programming Languages",
+    "Linters",
     "Other"
   ],
   "keywords": [
@@ -16,7 +22,9 @@
     "websocket",
     "rpc",
     "intellisense",
-    "typescript"
+    "typescript",
+    "autocomplete",
+    "api"
   ],
   "activationEvents": [
     "workspaceContains:**/package.json"
@@ -56,15 +64,135 @@
     "commands": [
       {
         "command": "apiApe.refreshSchema",
-        "title": "api-ape: Refresh Schema"
+        "title": "api-ape: Refresh Schema",
+        "icon": "$(refresh)"
       },
       {
         "command": "apiApe.generateTypes",
-        "title": "api-ape: Generate Type Definitions"
+        "title": "api-ape: Generate Type Definitions",
+        "icon": "$(file-code)"
       },
       {
         "command": "apiApe.configureServer",
-        "title": "api-ape: Configure Server URL"
+        "title": "api-ape: Configure Server URL",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "apiApe.showStatus",
+        "title": "api-ape: Show Status"
+      },
+      {
+        "command": "apiApe.explorer.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "apiApe.explorer.insertCall",
+        "title": "Insert API Call",
+        "icon": "$(insert)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "apiApeExplorer",
+          "title": "api-ape",
+          "icon": "$(pulse)"
+        }
+      ]
+    },
+    "views": {
+      "apiApeExplorer": [
+        {
+          "id": "apiApeEndpoints",
+          "name": "Endpoints",
+          "contextualTitle": "api-ape Endpoints"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "apiApe.explorer.refresh",
+          "when": "view == apiApeEndpoints",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "apiApe.explorer.insertCall",
+          "when": "view == apiApeEndpoints && viewItem == endpoint",
+          "group": "inline"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "apiApe.refreshSchema",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "apiApe.generateTypes",
+        "key": "ctrl+alt+g",
+        "mac": "cmd+alt+g",
+        "when": "editorTextFocus"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "apiApeGettingStarted",
+        "title": "Get Started with api-ape",
+        "description": "Learn how to use api-ape IntelliSense to supercharge your API development",
+        "steps": [
+          {
+            "id": "checkProject",
+            "title": "Verify api-ape Project",
+            "description": "Make sure your project has `api-ape` in package.json dependencies. The extension activates automatically when detected.\n\n[Check package.json](command:workbench.action.quickOpen?%22package.json%22)",
+            "media": {
+              "markdown": "## Project Detection\n\nThe extension looks for:\n- `api-ape` in dependencies/devDependencies\n- `.api-ape` directory\n- `.api-ape.json` config file"
+            },
+            "completionEvents": [
+              "onContext:apiApe.activated"
+            ]
+          },
+          {
+            "id": "startServer",
+            "title": "Start Your api-ape Server",
+            "description": "For live schema updates, start your api-ape server. The extension fetches schema from `/api/ape/schema`.\n\nAlternatively, generate types offline with the Generate Types command.",
+            "media": {
+              "markdown": "## Schema Sources\n\n1. **Running Server** (recommended): Live updates\n2. **Local File**: `.api-ape/schema.json`\n3. **Generated**: From controller files"
+            }
+          },
+          {
+            "id": "exploreEndpoints",
+            "title": "Explore Your Endpoints",
+            "description": "Open the api-ape panel in the Activity Bar to see all your endpoints organized by namespace.\n\n[Open api-ape Explorer](command:workbench.view.extension.apiApeExplorer)",
+            "media": {
+              "markdown": "## API Explorer\n\n- Browse endpoints by namespace\n- Click to jump to controller\n- Insert API calls with one click"
+            }
+          },
+          {
+            "id": "useCompletions",
+            "title": "Use IntelliSense",
+            "description": "Type `api.` in any JavaScript/TypeScript file to see endpoint suggestions. Use Tab or Enter to accept.\n\nHover over endpoints for documentation.",
+            "media": {
+              "markdown": "## IntelliSense Features\n\n- **Completions**: `api.` triggers suggestions\n- **Hover**: See endpoint documentation\n- **Signature Help**: Parameter hints\n- **Go to Definition**: Ctrl/Cmd+Click"
+            }
+          },
+          {
+            "id": "generateTypes",
+            "title": "Generate TypeScript Types",
+            "description": "Generate type definitions for full TypeScript support.\n\n[Generate Types](command:apiApe.generateTypes)",
+            "media": {
+              "markdown": "## TypeScript Integration\n\nGenerated files in `.api-ape/`:\n- `api-ape.d.ts`: Type declarations\n- `schema.json`: Schema snapshot\n\nAdd to tsconfig.json:\n```json\n{ \"include\": [\".api-ape/**/*\"] }\n```"
+            },
+            "completionEvents": [
+              "onCommand:apiApe.generateTypes"
+            ]
+          }
+        ]
       }
     ]
   },

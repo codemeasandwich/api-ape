@@ -4,6 +4,7 @@
  * Provides go-to-definition for api-ape proxy chains.
  */
 
+const { URI } = require("vscode-uri");
 const { findApiChainAtPosition } = require("../analysis/analyzer");
 
 /**
@@ -20,16 +21,20 @@ function getDefinition(document, position, schema) {
 
   // Find exact endpoint match
   const endpoint = schema.endpoints.find((e) => e.path === chain.path);
-  if (!endpoint) return null;
+  if (!endpoint || !endpoint.filePath) return null;
 
-  // Convert file path to URI
-  const fileUri = `file://${endpoint.filePath}`;
+  // Convert file path to URI using vscode-uri for cross-platform support
+  // This correctly handles Windows paths (file:///C:/...) and URL encoding
+  const fileUri = URI.file(endpoint.filePath).toString();
+
+  // Validate and normalize line number (must be >= 0)
+  const lineNum = Math.max(0, (endpoint.line || 1) - 1);
 
   return {
     uri: fileUri,
     range: {
-      start: { line: endpoint.line - 1, character: 0 },
-      end: { line: endpoint.line - 1, character: 0 },
+      start: { line: lineNum, character: 0 },
+      end: { line: lineNum, character: 0 },
     },
   };
 }

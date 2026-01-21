@@ -26,6 +26,8 @@ const {
 } = require("./providers/completion");
 const { getHover } = require("./providers/hover");
 const { getDefinition } = require("./providers/definition");
+const { getSignatureHelp } = require("./providers/signature");
+const { getCodeActions, resolveCodeAction } = require("./providers/codeActions");
 
 // Create a connection for the server using Node's IPC transport
 const connection = createConnection(ProposedFeatures.all);
@@ -51,11 +53,16 @@ connection.onInitialize((params) => {
   const workspaceRoot =
     workspaceFolders.length > 0 ? workspaceFolders[0].uri : null;
 
-  // Initialize schema manager
+  // Initialize schema manager with logger
   schemaManager = new SchemaManager({
     workspaceRoot,
     serverUrl: settings.serverUrl,
     controllersPath: settings.controllersPath,
+    logger: {
+      log: (msg) => connection.console.log(msg),
+      warn: (msg) => connection.console.warn(msg),
+      error: (msg) => connection.console.error(msg),
+    },
   });
 
   connection.console.log("api-ape LSP initialized");
@@ -73,8 +80,18 @@ connection.onInitialize((params) => {
 
       definitionProvider: true,
 
+      signatureHelpProvider: {
+        triggerCharacters: ["(", ","],
+        retriggerCharacters: [","],
+      },
+
+      codeActionProvider: {
+        codeActionKinds: ["quickfix"],
+        resolveProvider: true,
+      },
+
       executeCommandProvider: {
-        commands: ["apiApe.refreshSchema", "apiApe.generateTypes"],
+        commands: ["apiApe.refreshSchema", "apiApe.generateTypes", "apiApe.getStatus"],
       },
     },
   };
@@ -146,6 +163,39 @@ connection.onDefinition(async (params) => {
 });
 
 /**
+ * Provide signature help
+ */
+connection.onSignatureHelp(async (params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const schema = await schemaManager.getSchema();
+  if (!schema) return null;
+
+  return getSignatureHelp(document, params.position, schema);
+});
+
+/**
+ * Provide code actions (quick fixes)
+ */
+connection.onCodeAction(async (params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return [];
+
+  const schema = await schemaManager.getSchema();
+  if (!schema) return [];
+
+  return getCodeActions(document, params.range, params.context, schema);
+});
+
+/**
+ * Resolve code action details
+ */
+connection.onCodeActionResolve((codeAction) => {
+  return resolveCodeAction(codeAction);
+});
+
+/**
  * Execute commands
  */
 connection.onExecuteCommand(async (params) => {
@@ -153,13 +203,70 @@ connection.onExecuteCommand(async (params) => {
     case "apiApe.refreshSchema":
       await schemaManager.refresh();
       connection.console.log("Schema refreshed");
-      break;
+      return { success: true };
 
     case "apiApe.generateTypes":
-      // TODO: Implement type generation command
-      connection.console.log("Generate types command not yet implemented");
-      break;
+      try {
+        const outputDir = params.arguments?.[0] || ".api-ape";
+        const result = await schemaManager.generateTypes(outputDir);
+        connection.console.log(`Types generated at ${result.typesPath}`);
+        return {
+          success: true,
+          outputPath: result.outputPath,
+          typesPath: result.typesPath,
+          schemaPath: result.schemaPath,
+        };
+      } catch (err) {
+        connection.console.error(`Failed to generate types: ${err.message}`);
+        return {
+          success: false,
+          error: err.message,
+        };
+      }
+
+    case "apiApe.getStatus":
+      try {
+        const status = await schemaManager.getStatus();
+        return status;
+      } catch (err) {
+        connection.console.error(`Failed to get status: ${err.message}`);
+        return {
+          serverConnected: false,
+          schemaSource: "none",
+          endpointCount: 0,
+          error: err.message,
+        };
+      }
   }
+});
+
+/**
+ * Handle controller file change notifications
+ */
+connection.onRequest("apiApe/controllerChanged", async (params) => {
+  connection.console.log(`Controller changed: ${params.file}`);
+  await schemaManager.refresh();
+  return { success: true };
+});
+
+connection.onRequest("apiApe/controllerAdded", async (params) => {
+  connection.console.log(`Controller added: ${params.file}`);
+  await schemaManager.refresh();
+  return { success: true };
+});
+
+connection.onRequest("apiApe/controllerDeleted", async (params) => {
+  connection.console.log(`Controller deleted: ${params.file}`);
+  await schemaManager.refresh();
+  return { success: true };
+});
+
+/**
+ * Return current schema for tree view
+ */
+connection.onRequest("apiApe/getSchema", async () => {
+  const schema = await schemaManager.getSchema();
+  return schema;
 });
 
 /**

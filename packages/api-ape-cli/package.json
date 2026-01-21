@@ -8,7 +8,8 @@
   },
   "files": [
     "src",
-    "bin"
+    "bin",
+    "README.md"
   ],
   "scripts": {
     "test": "jest"

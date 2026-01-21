@@ -8,8 +8,11 @@ VSCode extension for api-ape IntelliSense support.
 vscode-api-ape/
 ├── files.md       # This file
 ├── package.json   # Extension manifest
+├── extension.png  # Extension icon
 └── src/
-    └── extension.js  # Extension entry point
+    ├── extension.js   # Extension entry point
+    ├── explorer.js    # API Explorer TreeView
+    └── fileWatcher.js # Controller file watcher
 ```
 
 ## Files
@@ -23,9 +26,6 @@ VSCode extension manifest. Defines:
 - LSP client configuration
 - Settings contribution
 
-### `src/extension.js`
+### `extension.png`
 
-Extension activation and LSP client setup.
-
-- `activate(context)` - Initialize LSP client
-- `deactivate()` - Cleanup on extension deactivation
+Extension icon displayed in the VSCode marketplace and sidebar.
