@@ -27,7 +27,7 @@ import Info from './Info'
 
 export default function Home() {
   // Component state
-  const [messages, setMessages] = useState([])
+  const [messages, setMessages] = useState<Array<{user: string, text: string, time: string}>>([])
   const [input, setInput] = useState('')
   const [username, setUsername] = useState('')
   const [joined, setJoined] = useState(false)
@@ -101,7 +101,7 @@ export default function Home() {
    * The Promise resolves with whatever the server function returns.
    * The server also sends to other clients (see api/message.js).
    */
-  const sendMessage = (e) => {
+  const sendMessage = (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || sending) return
 
@@ -157,7 +157,7 @@ export default function Home() {
    * Handle user joining the chat
    * Simply sets the joined state to show the chat interface
    */
-  const handleJoin = (e) => {
+  const handleJoin = (e: React.FormEvent) => {
     e.preventDefault()
     if (username.trim()) {
       setJoined(true)

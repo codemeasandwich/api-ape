@@ -10,6 +10,10 @@ on:
         required: false
         default: 'false'
 
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # Run simulator tests with 100% coverage requirement
   test:
@@ -23,9 +27,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Run tests
         run: npm test
@@ -61,6 +66,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.runtime == 'node' && matrix.version || '20' }}
+          cache: 'npm'
 
       - name: Setup Bun
         if: matrix.runtime == 'bun'
@@ -75,7 +81,7 @@ jobs:
           deno-version: ${{ matrix.version }}
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Run Node.js integration
         if: matrix.runtime == 'node'
@@ -110,9 +116,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
       - name: Install main dependencies
-        run: npm install
+        run: npm ci
 
       - name: Install framework dependencies
         run: cd integration/${{ matrix.framework }} && npm install
@@ -139,9 +146,10 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build browser bundle
         run: npx esbuild client/browser.js --bundle --minify --sourcemap --outfile=dist/ape.js
