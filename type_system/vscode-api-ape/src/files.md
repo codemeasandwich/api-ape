@@ -6,12 +6,13 @@ Implementation for vscode-api-ape extension.
 
 ```
 src/
-├── files.md       # This file
-├── commands.js    # Command registration
-├── extension.js   # Extension entry point
-├── explorer.js    # API Explorer TreeView
-├── fileWatcher.js # Controller file watcher
-└── placeholders.js # Placeholder UI components
+├── files.md            # This file
+├── commands.js         # Command registration
+├── extension.js        # Extension entry point
+├── extension-status.js # Status bar and health monitoring
+├── explorer.js         # API Explorer TreeView
+├── fileWatcher.js      # Controller file watcher
+└── placeholders.js     # Placeholder UI components
 ```
 
 ## Files
@@ -29,6 +30,15 @@ Extension activation and LSP client setup. Handles workspace detection, command 
 
 - `activate(context)` - Initialize LSP client and register features
 - `deactivate()` - Cleanup on extension deactivation
+
+### `extension-status.js`
+
+Status bar and health monitoring for api-ape extension.
+
+- `createStatusBar(context)` - Create status bar item
+- `updateStatusFromResult(result, statusBarItem)` - Update status bar from schema status
+- `startHealthMonitoring(context, getClient, statusBarItem)` - Periodic health checks
+- `checkSchemaFreshness(client, statusBarItem, log)` - Check if schema needs regeneration
 
 ### `explorer.js`
 

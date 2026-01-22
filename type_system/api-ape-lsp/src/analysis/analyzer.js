@@ -13,6 +13,19 @@ const {
   getRequiredParams,
 } = require("../utils/documentUtils");
 
+// Reserved name checking - try to import from schema package
+let isProxyReserved;
+try {
+  const schemaPackage = require("@api-ape/schema");
+  isProxyReserved = schemaPackage.isProxyReserved;
+} catch {
+  // Fallback: inline the reserved names if package not available
+  const PROXY_RESERVED = new Set([
+    "on", "onConnectionChange", "transport", "connect", "close", "then", "catch"
+  ]);
+  isProxyReserved = (name) => PROXY_RESERVED.has(name);
+}
+
 /**
  * Regex to match api-ape proxy chain patterns
  * Matches: api.users.profile, api.chat, etc.
@@ -108,6 +121,28 @@ function analyzeDocument(document, schema) {
   const apiCalls = extractApiCalls(text);
 
   for (const call of apiCalls) {
+    // Check if first path segment is a proxy-reserved property
+    const firstSegment = call.path.split("/")[0];
+    if (isProxyReserved(firstSegment)) {
+      const startPos = positionFromOffset(text, call.start);
+      const endPos = positionFromOffset(text, call.start + firstSegment.length);
+
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        range: {
+          start: startPos,
+          end: endPos,
+        },
+        message: `"${firstSegment}" is a reserved api-ape property, not an endpoint. This call will NOT work as expected.`,
+        source: "api-ape",
+        data: {
+          type: "reservedProperty",
+          property: firstSegment,
+        },
+      });
+      continue; // Skip further checks for this call
+    }
+
     // Find exact endpoint match
     const endpoint = schema.endpoints.find((e) => e.path === call.path);
 

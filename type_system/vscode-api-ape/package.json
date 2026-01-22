@@ -55,6 +55,26 @@
           "type": "boolean",
           "default": true,
           "description": "Validate api-ape calls as you type"
+        },
+        "apiApe.fetchTimeout": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "maximum": 30000,
+          "description": "Timeout in milliseconds for schema fetch requests"
+        },
+        "apiApe.maxRetries": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 5,
+          "description": "Maximum retry attempts for failed schema fetches"
+        },
+        "apiApe.logLevel": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error"],
+          "default": "warn",
+          "description": "Logging verbosity level"
         }
       }
     },
@@ -79,6 +99,11 @@
         "title": "api-ape: Show Status"
       },
       {
+        "command": "apiApe.checkConnection",
+        "title": "api-ape: Check Server Connection",
+        "icon": "$(plug)"
+      },
+      {
         "command": "apiApe.explorer.refresh",
         "title": "Refresh",
         "icon": "$(refresh)"
@@ -86,7 +111,10 @@
       {
         "command": "apiApe.explorer.insertCall",
         "title": "Insert API Call",
-        "icon": "$(insert)"
+        "icon": {
+          "light": "media/insert-icon-light.svg",
+          "dark": "media/insert-icon-dark.svg"
+        }
       }
     ],
     "viewsContainers": {
@@ -94,7 +122,7 @@
         {
           "id": "apiApeExplorer",
           "title": "api-ape",
-          "icon": "$(pulse)"
+          "icon": "media/sidebar-icon.svg"
         }
       ]
     },

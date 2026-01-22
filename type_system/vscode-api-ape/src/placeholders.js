@@ -13,6 +13,9 @@ let commandsRegistered = false;
 /** @type {boolean} */
 let fallbackExplorerRegistered = false;
 
+/** @type {boolean} */
+let fallbackCommandsRegistered = false;
+
 /**
  * Register a placeholder explorer when not in an api-ape workspace
  *
@@ -118,12 +121,34 @@ function registerFallbackExplorer(context, log) {
 }
 
 /**
- * Mark commands as registered (used when main extension registers commands first)
+ * Register fallback commands when LSP fails to start
  *
+ * These commands are normally handled by the LSP server via executeCommandProvider.
+ * When LSP is unavailable, we register no-op versions to prevent "command not found" errors.
+ *
+ * @param {vscode.ExtensionContext} context - Extension context
+ * @param {function(string): void} log - Logging function
  * @returns {void}
  */
-function markCommandsRegistered() {
-  commandsRegistered = true;
+function registerFallbackCommands(context, log) {
+  if (fallbackCommandsRegistered) {
+    log("Fallback commands already registered, skipping");
+    return;
+  }
+  fallbackCommandsRegistered = true;
+
+  log("Registering fallback commands (LSP unavailable)");
+
+  const lspUnavailableMsg = "api-ape: LSP server not running. Check Output panel for details.";
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("apiApe.refreshSchema", () => {
+      vscode.window.showWarningMessage(lspUnavailableMsg);
+    }),
+    vscode.commands.registerCommand("apiApe.generateTypes", () => {
+      vscode.window.showWarningMessage(lspUnavailableMsg);
+    })
+  );
 }
 
-module.exports = { registerPlaceholderExplorer, registerFallbackExplorer, markCommandsRegistered };
+module.exports = { registerPlaceholderExplorer, registerFallbackExplorer, registerFallbackCommands };

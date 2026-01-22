@@ -128,7 +128,9 @@ function createSignatureHelp(endpoint, activeParameter = 0) {
   const apiPath = `api.${endpoint.path.replace(/\//g, ".")}`;
   const paramsStr = parameters.length > 0 ? `{ ${parameters.join(", ")} }` : "";
   const returnType = endpoint.output ? formatTypeForSignature(endpoint.output) : "void";
-  const label = `${apiPath}(${paramsStr}): Promise<${returnType}>`;
+  // Wrap in Promise only if endpoint is async (default to true for backwards compatibility)
+  const displayReturn = endpoint.isAsync !== false ? `Promise<${returnType}>` : returnType;
+  const label = `${apiPath}(${paramsStr}): ${displayReturn}`;
 
   // Build documentation
   const docParts = [];

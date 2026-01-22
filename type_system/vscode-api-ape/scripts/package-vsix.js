@@ -21,14 +21,16 @@ if (fs.existsSync(tempDir)) {
 }
 fs.mkdirSync(extensionDir, { recursive: true });
 
-// Files to include
+// Files to include from extension
 const filesToCopy = [
     'package.json',
     'src',
+    'media',
     'README.md',
+    'node_modules',  // Required for vscode-languageclient
 ];
 
-// Copy files
+// Copy extension files
 for (const file of filesToCopy) {
     const src = path.join(extDir, file);
     const dest = path.join(extensionDir, file);
@@ -39,6 +41,36 @@ for (const file of filesToCopy) {
             fs.copyFileSync(src, dest);
         }
     }
+}
+
+// Copy LSP server from sibling directory
+const lspSrc = path.join(extDir, '..', 'api-ape-lsp');
+const lspDest = path.join(extensionDir, 'api-ape-lsp');
+if (fs.existsSync(lspSrc)) {
+    fs.cpSync(lspSrc, lspDest, { recursive: true });
+
+    // Install LSP dependencies
+    console.log('Installing LSP dependencies...');
+    execSync('npm install --omit=dev', {
+        cwd: lspDest,
+        stdio: 'inherit'
+    });
+}
+
+// Copy schema package from sibling directory
+// The LSP loads this via relative path: require("../../../api-ape-schema/src")
+const schemaSrc = path.join(extDir, '..', 'api-ape-schema');
+const schemaDest = path.join(extensionDir, 'api-ape-schema');
+if (fs.existsSync(schemaSrc)) {
+    console.log('Copying api-ape-schema package...');
+    fs.cpSync(schemaSrc, schemaDest, { recursive: true });
+
+    // Install schema dependencies (comment-parser)
+    console.log('Installing schema dependencies...');
+    execSync('npm install --omit=dev', {
+        cwd: schemaDest,
+        stdio: 'inherit'
+    });
 }
 
 // Copy icon if exists
@@ -53,6 +85,7 @@ const contentTypes = `<?xml version="1.0" encoding="utf-8"?>
     <Default Extension=".js" ContentType="application/javascript"/>
     <Default Extension=".js.map" ContentType="application/json"/>
     <Default Extension=".png" ContentType="image/png"/>
+    <Default Extension=".svg" ContentType="image/svg+xml"/>
     <Default Extension=".md" ContentType="text/markdown"/>
     <Default Extension=".vsixmanifest" ContentType="text/xml"/>
 </Types>`;

@@ -6,15 +6,20 @@ Schema generation and extraction implementation.
 
 ```
 src/
-├── files.md              # This file
-├── index.js              # Main entry point
-├── index.d.ts            # TypeScript declarations
-├── generator.js          # Schema generator
-├── type-generator.js     # TypeScript type generator
-├── jsdoc-parser.js       # JSDoc parsing
-├── extractor.js          # Unified extractor
-├── export-extractor.js   # Export-based extraction
-└── typescript-extractor.js # TypeScript extraction
+├── files.md                # This file
+├── index.js                # Main entry point
+├── index.d.ts              # TypeScript declarations
+├── generator.js            # Schema generator
+├── type-generator.js       # TypeScript type generator
+├── jsdoc-parser.js         # JSDoc parsing
+├── extractor.js            # Unified extractor
+├── export-extractor.js     # Export-based extraction
+├── typescript-extractor.js    # TypeScript extraction
+├── typescript-type-converter.js # TypeScript type converter
+├── reserved-names.js       # Reserved proxy property names
+├── ts-type-parser.js       # TypeScript type string parser
+├── ts-type-parser-core.js  # Core type parsing functions
+└── ts-type-parser-utils.js # Type parser utility functions
 ```
 
 ## Files
@@ -68,4 +73,42 @@ TypeScript-based schema extraction using the TS compiler API.
 
 - `extractSchemaFromTypeScript(filePath)` - Extract from TS file
 - `findCompanionDts(jsFilePath)` - Find companion .d.ts file
-- `typeToTypeDef(checker, type)` - Convert TS type to TypeDefinition
+- `getTypeScript()` - Lazily load TypeScript module
+
+### `typescript-type-converter.js`
+
+TypeScript type to TypeDefinition converter.
+
+- `typeToTypeDef(checker, type, seen)` - Convert TS type to TypeDefinition
+- `setTypeScript(typescript)` - Set TypeScript module reference
+
+### `reserved-names.js`
+
+Reserved proxy property names that cannot be used as endpoint names.
+
+- `PROXY_RESERVED` - Set of reserved property names
+- `isProxyReserved(name)` - Check if name is reserved
+
+### `ts-type-parser.js`
+
+TypeScript type string parser for extracting schema from type annotations.
+
+- `extractSchemaFromTsTypes(filePath)` - Extract schema from TS types
+- `parseTypeString(typeStr)` - Parse a type string
+
+### `ts-type-parser-core.js`
+
+Core type parsing functions for TypeScript type strings.
+
+- `parseType(typeStr)` - Parse type string into TypeDefinition
+- `parseObjectType(typeStr)` - Parse object type literal
+- `parseParams(paramsStr)` - Parse function parameters
+
+### `ts-type-parser-utils.js`
+
+Utility functions for TypeScript type parsing.
+
+- `findMatchingBracket(str, start, open, close)` - Find matching bracket
+- `splitByOperator(str, operator)` - Split by operator respecting nesting
+- `splitByComma(str)` - Split by comma respecting nesting
+- `splitProperties(str)` - Split object properties

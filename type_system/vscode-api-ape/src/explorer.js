@@ -15,8 +15,9 @@ class EndpointTreeItem extends vscode.TreeItem {
    * @param {vscode.TreeItemCollapsibleState} collapsibleState - Whether item can be expanded
    * @param {object} [endpoint] - Endpoint data (if this is an endpoint, not namespace)
    * @param {string} [namespace] - Namespace path for grouping
+   * @param {vscode.Uri} [extensionUri] - Extension URI for loading custom icons
    */
-  constructor(label, collapsibleState, endpoint, namespace) {
+  constructor(label, collapsibleState, endpoint, namespace, extensionUri) {
     super(label, collapsibleState);
     this.endpoint = endpoint;
     this.namespace = namespace;
@@ -24,7 +25,10 @@ class EndpointTreeItem extends vscode.TreeItem {
     if (endpoint) {
       // This is an endpoint (leaf node)
       this.contextValue = "endpoint";
-      this.iconPath = new vscode.ThemeIcon("symbol-method");
+      this.iconPath = {
+        light: vscode.Uri.joinPath(extensionUri, "media", "endpoint-icon.svg"),
+        dark: vscode.Uri.joinPath(extensionUri, "media", "endpoint-icon.svg"),
+      };
       this.tooltip = this.createTooltip(endpoint);
       this.description = this.getReturnType(endpoint);
 
@@ -121,9 +125,11 @@ class EndpointTreeItem extends vscode.TreeItem {
 class EndpointTreeProvider {
   /**
    * @param {import('vscode-languageclient/node').LanguageClient} client - LSP client
+   * @param {vscode.Uri} extensionUri - Extension URI for loading custom icons
    */
-  constructor(client) {
+  constructor(client, extensionUri) {
     this.client = client;
+    this.extensionUri = extensionUri;
     this._onDidChangeTreeData = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._onDidChangeTreeData.event;
     this.schema = null;
@@ -227,7 +233,8 @@ class EndpointTreeProvider {
             key,
             vscode.TreeItemCollapsibleState.None,
             value._endpoint,
-            null
+            null,
+            this.extensionUri
           )
         );
       } else if (value._children) {
@@ -238,7 +245,8 @@ class EndpointTreeProvider {
           key,
           vscode.TreeItemCollapsibleState.Collapsed,
           null,
-          namespacePath
+          namespacePath,
+          this.extensionUri
         );
         item.description = `(${childCount})`;
         items.push(item);
@@ -282,7 +290,7 @@ class EndpointTreeProvider {
  * @returns {EndpointTreeProvider}
  */
 function registerExplorer(context, client) {
-  const treeProvider = new EndpointTreeProvider(client);
+  const treeProvider = new EndpointTreeProvider(client, context.extensionUri);
 
   const treeView = vscode.window.createTreeView("apiApeEndpoints", {
     treeDataProvider: treeProvider,

@@ -11,7 +11,10 @@ assets/
 ├── friend.jpg         # api-ape mascot image
 ├── icons.png          # Extension icon (standard)
 ├── icons_2.png        # Extension icon (variant 2)
-└── icons_@.png        # Extension icon (high DPI)
+├── icons_3.png        # Extension icon (variant 3)
+├── icons_4.png        # Extension icon (variant 4)
+├── icons_@.png        # Extension icon (high DPI)
+└── icon_5.png         # Extension icon (variant 5)
 ```
 
 ## Files
@@ -35,3 +38,15 @@ Variant 2 of the extension icon.
 ### `icons_@.png`
 
 High DPI version of the extension icon for retina displays.
+
+### `icons_3.png`
+
+Variant 3 of the extension icon.
+
+### `icons_4.png`
+
+Variant 4 of the extension icon.
+
+### `icon_5.png`
+
+Variant 5 of the extension icon.

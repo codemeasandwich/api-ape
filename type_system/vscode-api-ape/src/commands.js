@@ -7,7 +7,11 @@
 const vscode = require("vscode");
 
 /**
- * Register extension commands
+ * Register client-side extension commands
+ *
+ * Note: Commands handled by the LSP server (refreshSchema, generateTypes, getStatus)
+ * are NOT registered here. The vscode-languageclient automatically registers them
+ * based on the server's executeCommandProvider capabilities.
  *
  * @param {vscode.ExtensionContext} context - Extension context
  * @param {function(): import('vscode-languageclient/node').LanguageClient | undefined} getClient - Function to get LSP client
@@ -15,53 +19,7 @@ const vscode = require("vscode");
  * @returns {void}
  */
 function registerCommands(context, getClient, updateStatusBar) {
-  // Refresh schema command
-  context.subscriptions.push(
-    vscode.commands.registerCommand("apiApe.refreshSchema", async () => {
-      const client = getClient();
-      if (client) {
-        await client.sendRequest("workspace/executeCommand", {
-          command: "apiApe.refreshSchema",
-        });
-        vscode.window.showInformationMessage("api-ape schema refreshed");
-      }
-    })
-  );
-
-  // Generate types command
-  context.subscriptions.push(
-    vscode.commands.registerCommand("apiApe.generateTypes", async () => {
-      const client = getClient();
-      if (!client) {
-        vscode.window.showErrorMessage("api-ape LSP not running");
-        return;
-      }
-
-      const config = vscode.workspace.getConfiguration("apiApe");
-      const outputPath = config.get("typesOutputPath", ".api-ape");
-
-      try {
-        const result = await client.sendRequest("workspace/executeCommand", {
-          command: "apiApe.generateTypes",
-          arguments: [outputPath],
-        });
-
-        if (result && result.success) {
-          vscode.window.showInformationMessage(
-            `api-ape types generated at ${result.typesPath}`
-          );
-        } else {
-          vscode.window.showErrorMessage(
-            `Failed to generate types: ${result?.error || "Unknown error"}`
-          );
-        }
-      } catch (err) {
-        vscode.window.showErrorMessage(`Failed to generate types: ${err.message}`);
-      }
-    })
-  );
-
-  // Configure server command
+  // Configure server command (client-side only - not handled by LSP)
   context.subscriptions.push(
     vscode.commands.registerCommand("apiApe.configureServer", async () => {
       const config = vscode.workspace.getConfiguration("apiApe");
@@ -86,7 +44,7 @@ function registerCommands(context, getClient, updateStatusBar) {
     })
   );
 
-  // Show status command
+  // Show status command (client-side - calls LSP's getStatus internally)
   context.subscriptions.push(
     vscode.commands.registerCommand("apiApe.showStatus", async () => {
       const client = getClient();
@@ -108,7 +66,63 @@ function registerCommands(context, getClient, updateStatusBar) {
             "api-ape: Unable to get status"
           );
         }
+      } else {
+        vscode.window.showWarningMessage("api-ape: LSP not running");
       }
+    })
+  );
+
+  // Check connection command - manual connection test with progress indicator
+  context.subscriptions.push(
+    vscode.commands.registerCommand("apiApe.checkConnection", async () => {
+      const client = getClient();
+      if (!client) {
+        vscode.window.showWarningMessage("api-ape: LSP not running");
+        return;
+      }
+
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "api-ape: Checking server connection...",
+          cancellable: false,
+        },
+        async () => {
+          try {
+            // Force a fresh fetch by refreshing schema first
+            await client.sendRequest("workspace/executeCommand", {
+              command: "apiApe.refreshSchema",
+            });
+
+            const result = await client.sendRequest("workspace/executeCommand", {
+              command: "apiApe.getStatus",
+            });
+
+            if (result?.serverConnected) {
+              vscode.window.showInformationMessage(
+                `api-ape: Connected! Found ${result.endpointCount} endpoints.`
+              );
+              updateStatusBar("$(zap) api-ape", `Connected - ${result.endpointCount} endpoints`);
+            } else {
+              const items = ["Configure Server URL", "Generate Types Offline"];
+              const selected = await vscode.window.showWarningMessage(
+                `api-ape: Server not reachable (${result?.lastError || "unknown error"})`,
+                ...items
+              );
+
+              if (selected === items[0]) {
+                vscode.commands.executeCommand("apiApe.configureServer");
+              } else if (selected === items[1]) {
+                vscode.commands.executeCommand("apiApe.generateTypes");
+              }
+            }
+          } catch (err) {
+            vscode.window.showErrorMessage(
+              `api-ape: Health check failed - ${err.message}`
+            );
+          }
+        }
+      );
     })
   );
 }

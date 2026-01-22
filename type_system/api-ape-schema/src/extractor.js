@@ -13,8 +13,27 @@ const { extractSchemaFromExport } = require("./export-extractor");
 const {
   extractSchemaFromTypeScript,
   findCompanionDts,
+  setLogger: setTsLogger,
 } = require("./typescript-extractor");
+const {
+  extractSchemaFromTsTypes,
+  setLogger: setTsParserLogger,
+} = require("./ts-type-parser");
 const { parseJSDoc } = require("./jsdoc-parser");
+
+/** @type {{ log?: Function, debug?: Function, warn?: Function, error?: Function }} */
+let logger = console;
+
+/**
+ * Set the logger for extractor
+ * @param {{ log?: Function, debug?: Function, warn?: Function, error?: Function }} l
+ */
+function setLogger(l) {
+  logger = l || console;
+  // Propagate logger to extractors
+  setTsLogger(l);
+  setTsParserLogger(l);
+}
 
 /**
  * Extract schema from a controller file using all available methods
@@ -42,46 +61,75 @@ const { parseJSDoc } = require("./jsdoc-parser");
  */
 function extractSchema(filePath) {
   const ext = path.extname(filePath);
+  logger.log?.(`[EXTRACT] extractSchema() for: ${filePath}`);
+  logger.log?.(`[EXTRACT]   Extension: ${ext}`);
 
   // 1. Try named schema export (works for .js files)
   if (ext === ".js") {
+    logger.log?.(`[EXTRACT]   Trying method 1: Named schema export (.schema property)`);
     const exported = extractSchemaFromExport(filePath);
     if (exported && (exported.input || exported.output)) {
+      logger.log?.(`[EXTRACT]   SUCCESS: Found named schema export`);
       // Get line number from JSDoc fallback if not provided
       if (!exported.line) {
         const jsdoc = parseJSDoc(filePath);
         exported.line = jsdoc.line;
       }
+      logger.log?.(`[EXTRACT]   Result: source=${exported.source}, hasInput=${!!exported.input}, hasOutput=${!!exported.output}`);
       return exported;
     }
+    logger.log?.(`[EXTRACT]   No named schema export found, trying next method...`);
   }
 
   // 2. Try TypeScript extraction (for .ts files)
   if (ext === ".ts") {
+    // 2a. Try TypeScript compiler-based extraction first (requires TS installed)
+    logger.log?.(`[EXTRACT]   Trying method 2a: TypeScript compiler extraction`);
     const tsSchema = extractSchemaFromTypeScript(filePath);
     if (tsSchema && (tsSchema.input || tsSchema.output)) {
+      logger.log?.(`[EXTRACT]   SUCCESS: TypeScript compiler extraction worked`);
+      logger.log?.(`[EXTRACT]   Result: source=${tsSchema.source}, hasInput=${!!tsSchema.input}, hasOutput=${!!tsSchema.output}`);
       return tsSchema;
     }
+    logger.log?.(`[EXTRACT]   TypeScript compiler extraction returned no types, trying lightweight parser...`);
+
+    // 2b. Fall back to lightweight regex-based parser (no TS compiler needed)
+    logger.log?.(`[EXTRACT]   Trying method 2b: Lightweight TS type parser`);
+    const lightSchema = extractSchemaFromTsTypes(filePath);
+    if (lightSchema && (lightSchema.input || lightSchema.output)) {
+      logger.log?.(`[EXTRACT]   SUCCESS: Lightweight TS parser worked`);
+      logger.log?.(`[EXTRACT]   Result: source=${lightSchema.source}, hasInput=${!!lightSchema.input}, hasOutput=${!!lightSchema.output}`);
+      return lightSchema;
+    }
+    logger.log?.(`[EXTRACT]   Lightweight TS parser returned no types, trying next method...`);
   }
 
   // 3. Check for companion .d.ts file (for .js files)
   if (ext === ".js") {
+    logger.log?.(`[EXTRACT]   Trying method 3: Companion .d.ts file`);
     const dtsPath = findCompanionDts(filePath);
     if (dtsPath) {
+      logger.log?.(`[EXTRACT]   Found companion .d.ts: ${dtsPath}`);
       const tsSchema = extractSchemaFromTypeScript(dtsPath);
       if (tsSchema && (tsSchema.input || tsSchema.output)) {
+        logger.log?.(`[EXTRACT]   SUCCESS: Extracted types from companion .d.ts`);
         // Use line from the .js file
         const jsdoc = parseJSDoc(filePath);
         tsSchema.line = jsdoc.line;
         tsSchema.source = "typescript";
+        logger.log?.(`[EXTRACT]   Result: source=${tsSchema.source}, hasInput=${!!tsSchema.input}, hasOutput=${!!tsSchema.output}`);
         return tsSchema;
       }
+      logger.log?.(`[EXTRACT]   Companion .d.ts had no types, trying next method...`);
+    } else {
+      logger.log?.(`[EXTRACT]   No companion .d.ts file found`);
     }
   }
 
   // 4. Fall back to JSDoc parsing
+  logger.log?.(`[EXTRACT]   Trying method 4: JSDoc parsing (fallback)`);
   const jsdoc = parseJSDoc(filePath);
-  return {
+  const result = {
     input: jsdoc.input,
     output: jsdoc.output,
     description: jsdoc.description,
@@ -89,6 +137,8 @@ function extractSchema(filePath) {
     line: jsdoc.line,
     source: "jsdoc",
   };
+  logger.log?.(`[EXTRACT]   Result: source=jsdoc, hasInput=${!!result.input}, hasOutput=${!!result.output}, description=${!!result.description}`);
+  return result;
 }
 
 /**
@@ -124,14 +174,19 @@ function shouldProcessFile(filePath) {
 
   // Skip .d.ts files (they're companions, not controllers)
   if (filePath.endsWith(".d.ts")) {
+    logger.log?.(`[EXTRACT] shouldProcessFile(${filePath}) → false: .d.ts companion file`);
     return false;
   }
 
-  return getSupportedExtensions().includes(ext);
+  const supported = getSupportedExtensions();
+  const result = supported.includes(ext);
+  logger.log?.(`[EXTRACT] shouldProcessFile(${filePath}) → ${result}: ext=${ext}, supported=[${supported.join(', ')}]`);
+  return result;
 }
 
 module.exports = {
   extractSchema,
   getSupportedExtensions,
   shouldProcessFile,
+  setLogger,
 };
