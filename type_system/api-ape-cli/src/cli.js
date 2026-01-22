@@ -55,9 +55,9 @@ function generate() {
     process.exit(1);
   }
 
-  // Generate schema
+  // Generate schema (scan both .js and .ts files)
   log(`Scanning controllers in: ${controllersDir}`);
-  const schema = generateSchema(controllersDir);
+  const schema = generateSchema(controllersDir, { extensions: ["js", "ts"] });
   log(`Found ${schema.endpoints.length} endpoints`);
 
   // Generate TypeScript declarations

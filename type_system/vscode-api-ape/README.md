@@ -8,8 +8,6 @@ Official Visual Studio Code extension for api-ape, providing IntelliSense, type 
 
 Get smart suggestions as you type your api-ape calls:
 
-![Completions](https://via.placeholder.com/600x200?text=Completions+Demo)
-
 ```javascript
 import api from 'api-ape';
 
@@ -22,8 +20,6 @@ api.users.profile({ userId: '123' });
 ### Hover Documentation
 
 Hover over any api-ape call to see full documentation:
-
-![Hover](https://via.placeholder.com/600x200?text=Hover+Demo)
 
 - Endpoint path and description
 - Input parameter types with descriptions
@@ -40,8 +36,6 @@ Jump directly to controller files:
 ### Real-time Validation
 
 Get instant feedback on invalid endpoints:
-
-![Diagnostics](https://via.placeholder.com/600x200?text=Diagnostics+Demo)
 
 - Warning squiggles under unknown endpoints
 - Suggestions for similar endpoint names

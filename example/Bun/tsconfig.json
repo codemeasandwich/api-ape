@@ -14,5 +14,6 @@
         "skipLibCheck": true,
         "allowSyntheticDefaultImports": true,
         "esModuleInterop": true
-    }
+    },
+    "include": ["**/*.ts", ".api-ape/**/*"]
 }

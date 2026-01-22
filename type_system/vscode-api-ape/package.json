@@ -26,9 +26,6 @@
     "autocomplete",
     "api"
   ],
-  "activationEvents": [
-    "workspaceContains:**/package.json"
-  ],
   "main": "./src/extension.js",
   "contributes": {
     "configuration": {

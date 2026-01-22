@@ -1,0 +1,5 @@
+# Generated api-ape types
+.api-ape/
+
+# Dependencies
+node_modules/

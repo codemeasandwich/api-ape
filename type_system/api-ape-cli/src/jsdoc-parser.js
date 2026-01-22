@@ -110,6 +110,34 @@ function parseJSDoc(filePath) {
 }
 
 /**
+ * Extract type string with balanced braces from JSDoc tag content
+ *
+ * @param {string} str - String starting with {type}
+ * @returns {object|null} Object with type and rest, or null if no match
+ */
+function extractBalancedType(str) {
+  if (!str.startsWith("{")) return null;
+
+  let depth = 0;
+  let i = 0;
+
+  for (; i < str.length; i++) {
+    if (str[i] === "{") depth++;
+    else if (str[i] === "}") {
+      depth--;
+      if (depth === 0) break;
+    }
+  }
+
+  if (depth !== 0) return null;
+
+  const type = str.slice(1, i); // Content between outer braces
+  const rest = str.slice(i + 1).trim();
+
+  return { type, rest };
+}
+
+/**
  * Simple JSDoc block parser
  *
  * @param {string} comment - JSDoc comment string
@@ -146,10 +174,11 @@ function parseJSDocBlock(comment) {
           currentTag.description = paramMatch[5] || "";
         }
       } else if (tagName === "returns" || tagName === "return") {
-        const returnMatch = rest.match(/^\{([^}]+)\}\s*(.*)$/);
-        if (returnMatch) {
-          currentTag.type = returnMatch[1];
-          currentTag.description = returnMatch[2] || "";
+        // Extract type with balanced braces support
+        const extracted = extractBalancedType(rest);
+        if (extracted) {
+          currentTag.type = extracted.type;
+          currentTag.description = extracted.rest || "";
         }
       } else if (tagName === "throws" || tagName === "throw") {
         const throwMatch = rest.match(/^\{([^}]+)\}\s*(.*)$/);
@@ -181,7 +210,8 @@ function parseJSDocBlock(comment) {
 function parseTypeString(typeStr) {
   if (!typeStr) return { kind: "any", raw: "any" };
 
-  const cleaned = typeStr.replace(/^\{|\}$/g, "").trim();
+  // Don't strip braces - the balanced extractor already handled JSDoc wrapper braces
+  const cleaned = typeStr.trim();
 
   const promiseMatch = cleaned.match(/^Promise<(.+)>$/i);
   if (promiseMatch) {

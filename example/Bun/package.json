@@ -1,12 +1,17 @@
 {
     "name": "bun-chat-example",
     "scripts": {
-        "start": "bun run server.ts"
+        "start": "bun install && bun run dev",
+        "server": "bun run server.ts",
+        "types": "api-ape-types -c ./api -o .api-ape",
+        "types:watch": "api-ape-types -c ./api -o .api-ape --watch",
+        "dev": "bun run types:watch & bun run server"
     },
     "dependencies": {
         "api-ape": "file:../.."
     },
     "devDependencies": {
+        "@api-ape/cli": "file:../../type_system/api-ape-cli",
         "@types/bun": "^1.3.5",
         "bun-types": "^1.3.5"
     }

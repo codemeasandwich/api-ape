@@ -1,0 +1,7 @@
+{
+    "apiApe.serverUrl": "http://localhost:3000",
+    "apiApe.controllersPath": "api",
+    "apiApe.autoGenerateTypes": true,
+    "apiApe.typesOutputPath": ".api-ape",
+    "apiApe.validateOnType": true
+}

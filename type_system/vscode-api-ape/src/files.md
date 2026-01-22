@@ -7,12 +7,21 @@ Implementation for vscode-api-ape extension.
 ```
 src/
 ├── files.md       # This file
+├── commands.js    # Command registration
 ├── extension.js   # Extension entry point
 ├── explorer.js    # API Explorer TreeView
-└── fileWatcher.js # Controller file watcher
+├── fileWatcher.js # Controller file watcher
+└── placeholders.js # Placeholder UI components
 ```
 
 ## Files
+
+### `commands.js`
+
+Command registration for the VS Code extension.
+
+- `registerCommands(context, getClient, updateStatusBar)` - Register all extension commands
+- `triggerAutoGenerate(getClient, updateStatusBar, state)` - Debounced type generation
 
 ### `extension.js`
 
@@ -34,3 +43,11 @@ API Explorer TreeView provider for the sidebar panel.
 Controller file watcher for automatic schema refresh.
 
 - `setupFileWatcher(context, client, triggerAutoGenerate, getExplorerProvider)` - Watch for controller changes
+
+### `placeholders.js`
+
+Placeholder and fallback UI components when extension is not fully active.
+
+- `registerPlaceholderExplorer(context, log)` - Show placeholder when not in api-ape workspace
+- `registerFallbackExplorer(context, log)` - Show fallback when LSP fails to start
+- `markCommandsRegistered()` - Mark commands as registered to prevent duplicates

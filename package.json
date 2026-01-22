@@ -33,6 +33,7 @@
     "demo:nextjs": "cd example/NextJs && docker-compose up --build",
     "demo:vite": "cd example/Vite && npm install && npm run dev",
     "demo:bun": "cd example/Bun && npm install && npm start",
+    "build:vscode": "cd type_system/vscode-api-ape && npm install && node scripts/package-vsix.js && /Applications/Visual\\ Studio\\ Code.app/Contents/Resources/app/bin/code --install-extension vscode-api-ape-1.0.0.vsix --force && rm vscode-api-ape-1.0.0.vsix",
     "release": "bash scripts/publish.sh",
     "prepublishOnly": "npx esbuild client/browser.js --bundle --minify --sourcemap --outfile=dist/ape.js"
   },
