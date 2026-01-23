@@ -13,13 +13,18 @@
     "./client": "./client/index.js",
     "./client/*": "./client/*",
     "./server": "./server/index.js",
-    "./server/*": "./server/*"
+    "./server/*": "./server/*",
+    "./vite": {
+      "import": "./vite/index.mjs",
+      "require": "./vite/index.js"
+    }
   },
   "files": [
     "dist/",
     "client/",
     "server/",
     "utils/",
+    "vite/",
     "index.js",
     "index.d.ts",
     "!**/*.test.js"

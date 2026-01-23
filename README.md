@@ -38,6 +38,27 @@ ape(server, { where: 'api' })  // Load controllers from ./api folder
 server.listen(3000)
 ```
 
+### Vite Plugin
+
+For Vite projects, use the built-in plugin for plug-and-play integration:
+
+```js
+// vite.config.js
+import { defineConfig } from 'vite'
+import apiApe from 'api-ape/vite'
+
+export default defineConfig({
+  plugins: [
+    apiApe({
+      where: 'api',
+      onConnect: './ape/onConnect'  // Optional: path to connection handler
+    })
+  ]
+})
+```
+
+Run `npm run dev` — api-ape runs directly on Vite's dev server. No proxy needed.
+
 ### Controllers
 
 Drop a file in your `api/` folder — it automatically becomes an endpoint:

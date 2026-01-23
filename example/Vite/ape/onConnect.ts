@@ -3,6 +3,9 @@
  * Creates the handlers object returned from onConnect
  */
 
+import { createRequire } from 'module'
+const require = createRequire(import.meta.url)
+
 const { ape } = require('api-ape')
 
 // Get message history from the message controller

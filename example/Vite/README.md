@@ -1,8 +1,18 @@
 # api-ape Vite + Vue Example
 
-A modern Vue 3 + Vite frontend with a Bun backend, demonstrating `api-ape` real-time chat.
+A modern Vue 3 + Vite frontend with api-ape, demonstrating real-time chat using the **Vite plugin**.
 
-Matches the NextJs example structure and features.
+## Quick Start
+
+```bash
+# Install dependencies
+npm install
+
+# Start development (single command!)
+npm run dev
+```
+
+Open http://localhost:5173 in multiple tabs to test the chat.
 
 ## Project Structure
 
@@ -12,59 +22,64 @@ Vite/
 │   ├── App.vue              # Main chat component
 │   ├── main.ts              # Vue app entry
 │   ├── style.css            # Styles
-│   ├── vite-env.d.ts        # Vite TypeScript declarations
 │   └── components/
 │       └── Info.vue         # How api-ape works explanation
 ├── ape/
-│   ├── client.ts            # api-ape client wrapper (singleton)
 │   └── onConnect.ts         # Connection lifecycle hooks
 ├── api/
 │   └── message.ts           # Message handler with broadcastOthers
-├── index.html               # HTML entry point
-├── server.ts                # Bun backend server
-├── vite.config.ts           # Vite config with proxy
+├── vite.config.ts           # Vite config with api-ape plugin
+├── server.ts                # Production server (for deployment)
 └── package.json
 ```
 
-## Quick Start
+## Vite Plugin
 
-```bash
-# Install dependencies
-npm install
+This example uses the `api-ape/vite` plugin for seamless integration:
 
-# Terminal 1: Start backend
-npm run dev
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import apiApe from 'api-ape/vite'
 
-# Terminal 2: Start Vue frontend
-npm run dev:vue
+export default defineConfig({
+  plugins: [
+    vue(),
+    apiApe({
+      where: 'api',                    // Controllers directory
+      onConnect: './ape/onConnect'     // Connection handler (supports TS)
+    })
+  ]
+})
 ```
 
-Open http://localhost:5173 in multiple tabs to test the chat.
+**Benefits:**
+- Single `npm run dev` command (no separate backend process)
+- No proxy configuration needed
+- WebSocket runs directly on Vite's dev server
+- TypeScript support for `onConnect` handler
 
-## Production Build
+## Production
+
+For production, use the standalone server:
 
 ```bash
 # Build Vue app
 npm run build
 
-# Run backend in production mode
-NODE_ENV=production npm run dev
+# Run production server
+NODE_ENV=production npm start
 ```
 
-## How It Works
-
-- **Development**: Vite runs on `:5173` with a proxy forwarding `/api` requests to the Bun server on `:3000`
-- **Production**: Bun serves the built Vue app from `dist/`
-- **api-ape**: Handles WebSocket connections for real-time messaging
+The production server (`server.ts`) serves the built Vue app from `dist/` and handles api-ape WebSocket connections.
 
 ## Features
 
-- 🚀 Vue 3 Composition API with TypeScript
-- ⚡ Vite for instant HMR
-- 🦍 api-ape for WebSocket communication
-- 🥖 Bun for fast backend runtime
-- 👤 Join form before entering chat
-- 📊 Connection state management
-- 👥 Live user count
-- ⏰ Message timestamps
-- 📚 Info panel explaining api-ape concepts
+- Vue 3 Composition API with TypeScript
+- Vite for instant HMR
+- api-ape Vite plugin (dev mode)
+- Join form before entering chat
+- Live user count
+- Message timestamps
+- Connection state management

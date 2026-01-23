@@ -3,10 +3,10 @@
     "version": "1.0.0",
     "type": "module",
     "scripts": {
-        "dev": "bun run server.ts",
-        "dev:vue": "vite",
+        "dev": "vite",
         "build": "vite build",
-        "preview": "vite preview"
+        "preview": "vite preview",
+        "start": "bun run server.ts"
     },
     "dependencies": {
         "api-ape": "file:../../"
