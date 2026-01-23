@@ -5,22 +5,34 @@ const vscode = require("vscode");
 const path = require("path");
 const fs = require("fs");
 const { getHubTemplate } = require("./hub.template");
+const { QuestValidator } = require("../services/QuestValidator");
+const { BadgeUnlockChecker } = require("../services/BadgeUnlockChecker");
 
 class GamifiedHubProvider {
   /**
    * @param {vscode.ExtensionContext} context
    * @param {import('../services/ProgressService').ProgressService} progressService
-   * @param {import('vscode-languageclient/node').LanguageClient | undefined} client
+   * @param {import('../services/ActionTracker').ActionTracker} [actionTracker]
    */
-  constructor(context, progressService, client) {
+  constructor(context, progressService, actionTracker) {
     this.context = context;
     this.progressService = progressService;
-    this.client = client;
+    this.actionTracker = actionTracker;
     this._view = undefined;
     this.badges = this._loadJson("badges.json");
     this.quests = this._loadJson("quests.json");
-    this.recaps = this._loadJson("recaps.json");
     this.progressService.onProgressChanged(() => this._updateWebview());
+
+    // Initialize quest validator if actionTracker is provided
+    if (actionTracker) {
+      this.questValidator = new QuestValidator(context, actionTracker);
+      this.badgeUnlockChecker = new BadgeUnlockChecker(this.badges, progressService, actionTracker);
+
+      // Listen for badge eligibility from action-based badges
+      this.badgeUnlockChecker.onBadgeEligible((event) => {
+        this._handleBadgeEligible(event);
+      });
+    }
   }
 
   /**
@@ -49,6 +61,7 @@ class GamifiedHubProvider {
       localResourceRoots: [
         vscode.Uri.joinPath(this.context.extensionUri, "src", "webviews"),
         vscode.Uri.joinPath(this.context.extensionUri, "media"),
+        vscode.Uri.joinPath(this.context.extensionUri, "media", "badges"),
       ],
     };
     webviewView.webview.html = this._getHtmlContent(webviewView.webview);
@@ -70,28 +83,17 @@ class GamifiedHubProvider {
       case "completeQuestStep": await this._completeQuestStep(message.questId, message.stepIndex); break;
       case "unlockBadge": this._unlockBadge(message.badgeId); break;
       case "viewBadges": this._postMessage({ command: "showBadgeModal", badges: this._getBadgeData() }); break;
-      case "toggleTools": this._postMessage({ command: "toggleToolsPanel" }); break;
-      case "refreshEndpoints": await this._refreshEndpoints(); break;
-      case "generateTypes": await vscode.commands.executeCommand("apiApe.generateTypes"); break;
-      case "openDocs": this._postMessage({ command: "showDocsPanel", recaps: this.recaps }); break;
-      case "viewRecap":
-        this.progressService.addRecentRecap(message.recapId);
-        this._postMessage({ command: "showRecap", recap: this.recaps[message.recapId] });
-        break;
-      case "bookmarkRecap":
-        const isBookmarked = this.progressService.toggleRecapBookmark(message.recapId);
-        this._postMessage({ command: "updateBookmark", recapId: message.recapId, isBookmarked });
-        break;
       case "copyCode":
         await vscode.env.clipboard.writeText(message.code);
         vscode.window.showInformationMessage("Code copied to clipboard!");
         break;
       case "openInEditor": await this._openCodeInEditor(message.code, message.filename); break;
-      case "goToEndpoint": await this._goToEndpoint(message.path); break;
-      case "insertApiCall": await this._insertApiCall(message.path); break;
       case "resetProgress":
         if (await vscode.window.showWarningMessage("Reset all progress?", { modal: true }, "Reset") === "Reset") {
           this.progressService.resetProgress();
+          if (this.actionTracker) {
+            this.actionTracker.resetActions();
+          }
           vscode.window.showInformationMessage("Progress reset!");
         }
         break;
@@ -110,8 +112,6 @@ class GamifiedHubProvider {
         questProgress: activeQuest ? this.progressService.getQuest(summary.activeQuest) : null,
         badges: this._getBadgeData(),
         skillTrees: this._getSkillTrees(),
-        recentRecaps: this.progressService.getRecentRecaps().map((id) => this.recaps[id]).filter(Boolean),
-        bookmarkedRecaps: this.progressService.getBookmarkedRecaps(),
       },
     });
   }
@@ -122,12 +122,7 @@ class GamifiedHubProvider {
    */
   _getBadgeData() {
     const earnedBadges = this.progressService.getBadges();
-    const categories = {
-      fundamentals: { name: "Fundamentals", badges: [] },
-      realtime: { name: "Real-time", badges: [] },
-      security: { name: "Security", badges: [] },
-      advanced: { name: "Advanced", badges: [] },
-    };
+    const categories = { fundamentals: { name: "Fundamentals", badges: [] }, realtime: { name: "Real-time", badges: [] }, security: { name: "Security", badges: [] }, advanced: { name: "Advanced", badges: [] } };
     for (const [id, badge] of Object.entries(this.badges)) {
       if (categories[badge.category]) {
         categories[badge.category].badges.push({
@@ -188,22 +183,50 @@ class GamifiedHubProvider {
   }
 
   /**
-   * Complete a quest step
+   * Complete a quest step with validation
    * @param {string} questId
    * @param {number} stepIndex
    */
   async _completeQuestStep(questId, stepIndex) {
     const quest = this.quests[questId];
     if (!quest) return;
+
+    const step = quest.steps[stepIndex];
+
+    // Validate step requirements if validator is available and step has validators
+    if (this.questValidator && step.validators && step.validators.length > 0) {
+      const validation = await this.questValidator.validateStep(step.validators);
+
+      if (!validation.valid) {
+        // Send validation failure to webview
+        this._postMessage({
+          command: "validationFailed",
+          questId,
+          stepIndex,
+          results: validation.results,
+        });
+        return;
+      }
+    }
+
+    // Step validated - proceed
     const nextStep = stepIndex + 1;
     if (nextStep >= quest.steps.length) {
+      // Quest complete
       this.progressService.completeQuest(questId);
+
       if (quest.badgeId) {
-        const result = this.progressService.unlockBadge(quest.badgeId, quest.xpReward);
+        const badge = this.badges[quest.badgeId];
+        const xpReward = badge?.xpReward || quest.xpReward;
+        const result = this.progressService.unlockBadge(quest.badgeId, xpReward);
+
         if (!result.alreadyHad) {
           this._postMessage({
-            command: "showBadgeUnlock", badge: this.badges[quest.badgeId],
-            xpEarned: quest.xpReward, leveledUp: result.xpResult?.leveledUp, newLevel: result.xpResult?.newLevel,
+            command: "showBadgeUnlock",
+            badge: this.badges[quest.badgeId],
+            xpEarned: xpReward,
+            leveledUp: result.xpResult?.leveledUp,
+            newLevel: result.xpResult?.newLevel,
           });
         }
       }
@@ -212,6 +235,31 @@ class GamifiedHubProvider {
       this.progressService.updateQuestStep(questId, nextStep);
     }
     this._updateWebview();
+  }
+
+  /**
+   * Handle badge eligibility from BadgeUnlockChecker
+   * @param {{badgeId: string, badge: Object, trigger: string}} event
+   */
+  _handleBadgeEligible(event) {
+    const { badgeId, badge, trigger } = event;
+
+    // For action-based badges, auto-unlock
+    if (trigger === "action") {
+      const result = this.progressService.unlockBadge(badgeId, badge.xpReward);
+
+      if (!result.alreadyHad) {
+        this._postMessage({
+          command: "showBadgeUnlock",
+          badge,
+          xpEarned: badge.xpReward,
+          leveledUp: result.xpResult?.leveledUp,
+          newLevel: result.xpResult?.newLevel,
+        });
+        this._updateWebview();
+      }
+    }
+    // Quest-based badges are handled in _completeQuestStep
   }
 
   /**
@@ -229,43 +277,6 @@ class GamifiedHubProvider {
       });
     }
     this._updateWebview();
-  }
-
-  /** Refresh endpoints from LSP */
-  async _refreshEndpoints() {
-    if (!this.client) { this._postMessage({ command: "endpointsError", error: "Language server not connected" }); return; }
-    try {
-      const result = await this.client.sendRequest("apiApe/getSchema");
-      this._postMessage({ command: "updateEndpoints", endpoints: result.endpoints || [] });
-    } catch (err) { this._postMessage({ command: "endpointsError", error: err.message }); }
-  }
-
-  /**
-   * Go to endpoint definition
-   * @param {string} endpointPath
-   */
-  async _goToEndpoint(endpointPath) {
-    if (!this.client) return;
-    try {
-      const result = await this.client.sendRequest("apiApe/getEndpointLocation", { path: endpointPath });
-      if (result?.uri) {
-        const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(result.uri));
-        const editor = await vscode.window.showTextDocument(doc);
-        const pos = new vscode.Position(result.line || 0, 0);
-        editor.selection = new vscode.Selection(pos, pos);
-        editor.revealRange(new vscode.Range(pos, pos));
-      }
-    } catch { /* silently fail */ }
-  }
-
-  /**
-   * Insert API call at cursor
-   * @param {string} endpointPath
-   */
-  async _insertApiCall(endpointPath) {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) { vscode.window.showErrorMessage("No active editor"); return; }
-    await editor.insertSnippet(new vscode.SnippetString(`api.${endpointPath}(\${1})`));
   }
 
   /**
@@ -293,6 +304,8 @@ class GamifiedHubProvider {
     return getHubTemplate({
       cssUri: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "src", "webviews", "hub.css")),
       jsUri: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "src", "webviews", "hub.js")),
+      badgeSvgsUri: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "src", "webviews", "badgeSvgs.js")),
+      badgesUri: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "badges")),
       cspSource: webview.cspSource,
       nonce: this._getNonce(),
     });

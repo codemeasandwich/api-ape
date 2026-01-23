@@ -9,7 +9,8 @@ webviews/
 ├── GamifiedHubProvider.js  # Webview provider managing hub state and communication
 ├── hub.template.js         # HTML template for the webview
 ├── hub.js                  # Frontend JavaScript for UI interactions
-└── hub.css                 # Styles for the learning hub interface
+├── hub.css                 # Styles for the learning hub interface
+└── badgeSvgs.js            # Inline SVG content for badge icons with animation classes
 ```
 
 ## Files
@@ -29,3 +30,7 @@ Frontend JavaScript running inside the webview. Handles UI events, renders state
 ### `hub.css`
 
 Styles for the learning hub interface including level cards, quest panels, skill trees, endpoint browser, and modals.
+
+### `badgeSvgs.js`
+
+Inline SVG content for badge icons with CSS animation classes for itshover.com style hover effects. Loaded as a separate script before hub.js to provide the `badgeSvgs` global object.
