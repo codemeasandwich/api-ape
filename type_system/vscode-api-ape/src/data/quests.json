@@ -1,0 +1,300 @@
+{
+  "first-controller": {
+    "id": "first-controller",
+    "title": "Create Your First Controller",
+    "description": "Learn the basics of creating api-ape controllers",
+    "track": "server",
+    "xpReward": 150,
+    "badgeId": "controller-creator",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "Understanding Controllers",
+        "type": "concept",
+        "content": "Controllers in api-ape are simple JavaScript files in your `api/` directory. Each exported function becomes an endpoint that clients can call.",
+        "codeExample": "// api/hello.js\nexport function world() {\n  return { message: 'Hello, World!' };\n}"
+      },
+      {
+        "id": "create-file",
+        "title": "Create a Controller File",
+        "type": "challenge",
+        "description": "Create a new file in your api/ directory",
+        "hint": "Create a file like `api/greet.js`",
+        "validators": [
+          {
+            "type": "file-exists",
+            "pattern": "api/**/*.js"
+          }
+        ]
+      },
+      {
+        "id": "export-function",
+        "title": "Export a Function",
+        "type": "challenge",
+        "description": "Export a function from your controller that returns a value",
+        "hint": "Use `export function name() { return {...}; }`",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "export function",
+            "in": "api/**/*.js"
+          }
+        ]
+      },
+      {
+        "id": "test-call",
+        "title": "Test Your Endpoint",
+        "type": "challenge",
+        "description": "Call your endpoint from a client to verify it works",
+        "hint": "Use `api.greet.yourFunction()` from the client",
+        "validators": [
+          {
+            "type": "endpoint-called"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "Controller Created!",
+        "type": "complete",
+        "content": "Congratulations! You've created your first api-ape controller. Your endpoint is now available at `api.greet.yourFunction()`."
+      }
+    ]
+  },
+  "broadcast-master": {
+    "id": "broadcast-master",
+    "title": "Master Broadcasting",
+    "description": "Learn to broadcast messages to all connected clients",
+    "track": "server",
+    "xpReward": 150,
+    "badgeId": "broadcaster",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "What is Broadcasting?",
+        "type": "concept",
+        "content": "Broadcasting sends a message to ALL connected clients simultaneously. This is useful for real-time updates like notifications, chat messages, or live data feeds.",
+        "codeExample": "// Inside any controller method\nthis.broadcast({\n  type: 'announcement',\n  message: 'Hello everyone!'\n});"
+      },
+      {
+        "id": "broadcast-others",
+        "title": "Broadcast to Others",
+        "type": "concept",
+        "content": "Use `this.broadcastOthers()` to send to all clients EXCEPT the caller. Perfect for chat apps where the sender already knows their own message.",
+        "codeExample": "// api/chat.js\nexport function send(message) {\n  // Send to everyone except the sender\n  this.broadcastOthers({\n    type: 'newMessage',\n    from: this.clientId,\n    text: message\n  });\n  return { sent: true };\n}"
+      },
+      {
+        "id": "create-broadcast",
+        "title": "Create a Broadcast Endpoint",
+        "type": "challenge",
+        "description": "Create a controller that uses this.broadcast() to send a message to all clients",
+        "hint": "Create a function that calls this.broadcast({...})",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "this.broadcast",
+            "in": "api/**/*.js"
+          }
+        ]
+      },
+      {
+        "id": "test-broadcast",
+        "title": "Test Your Broadcast",
+        "type": "challenge",
+        "description": "Open two browser tabs and verify both receive the broadcast",
+        "hint": "Call your broadcast endpoint from one tab and see the message in both",
+        "validators": [
+          {
+            "type": "manual"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "Broadcast Master!",
+        "type": "complete",
+        "content": "You've mastered broadcasting! You can now send real-time updates to all connected clients."
+      }
+    ]
+  },
+  "first-subscription": {
+    "id": "first-subscription",
+    "title": "Subscribe to Your First Channel",
+    "description": "Learn pub/sub messaging with api-ape",
+    "track": "client",
+    "xpReward": 150,
+    "badgeId": "subscriber",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "What is Pub/Sub?",
+        "type": "concept",
+        "content": "Pub/Sub (Publish/Subscribe) lets you subscribe to specific channels and receive messages published to them. Unlike broadcasting, you only receive messages from channels you're subscribed to.",
+        "codeExample": "// Subscribe to stock updates for AAPL\napi.subscribe.stock.AAPL((data) => {\n  console.log('AAPL price:', data.price);\n});"
+      },
+      {
+        "id": "subscribe-syntax",
+        "title": "Subscription Syntax",
+        "type": "concept",
+        "content": "Use `api.subscribe.channel.name(callback)` to subscribe. The channel name can be any path - it's automatically created when you subscribe.",
+        "codeExample": "// Subscribe to a chat room\nconst unsubscribe = api.subscribe.chat.room1((msg) => {\n  console.log(`${msg.from}: ${msg.text}`);\n});\n\n// Later: unsubscribe when done\nunsubscribe();"
+      },
+      {
+        "id": "create-subscription",
+        "title": "Create a Subscription",
+        "type": "challenge",
+        "description": "Subscribe to a channel in your client code",
+        "hint": "Use api.subscribe.yourChannel(callback)",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "api.subscribe"
+          }
+        ]
+      },
+      {
+        "id": "publish-message",
+        "title": "Publish a Message",
+        "type": "concept",
+        "content": "On the server, use `this.publish.channel.name(data)` or `ape.publish.channel.name(data)` to send messages to subscribers.",
+        "codeExample": "// api/stocks.js\nexport function updatePrice(symbol, price) {\n  this.publish.stock[symbol]({ price, time: Date.now() });\n  return { published: true };\n}"
+      },
+      {
+        "id": "complete",
+        "title": "First Subscriber!",
+        "type": "complete",
+        "content": "You've learned pub/sub messaging! Use subscriptions for targeted real-time updates."
+      }
+    ]
+  },
+  "basic-auth": {
+    "id": "basic-auth",
+    "title": "Implement Basic Authentication",
+    "description": "Secure your endpoints with Tier 1 authentication",
+    "track": "both",
+    "xpReward": 200,
+    "badgeId": "tier-1-auth",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "Authentication Tiers",
+        "type": "concept",
+        "content": "api-ape supports 4 authentication tiers:\n\n- **Tier 0 (Guest)**: No authentication\n- **Tier 1 (Basic)**: OPAQUE/PAKE or SSO\n- **Tier 2 (Elevated)**: Tier 1 + MFA\n- **Tier 3 (High Security)**: 2-of-3 Shamir Secret Sharing",
+        "codeExample": "// Check auth tier in a controller\nexport function sensitiveData() {\n  if (this.authTier < 1) {\n    throw new Error('Authentication required');\n  }\n  return { secret: 'data' };\n}"
+      },
+      {
+        "id": "setup-auth",
+        "title": "Set Up Auth Framework",
+        "type": "concept",
+        "content": "Configure the authentication framework with OPAQUE (password-authenticated key exchange) where the server never sees the raw password.",
+        "codeExample": "import { createAuthFramework } from 'api-ape/auth';\n\nconst auth = createAuthFramework({\n  opaque: {\n    getUser: async (username) => db.getUser(username),\n    saveUser: async (username, data) => db.saveUser(username, data)\n  }\n});"
+      },
+      {
+        "id": "protect-endpoint",
+        "title": "Protect an Endpoint",
+        "type": "challenge",
+        "description": "Add authentication checking to a controller endpoint",
+        "hint": "Check this.authTier or this.isAuthenticated",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "authTier|isAuthenticated",
+            "in": "api/**/*.js"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "Tier 1 Secured!",
+        "type": "complete",
+        "content": "Your endpoints are now protected with basic authentication. Next step: add MFA for Tier 2!"
+      }
+    ]
+  },
+  "lifecycle-hooks": {
+    "id": "lifecycle-hooks",
+    "title": "Master Lifecycle Hooks",
+    "description": "Control connection lifecycle with hooks",
+    "track": "server",
+    "xpReward": 200,
+    "badgeId": "hook-master",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "What are Lifecycle Hooks?",
+        "type": "concept",
+        "content": "Lifecycle hooks let you run code at key moments: when clients connect, disconnect, send messages, or receive responses.",
+        "codeExample": "ape(app, {\n  where: 'api',\n  onConnect: (socket, req, send) => {\n    console.log('Client connected:', socket.id);\n    send({ welcome: true });\n  },\n  onDisconnect: (socket) => {\n    console.log('Client left:', socket.id);\n  }\n});"
+      },
+      {
+        "id": "onconnect",
+        "title": "onConnect Hook",
+        "type": "concept",
+        "content": "The `onConnect` hook fires when a client establishes a WebSocket connection. Use it to:\n- Validate connections\n- Attach custom data to the socket\n- Send welcome messages",
+        "codeExample": "onConnect: (socket, req, send) => {\n  // Attach user agent info\n  socket.userAgent = req.headers['user-agent'];\n  \n  // Reject certain clients\n  if (isBot(socket.userAgent)) {\n    socket.close();\n    return;\n  }\n  \n  // Send welcome\n  send({ connected: true, clientId: socket.id });\n}"
+      },
+      {
+        "id": "implement-hook",
+        "title": "Implement a Hook",
+        "type": "challenge",
+        "description": "Add an onConnect or onDisconnect hook to your server",
+        "hint": "Add the hook in your ape() configuration",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "onConnect|onDisconnect"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "Hook Master!",
+        "type": "complete",
+        "content": "You've mastered lifecycle hooks. Use them to control every aspect of client connections."
+      }
+    ]
+  },
+  "file-upload": {
+    "id": "file-upload",
+    "title": "Upload Your First File",
+    "description": "Learn binary file transfers with api-ape",
+    "track": "client",
+    "xpReward": 150,
+    "badgeId": "file-uploader",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "Binary File Transfers",
+        "type": "concept",
+        "content": "api-ape supports efficient binary file uploads over WebSocket. Files are streamed in chunks, making it memory-efficient for large files.",
+        "codeExample": "// Upload a file from an input element\nconst file = document.getElementById('fileInput').files[0];\nconst buffer = await file.arrayBuffer();\n\nconst result = await api.files.upload({\n  name: file.name,\n  type: file.type,\n  data: buffer\n});"
+      },
+      {
+        "id": "server-handler",
+        "title": "Server-Side Handler",
+        "type": "concept",
+        "content": "On the server, binary data arrives as ArrayBuffer. You can save it to disk or process it.",
+        "codeExample": "// api/files.js\nimport fs from 'fs';\n\nexport async function upload({ name, type, data }) {\n  // data is ArrayBuffer\n  const buffer = Buffer.from(data);\n  \n  await fs.promises.writeFile(`./uploads/${name}`, buffer);\n  \n  return {\n    saved: true,\n    size: buffer.length\n  };\n}"
+      },
+      {
+        "id": "implement-upload",
+        "title": "Implement File Upload",
+        "type": "challenge",
+        "description": "Create a file upload endpoint and client code",
+        "hint": "Use ArrayBuffer for binary data",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "ArrayBuffer|arrayBuffer"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "File Uploader!",
+        "type": "complete",
+        "content": "You can now handle binary file uploads. Next: try downloading files!"
+      }
+    ]
+  }
+}

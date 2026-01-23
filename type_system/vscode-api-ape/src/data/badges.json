@@ -1,0 +1,277 @@
+{
+  "hello-api-ape": {
+    "id": "hello-api-ape",
+    "name": "Hello api-ape",
+    "description": "Complete the getting started tutorial",
+    "icon": "wave",
+    "track": "both",
+    "category": "fundamentals",
+    "xpReward": 100,
+    "requirements": {
+      "type": "manual",
+      "trigger": "walkthrough-complete"
+    }
+  },
+  "rpc-rookie": {
+    "id": "rpc-rookie",
+    "name": "RPC Rookie",
+    "description": "Make your first API call",
+    "icon": "call",
+    "track": "both",
+    "category": "fundamentals",
+    "xpReward": 100,
+    "requirements": {
+      "type": "action",
+      "action": "api-call",
+      "count": 1
+    }
+  },
+  "type-safe": {
+    "id": "type-safe",
+    "name": "Type Safe",
+    "description": "Use generated TypeScript types",
+    "icon": "typescript",
+    "track": "both",
+    "category": "fundamentals",
+    "xpReward": 100,
+    "requirements": {
+      "type": "action",
+      "action": "generate-types"
+    }
+  },
+  "error-handler": {
+    "id": "error-handler",
+    "name": "Error Handler",
+    "description": "Handle an API error gracefully",
+    "icon": "shield",
+    "track": "both",
+    "category": "fundamentals",
+    "xpReward": 100,
+    "requirements": {
+      "type": "quest",
+      "questId": "error-handling"
+    }
+  },
+  "subscriber": {
+    "id": "subscriber",
+    "name": "Subscriber",
+    "description": "Subscribe to your first channel",
+    "icon": "radio",
+    "track": "client",
+    "category": "realtime",
+    "xpReward": 150,
+    "requirements": {
+      "type": "quest",
+      "questId": "first-subscription"
+    }
+  },
+  "listener": {
+    "id": "listener",
+    "name": "Listener",
+    "description": "Receive 10 pub/sub messages",
+    "icon": "ear",
+    "track": "client",
+    "category": "realtime",
+    "xpReward": 150,
+    "requirements": {
+      "type": "action",
+      "action": "receive-message",
+      "count": 10
+    }
+  },
+  "file-uploader": {
+    "id": "file-uploader",
+    "name": "File Uploader",
+    "description": "Upload your first binary file",
+    "icon": "upload",
+    "track": "client",
+    "category": "realtime",
+    "xpReward": 150,
+    "requirements": {
+      "type": "quest",
+      "questId": "file-upload"
+    }
+  },
+  "connection-pro": {
+    "id": "connection-pro",
+    "name": "Connection Pro",
+    "description": "Handle reconnection gracefully",
+    "icon": "plug",
+    "track": "client",
+    "category": "realtime",
+    "xpReward": 200,
+    "requirements": {
+      "type": "quest",
+      "questId": "connection-handling"
+    }
+  },
+  "state-manager": {
+    "id": "state-manager",
+    "name": "State Manager",
+    "description": "Use all connection states",
+    "icon": "state",
+    "track": "client",
+    "category": "advanced",
+    "xpReward": 250,
+    "requirements": {
+      "type": "quest",
+      "questId": "connection-states"
+    }
+  },
+  "controller-creator": {
+    "id": "controller-creator",
+    "name": "Controller Creator",
+    "description": "Create your first controller",
+    "icon": "file-code",
+    "track": "server",
+    "category": "fundamentals",
+    "xpReward": 150,
+    "requirements": {
+      "type": "quest",
+      "questId": "first-controller"
+    }
+  },
+  "publisher": {
+    "id": "publisher",
+    "name": "Publisher",
+    "description": "Publish to a channel",
+    "icon": "broadcast",
+    "track": "server",
+    "category": "realtime",
+    "xpReward": 150,
+    "requirements": {
+      "type": "quest",
+      "questId": "first-publish"
+    }
+  },
+  "broadcaster": {
+    "id": "broadcaster",
+    "name": "Broadcaster",
+    "description": "Use broadcast() method",
+    "icon": "megaphone",
+    "track": "server",
+    "category": "realtime",
+    "xpReward": 150,
+    "requirements": {
+      "type": "quest",
+      "questId": "broadcast-master"
+    }
+  },
+  "hook-master": {
+    "id": "hook-master",
+    "name": "Hook Master",
+    "description": "Implement lifecycle hooks",
+    "icon": "hook",
+    "track": "server",
+    "category": "advanced",
+    "xpReward": 200,
+    "requirements": {
+      "type": "quest",
+      "questId": "lifecycle-hooks"
+    }
+  },
+  "context-expert": {
+    "id": "context-expert",
+    "name": "Context Expert",
+    "description": "Use all controller context methods",
+    "icon": "context",
+    "track": "server",
+    "category": "advanced",
+    "xpReward": 250,
+    "requirements": {
+      "type": "quest",
+      "questId": "controller-context"
+    }
+  },
+  "tier-1-auth": {
+    "id": "tier-1-auth",
+    "name": "Tier 1 Auth",
+    "description": "Implement basic authentication",
+    "icon": "key",
+    "track": "both",
+    "category": "security",
+    "xpReward": 200,
+    "requirements": {
+      "type": "quest",
+      "questId": "basic-auth"
+    }
+  },
+  "mfa-guardian": {
+    "id": "mfa-guardian",
+    "name": "MFA Guardian",
+    "description": "Enable multi-factor authentication",
+    "icon": "shield-check",
+    "track": "both",
+    "category": "security",
+    "xpReward": 300,
+    "requirements": {
+      "type": "quest",
+      "questId": "mfa-setup"
+    }
+  },
+  "security-shield": {
+    "id": "security-shield",
+    "name": "Security Shield",
+    "description": "Reach Tier 2 authentication",
+    "icon": "shield-star",
+    "track": "both",
+    "category": "security",
+    "xpReward": 350,
+    "requirements": {
+      "type": "quest",
+      "questId": "tier-2-auth"
+    }
+  },
+  "fortress": {
+    "id": "fortress",
+    "name": "Fortress",
+    "description": "Implement Tier 3 with Shamir Secret Sharing",
+    "icon": "castle",
+    "track": "both",
+    "category": "security",
+    "xpReward": 500,
+    "requirements": {
+      "type": "quest",
+      "questId": "tier-3-auth"
+    }
+  },
+  "plugin-master": {
+    "id": "plugin-master",
+    "name": "Plugin Master",
+    "description": "Create a custom plugin",
+    "icon": "puzzle",
+    "track": "both",
+    "category": "advanced",
+    "xpReward": 400,
+    "requirements": {
+      "type": "quest",
+      "questId": "custom-plugin"
+    }
+  },
+  "forest-architect": {
+    "id": "forest-architect",
+    "name": "Forest Architect",
+    "description": "Configure a Forest database adapter",
+    "icon": "tree",
+    "track": "server",
+    "category": "advanced",
+    "xpReward": 400,
+    "requirements": {
+      "type": "quest",
+      "questId": "forest-setup"
+    }
+  },
+  "cluster-commander": {
+    "id": "cluster-commander",
+    "name": "Cluster Commander",
+    "description": "Deploy a multi-server cluster",
+    "icon": "server",
+    "track": "server",
+    "category": "advanced",
+    "xpReward": 500,
+    "requirements": {
+      "type": "quest",
+      "questId": "cluster-deployment"
+    }
+  }
+}

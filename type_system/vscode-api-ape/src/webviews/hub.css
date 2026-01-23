@@ -1,0 +1,951 @@
+/* =============================================================================
+   api-ape Gamified Hub - VS Code Theme-Aware Styles
+   ============================================================================= */
+
+:root {
+  /* Use VS Code CSS variables for theme compatibility */
+  --bg-primary: var(--vscode-sideBar-background);
+  --bg-secondary: var(--vscode-editor-background);
+  --bg-hover: var(--vscode-list-hoverBackground);
+  --bg-active: var(--vscode-list-activeSelectionBackground);
+  --text-primary: var(--vscode-foreground);
+  --text-secondary: var(--vscode-descriptionForeground);
+  --text-muted: var(--vscode-disabledForeground);
+  --border-color: var(--vscode-panel-border);
+  --accent-color: var(--vscode-button-background);
+  --accent-hover: var(--vscode-button-hoverBackground);
+  --accent-text: var(--vscode-button-foreground);
+  --success-color: var(--vscode-testing-iconPassed, #4caf50);
+  --warning-color: var(--vscode-editorWarning-foreground, #ff9800);
+  --error-color: var(--vscode-errorForeground, #f44336);
+  --link-color: var(--vscode-textLink-foreground);
+
+  /* Custom colors for gamification */
+  --xp-bar-bg: var(--vscode-progressBar-background, #0e639c);
+  --badge-gold: #ffd700;
+  --badge-silver: #c0c0c0;
+  --badge-locked: var(--vscode-disabledForeground);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  line-height: 1.4;
+  overflow-x: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 0;
+}
+
+/* =============================================================================
+   Sections
+   ============================================================================= */
+
+.section {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.section-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+
+.section-header:hover {
+  color: var(--text-primary);
+}
+
+.toggle-icon {
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.collapsible {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease-out;
+}
+
+.collapsible.expanded {
+  max-height: 1000px;
+}
+
+/* =============================================================================
+   Level Card (Header)
+   ============================================================================= */
+
+#level-card {
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 12px;
+  text-align: center;
+}
+
+#level-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--accent-color);
+}
+
+#xp-bar {
+  height: 8px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+#xp-fill {
+  height: 100%;
+  background: var(--xp-bar-bg);
+  border-radius: 4px;
+  transition: width 0.5s ease-out;
+  width: 0%;
+}
+
+#xp-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+#track-badges {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+}
+
+.track-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.track-badge:hover {
+  background: var(--bg-hover);
+}
+
+.track-badge.selected {
+  background: var(--bg-active);
+}
+
+.track-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.track-pct {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* =============================================================================
+   Quest Card
+   ============================================================================= */
+
+.card {
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+}
+
+#quest-card,
+#no-quest-card {
+  margin-top: 8px;
+}
+
+#quest-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#quest-title::before {
+  content: "!";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: var(--warning-color);
+  color: #000;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+#quest-description {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+#quest-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+#quest-progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-hover);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#quest-progress-fill {
+  height: 100%;
+  background: var(--success-color);
+  transition: width 0.3s;
+  width: 0%;
+}
+
+#quest-progress-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 30px;
+}
+
+#quest-actions {
+  display: flex;
+  gap: 8px;
+}
+
+#no-quest-card {
+  text-align: center;
+}
+
+#no-quest-text {
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* =============================================================================
+   Buttons
+   ============================================================================= */
+
+.btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  transition: background 0.2s;
+}
+
+.btn.primary {
+  background: var(--accent-color);
+  color: var(--accent-text);
+}
+
+.btn.primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn.secondary {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btn.secondary:hover {
+  background: var(--bg-active);
+}
+
+.btn.full-width {
+  width: 100%;
+}
+
+.btn-icon {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.btn-icon:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* =============================================================================
+   Skill Trees
+   ============================================================================= */
+
+.skill-tree {
+  margin-bottom: 12px;
+}
+
+.skill-tree-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.skill-tree-nodes {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.skill-node {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.skill-node:hover {
+  transform: scale(1.1);
+}
+
+.skill-node.earned {
+  background: var(--success-color);
+  color: #fff;
+}
+
+.skill-node.in-progress {
+  background: var(--warning-color);
+  color: #000;
+}
+
+.skill-node.locked {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+.skill-connector {
+  width: 12px;
+  height: 2px;
+  background: var(--border-color);
+}
+
+.skill-connector.earned {
+  background: var(--success-color);
+}
+
+/* =============================================================================
+   Tools Section
+   ============================================================================= */
+
+#tools-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.tool-tab {
+  flex: 1;
+  padding: 6px 8px;
+  border: none;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.tool-tab:hover {
+  background: var(--bg-active);
+}
+
+.tool-tab.active {
+  background: var(--accent-color);
+  color: var(--accent-text);
+}
+
+.tool-panel {
+  display: none;
+}
+
+.tool-panel.active {
+  display: block;
+}
+
+/* Endpoints Tab */
+.tool-search {
+  margin-bottom: 8px;
+}
+
+.tool-search input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.tool-search input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+#endpoints-tree {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.endpoint-group {
+  margin-bottom: 4px;
+}
+
+.endpoint-group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.endpoint-group-header:hover {
+  background: var(--bg-hover);
+}
+
+.endpoint-group-header .icon {
+  font-size: 10px;
+  width: 12px;
+}
+
+.endpoint-group-items {
+  padding-left: 16px;
+}
+
+.endpoint-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.endpoint-item:hover {
+  background: var(--bg-hover);
+}
+
+.endpoint-name {
+  color: var(--text-primary);
+}
+
+.endpoint-type {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* Config Tab */
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.config-row label {
+  color: var(--text-secondary);
+  min-width: 80px;
+}
+
+.config-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.config-checkbox input {
+  accent-color: var(--accent-color);
+}
+
+.config-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot.connected {
+  background: var(--success-color);
+}
+
+.status-dot.disconnected {
+  background: var(--error-color);
+}
+
+.status-dot.connecting {
+  background: var(--warning-color);
+}
+
+/* Docs Tab */
+.docs-section {
+  margin-bottom: 12px;
+}
+
+.docs-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.recap-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.recap-item:hover {
+  background: var(--bg-active);
+}
+
+.recap-bookmark {
+  cursor: pointer;
+  opacity: 0.5;
+}
+
+.recap-bookmark.bookmarked {
+  opacity: 1;
+  color: var(--badge-gold);
+}
+
+/* =============================================================================
+   Modals
+   ============================================================================= */
+
+#modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+}
+
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  z-index: 101;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  color: var(--text-primary);
+}
+
+.modal-content {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Badge Modal */
+.badge-category {
+  margin-bottom: 16px;
+}
+
+.badge-category-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.badge-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.badge-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.badge-item:hover {
+  background: var(--bg-hover);
+}
+
+.badge-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--bg-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+  font-size: 16px;
+}
+
+.badge-item.earned .badge-icon {
+  background: var(--success-color);
+  color: #fff;
+}
+
+.badge-item.in-progress .badge-icon {
+  background: var(--warning-color);
+  color: #000;
+}
+
+.badge-item.locked .badge-icon {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+.badge-name {
+  font-size: 10px;
+  text-align: center;
+  color: var(--text-secondary);
+  max-width: 60px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Quest Modal */
+.quest-step {
+  margin-bottom: 20px;
+}
+
+.quest-step-header {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.quest-step-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.quest-concept {
+  padding: 12px;
+  background: var(--bg-hover);
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.quest-code {
+  background: var(--vscode-textCodeBlock-background, #1e1e1e);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+}
+
+.quest-code pre {
+  margin: 0;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--vscode-textPreformat-foreground);
+}
+
+.quest-code-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.quest-challenge {
+  padding: 12px;
+  background: var(--bg-hover);
+  border-radius: 6px;
+  border-left: 3px solid var(--warning-color);
+}
+
+.quest-challenge-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--warning-color);
+}
+
+.quest-validators {
+  margin-top: 8px;
+}
+
+.quest-validator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.quest-validator-icon {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-color);
+  border-radius: 4px;
+}
+
+.quest-validator.complete .quest-validator-icon {
+  background: var(--success-color);
+  border-color: var(--success-color);
+}
+
+.quest-nav {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* Recap Modal */
+.recap-summary {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.recap-methods {
+  margin-bottom: 16px;
+}
+
+.recap-method {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+
+.recap-method-name {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  color: var(--link-color);
+}
+
+.recap-method-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.recap-snippet {
+  background: var(--vscode-textCodeBlock-background, #1e1e1e);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.recap-snippet pre {
+  margin: 0;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--vscode-textPreformat-foreground);
+}
+
+.recap-tips {
+  margin-bottom: 16px;
+}
+
+.recap-tips-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.recap-tip {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding-left: 16px;
+  position: relative;
+  margin-bottom: 4px;
+}
+
+.recap-tip::before {
+  content: "-";
+  position: absolute;
+  left: 4px;
+}
+
+/* =============================================================================
+   Toast Notifications
+   ============================================================================= */
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--success-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 200;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateX(-50%) translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
+.toast-icon {
+  font-size: 24px;
+}
+
+.toast-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--success-color);
+}
+
+.toast-badge-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.toast-xp {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* =============================================================================
+   Scrollbar
+   ============================================================================= */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+}

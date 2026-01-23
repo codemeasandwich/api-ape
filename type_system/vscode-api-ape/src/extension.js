@@ -12,6 +12,8 @@ const { setupFileWatcher } = require("./fileWatcher");
 const { registerPlaceholderExplorer, registerFallbackExplorer, registerFallbackCommands } = require("./placeholders");
 const { registerCommands, triggerAutoGenerate } = require("./commands");
 const { createStatusBar, updateStatusFromResult, startHealthMonitoring, checkSchemaFreshness } = require("./extension-status");
+const { ProgressService } = require("./services/ProgressService");
+const { GamifiedHubProvider } = require("./webviews/GamifiedHubProvider");
 
 /** @type {import('vscode-languageclient/node').LanguageClient | undefined} */
 let client;
@@ -21,6 +23,12 @@ let statusBarItem;
 
 /** @type {import('./explorer').EndpointTreeProvider | undefined} */
 let explorerProvider;
+
+/** @type {import('./services/ProgressService').ProgressService | undefined} */
+let progressService;
+
+/** @type {import('./webviews/GamifiedHubProvider').GamifiedHubProvider | undefined} */
+let hubProvider;
 
 /** @type {{timeout: NodeJS.Timeout | undefined}} */
 const autoGenerateState = { timeout: undefined };
@@ -147,6 +155,22 @@ async function activate(context) {
     setupFileWatcher(context, client, doAutoGenerate, () => explorerProvider, log);
 
     explorerProvider = registerExplorer(context, client);
+
+    // Initialize gamified learning hub
+    progressService = new ProgressService(context);
+    hubProvider = new GamifiedHubProvider(context, progressService, client);
+
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider("apiApeHub", hubProvider),
+      vscode.commands.registerCommand("apiApe.hub.viewBadges", () => {
+        hubProvider._postMessage({ command: "viewBadges" });
+      }),
+      vscode.commands.registerCommand("apiApe.hub.resetProgress", () => {
+        hubProvider._handleMessage({ command: "resetProgress" });
+      })
+    );
+
+    log("[EXT] Gamified Hub registered");
 
     await checkSchemaFreshness(client, statusBarItem, log);
 

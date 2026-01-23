@@ -1,0 +1,264 @@
+{
+  "broadcasting": {
+    "id": "broadcasting",
+    "title": "Broadcasting",
+    "category": "realtime",
+    "track": "server",
+    "summary": "Send messages to all connected clients",
+    "methods": [
+      {
+        "name": "this.broadcast(message)",
+        "description": "Sends to ALL connected clients"
+      },
+      {
+        "name": "this.broadcastOthers(message)",
+        "description": "Sends to all EXCEPT the caller"
+      }
+    ],
+    "snippet": "this.broadcast({\n  type: 'event',\n  data: payload\n});",
+    "tips": [
+      "Use broadcastOthers() for chat messages to avoid echo",
+      "Broadcast is synchronous - doesn't wait for delivery"
+    ],
+    "relatedTopics": ["pubsub-channels", "controller-context"]
+  },
+  "pubsub-channels": {
+    "id": "pubsub-channels",
+    "title": "Pub/Sub Channels",
+    "category": "realtime",
+    "track": "both",
+    "summary": "Subscribe to specific channels for targeted messaging",
+    "methods": [
+      {
+        "name": "api.subscribe.channel.name(callback)",
+        "description": "Client: Subscribe to a channel"
+      },
+      {
+        "name": "this.publish.channel.name(data)",
+        "description": "Server: Publish to a channel"
+      },
+      {
+        "name": "ape.publish.channel.name(data)",
+        "description": "Server: Publish from anywhere"
+      }
+    ],
+    "snippet": "// Client\nconst unsub = api.subscribe.stock.AAPL((data) => {\n  console.log(data.price);\n});\n\n// Server\nthis.publish.stock.AAPL({ price: 150.25 });",
+    "tips": [
+      "Channels are created automatically on first subscribe",
+      "Call the returned function to unsubscribe",
+      "Last message is cached for late subscribers"
+    ],
+    "relatedTopics": ["broadcasting", "controller-context"]
+  },
+  "controller-context": {
+    "id": "controller-context",
+    "title": "Controller Context (this)",
+    "category": "fundamentals",
+    "track": "server",
+    "summary": "Properties and methods available in controller functions",
+    "methods": [
+      {
+        "name": "this.clientId",
+        "description": "Unique identifier for the calling client"
+      },
+      {
+        "name": "this.sessionId",
+        "description": "Session identifier"
+      },
+      {
+        "name": "this.req",
+        "description": "Original HTTP request object"
+      },
+      {
+        "name": "this.socket",
+        "description": "WebSocket connection"
+      },
+      {
+        "name": "this.agent",
+        "description": "Browser/OS/device detection"
+      },
+      {
+        "name": "this.broadcast(msg)",
+        "description": "Send to all clients"
+      },
+      {
+        "name": "this.publish.ch(data)",
+        "description": "Publish to channel"
+      },
+      {
+        "name": "this.online()",
+        "description": "Get online client count"
+      }
+    ],
+    "snippet": "export function whoami() {\n  return {\n    clientId: this.clientId,\n    browser: this.agent.browser,\n    onlineUsers: this.online()\n  };\n}",
+    "tips": [
+      "Context is bound automatically - don't use arrow functions",
+      "this.agent has browser, os, device, and isBot properties"
+    ],
+    "relatedTopics": ["broadcasting", "lifecycle-hooks"]
+  },
+  "lifecycle-hooks": {
+    "id": "lifecycle-hooks",
+    "title": "Lifecycle Hooks",
+    "category": "advanced",
+    "track": "server",
+    "summary": "Run code at connection lifecycle events",
+    "methods": [
+      {
+        "name": "onConnect(socket, req, send)",
+        "description": "Called when client connects"
+      },
+      {
+        "name": "onDisconnect(socket)",
+        "description": "Called when client disconnects"
+      },
+      {
+        "name": "onReceive(data, context)",
+        "description": "Middleware before handling request"
+      },
+      {
+        "name": "onSend(data, context)",
+        "description": "Middleware before sending response"
+      },
+      {
+        "name": "onError(error, context)",
+        "description": "Called on handler errors"
+      }
+    ],
+    "snippet": "ape(app, {\n  where: 'api',\n  onConnect: (socket, req, send) => {\n    console.log('Connected:', socket.id);\n    send({ welcome: true });\n  },\n  onDisconnect: (socket) => {\n    console.log('Disconnected:', socket.id);\n  }\n});",
+    "tips": [
+      "onConnect can close() the socket to reject connections",
+      "Attach custom data to socket for later use",
+      "onReceive/onSend can modify data or return false to block"
+    ],
+    "relatedTopics": ["controller-context", "auth-tiers"]
+  },
+  "auth-tiers": {
+    "id": "auth-tiers",
+    "title": "Authentication Tiers",
+    "category": "security",
+    "track": "both",
+    "summary": "Four-tier security model for progressive authentication",
+    "methods": [
+      {
+        "name": "Tier 0 (Guest)",
+        "description": "No authentication required"
+      },
+      {
+        "name": "Tier 1 (Basic)",
+        "description": "OPAQUE/PAKE password auth or SSO"
+      },
+      {
+        "name": "Tier 2 (Elevated)",
+        "description": "Tier 1 + MFA (WebAuthn/TOTP)"
+      },
+      {
+        "name": "Tier 3 (High)",
+        "description": "2-of-3 Shamir Secret Sharing"
+      }
+    ],
+    "snippet": "// Check tier in controller\nexport function sensitiveData() {\n  if (this.authTier < 2) {\n    throw new Error('MFA required');\n  }\n  return { secret: 'data' };\n}\n\n// Context properties\nthis.isAuthenticated  // boolean\nthis.authTier         // 0-3\nthis.principal        // { userId, roles, permissions }",
+    "tips": [
+      "OPAQUE means server never sees the raw password",
+      "Tier can only go up, never down (state machine)",
+      "Use requiresTier(n) for cleaner checks"
+    ],
+    "relatedTopics": ["auth-middleware", "lifecycle-hooks"]
+  },
+  "file-transfers": {
+    "id": "file-transfers",
+    "title": "Binary File Transfers",
+    "category": "advanced",
+    "track": "both",
+    "summary": "Upload and download files over WebSocket",
+    "methods": [
+      {
+        "name": "ArrayBuffer",
+        "description": "Binary data format for transfers"
+      },
+      {
+        "name": "file.arrayBuffer()",
+        "description": "Convert File to ArrayBuffer"
+      },
+      {
+        "name": "Buffer.from(data)",
+        "description": "Server: Convert to Node Buffer"
+      }
+    ],
+    "snippet": "// Client upload\nconst file = input.files[0];\nconst buffer = await file.arrayBuffer();\nawait api.files.upload({ name: file.name, data: buffer });\n\n// Server receive\nexport async function upload({ name, data }) {\n  const buffer = Buffer.from(data);\n  await fs.writeFile(`./uploads/${name}`, buffer);\n  return { size: buffer.length };\n}",
+    "tips": [
+      "Files are streamed in chunks for efficiency",
+      "Set timeouts in fileTransferOptions",
+      "Use <!B> tag prefix for binary keys"
+    ],
+    "relatedTopics": ["controller-context", "plugins"]
+  },
+  "connection-states": {
+    "id": "connection-states",
+    "title": "Connection States",
+    "category": "fundamentals",
+    "track": "client",
+    "summary": "WebSocket connection state management",
+    "methods": [
+      {
+        "name": "offline",
+        "description": "No network connection"
+      },
+      {
+        "name": "walled",
+        "description": "Behind captive portal"
+      },
+      {
+        "name": "disconnected",
+        "description": "Not connected to server"
+      },
+      {
+        "name": "connecting",
+        "description": "Establishing connection"
+      },
+      {
+        "name": "connected",
+        "description": "Active WebSocket connection"
+      },
+      {
+        "name": "closing",
+        "description": "Connection shutting down"
+      }
+    ],
+    "snippet": "api.onStateChange((state) => {\n  switch (state) {\n    case 'connected':\n      showOnlineUI();\n      break;\n    case 'connecting':\n      showReconnectingSpinner();\n      break;\n    case 'disconnected':\n      showOfflineUI();\n      break;\n  }\n});",
+    "tips": [
+      "Calls are buffered while connecting",
+      "Auto-reconnect with exponential backoff",
+      "Use walled state to detect captive portals"
+    ],
+    "relatedTopics": ["pubsub-channels"]
+  },
+  "auto-routing": {
+    "id": "auto-routing",
+    "title": "Auto-Routing",
+    "category": "fundamentals",
+    "track": "server",
+    "summary": "File paths automatically become API endpoints",
+    "methods": [
+      {
+        "name": "api/users.js",
+        "description": "Creates api.users.* endpoints"
+      },
+      {
+        "name": "api/users/index.js",
+        "description": "Same as above (folder grouping)"
+      },
+      {
+        "name": "export function name()",
+        "description": "Each export becomes endpoint"
+      }
+    ],
+    "snippet": "// api/users.js\nexport function list() { ... }    // api.users.list()\nexport function create(data) { ... }  // api.users.create(data)\nexport function get(id) { ... }   // api.users.get(id)\n\n// api/admin/reports.js\nexport function daily() { ... }   // api.admin.reports.daily()",
+    "tips": [
+      "Hot-reload updates routes automatically in dev",
+      "Duplicate endpoint names throw errors",
+      "Use controllersPath config to change 'api' directory"
+    ],
+    "relatedTopics": ["controller-context", "lifecycle-hooks"]
+  }
+}

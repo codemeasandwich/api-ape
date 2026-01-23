@@ -115,6 +115,14 @@
           "light": "media/insert-icon-light.svg",
           "dark": "media/insert-icon-dark.svg"
         }
+      },
+      {
+        "command": "apiApe.hub.viewBadges",
+        "title": "api-ape: View Badges"
+      },
+      {
+        "command": "apiApe.hub.resetProgress",
+        "title": "api-ape: Reset Learning Progress"
       }
     ],
     "viewsContainers": {
@@ -128,6 +136,12 @@
     },
     "views": {
       "apiApeExplorer": [
+        {
+          "type": "webview",
+          "id": "apiApeHub",
+          "name": "Learning Hub",
+          "contextualTitle": "api-ape Learning Hub"
+        },
         {
           "id": "apiApeEndpoints",
           "name": "Endpoints",
