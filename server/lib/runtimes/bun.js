@@ -443,16 +443,19 @@ To enable WebSocket support in Bun, add a 'websocket' property when creating you
 
     const server = Bun.serve({
         port: 3000,
-        fetch(req) { ... },
-        websocket: { message() {} }  // <-- Required for api-ape
+        fetch: (req) => { /* your handler */ },
+        websocket: { message: () => {} }  // <-- Required for api-ape
     })
 
 If you only want HTTP long-polling, pass: ape(server, { where: 'api', transport: 'longpolling' })
 `);
   }
 
-  // Save reference to original fetch handler
-  const originalFetch = server.fetch;
+  // Note: In Bun, server.fetch references are tricky after reload.
+  // Bun's internal dispatch may cause infinite loops when calling the original fetch.
+  // We skip storing the original fetch - users should handle static files before calling ape()
+  // or use apeBun() pattern instead for full control.
+  const callOriginalFetch = null;
 
   /**
    * Wrapped fetch handler that checks api-ape routes first,
@@ -510,7 +513,7 @@ If you only want HTTP long-polling, pass: ape(server, { where: 'api', transport:
     }
 
     // Not an api-ape route - delegate to original fetch
-    if (originalFetch) return originalFetch(req, server);
+    if (callOriginalFetch) return callOriginalFetch(req, server);
 
     // No original fetch - return 404
     return new Response("Not Found", { status: 404 });
@@ -523,6 +526,7 @@ If you only want HTTP long-polling, pass: ape(server, { where: 'api', transport:
   const websocket = {
     /**
      * Handle WebSocket connection open.
+     * @param {Object} ws - Bun WebSocket instance
      */
     open(ws) {
       const wrapper = new BunWebSocket(ws);
@@ -533,6 +537,8 @@ If you only want HTTP long-polling, pass: ape(server, { where: 'api', transport:
 
     /**
      * Handle incoming WebSocket message.
+     * @param {Object} ws - Bun WebSocket instance
+     * @param {string|ArrayBuffer} message - Incoming message data
      */
     message(ws, message) {
       const wrapper = clients.get(ws);
@@ -541,6 +547,9 @@ If you only want HTTP long-polling, pass: ape(server, { where: 'api', transport:
 
     /**
      * Handle WebSocket connection close.
+     * @param {Object} ws - Bun WebSocket instance
+     * @param {number} code - Close code
+     * @param {string} reason - Close reason
      */
     close(ws, code, reason) {
       const wrapper = clients.get(ws);
@@ -552,6 +561,8 @@ If you only want HTTP long-polling, pass: ape(server, { where: 'api', transport:
 
     /**
      * Handle WebSocket error.
+     * @param {Object} ws - Bun WebSocket instance
+     * @param {Error} error - Error object
      */
     error(ws, error) {
       const wrapper = clients.get(ws);

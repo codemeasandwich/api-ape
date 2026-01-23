@@ -2,23 +2,41 @@
 
 /**
  * Bun server using api-ape library with native Bun.serve() WebSocket
- * Uses the SAME unified signature as Node.js/Express: ape(server, { where: 'api' })
+ * Uses the apeBun() pattern for full control over routing
  */
 
 import path from 'path'
 
-const { ape } = require('api-ape')
+const { apeBun } = require('api-ape/bun')
+const { clients, publish } = require('api-ape')
 
 const port = parseInt(process.env.PORT || '3000', 10)
 
 // Message history
 const _messages: { user: string; text: string; time: number }[] = []
 
-// Create Bun server first
+// Initialize api-ape handlers first
+const ape = apeBun({
+    where: 'api',
+    onConnect: (socket: any, req: any, send: (type: string, data: any) => void) => {
+        send('init', { history: _messages, users: clients.size })
+        publish.users({ count: clients.size })
+
+        return {
+            onDisconnect: () => publish.users({ count: clients.size })
+        }
+    }
+})
+
+// Create Bun server with combined routing
 const server = Bun.serve({
     port,
 
-    fetch(req) {
+    fetch(req, server) {
+        // Try api-ape routes first (WebSocket, client bundle, etc.)
+        const apeResponse = ape.fetch(req, server)
+        if (apeResponse !== null) return apeResponse
+
         const url = new URL(req.url)
 
         // Serve static files
@@ -33,21 +51,8 @@ const server = Bun.serve({
         return new Response('Not Found', { status: 404 })
     },
 
-    // Required: Enables WebSocket support. ape() replaces via server.reload()
-    websocket: { message() { } }
-})
-
-// Initialize api-ape with the Bun server - SAME signature as Node.js/Express!
-ape(server, {
-    where: 'api',
-    onConnect: (socket: any, req: any, send: (type: string, data: any) => void) => {
-        send('init', { history: _messages, users: ape.clients.size })
-        ape.publish.users({ count: ape.clients.size })
-
-        return {
-            onDisconnect: () => ape.publish.users({ count: ape.clients.size })
-        }
-    }
+    // Use api-ape's websocket handlers
+    websocket: ape.websocket
 })
 
 console.log(`

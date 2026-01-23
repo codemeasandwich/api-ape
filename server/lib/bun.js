@@ -251,6 +251,13 @@ function apeBun({ where, onConnect, fileTransferOptions }) {
       }
     }
 
+    // Health check / captive portal detection endpoint
+    if (pathname === `/${where}/ape/ping` && req.method === "GET") {
+      return new Response(JSON.stringify({ ok: true, ts: Date.now() }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     // Not an api-ape route - return null to allow fallthrough
     return null;
   }

@@ -167,7 +167,8 @@ function isHttpServer(val) {
     typeof val === "object" &&
     (typeof val.listen === "function" ||
       typeof val.on === "function" ||
-      typeof val.address === "function")
+      typeof val.address === "function" ||
+      typeof val.reload === "function") // Bun servers use reload() instead of listen/on/address
   );
 }
 

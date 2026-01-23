@@ -10,6 +10,7 @@
       "browser": "./client/index.js",
       "default": "./index.js"
     },
+    "./bun": "./server/lib/bun.js",
     "./client": "./client/index.js",
     "./client/*": "./client/*",
     "./server": "./server/index.js",
