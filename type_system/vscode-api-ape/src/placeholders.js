@@ -30,16 +30,48 @@ function registerPlaceholderExplorer(context, log) {
   }
   commandsRegistered = true;
 
+  // Event emitter for tree refresh
+  const treeDataChanged = new vscode.EventEmitter();
+
   const placeholderProvider = {
+    onDidChangeTreeData: treeDataChanged.event,
     getTreeItem: (element) => element,
     getChildren: () => {
-      const item = new vscode.TreeItem(
+      const config = vscode.workspace.getConfiguration("apiApe");
+
+      // Info item
+      const infoItem = new vscode.TreeItem(
         "No api-ape project detected",
         vscode.TreeItemCollapsibleState.None
       );
-      item.description = "Add api-ape to package.json";
-      item.iconPath = new vscode.ThemeIcon("info");
-      return [item];
+      infoItem.description = "Configure manually below";
+      infoItem.iconPath = new vscode.ThemeIcon("info");
+
+      // Configure Server URL item
+      const serverItem = new vscode.TreeItem(
+        "Configure Server URL",
+        vscode.TreeItemCollapsibleState.None
+      );
+      serverItem.description = config.get("serverUrl", "http://localhost:3000");
+      serverItem.iconPath = new vscode.ThemeIcon("globe");
+      serverItem.command = {
+        command: "apiApe.configureServer",
+        title: "Configure Server URL",
+      };
+
+      // Configure Controllers Path item
+      const pathItem = new vscode.TreeItem(
+        "Set Controllers Path",
+        vscode.TreeItemCollapsibleState.None
+      );
+      pathItem.description = config.get("controllersPath", "api");
+      pathItem.iconPath = new vscode.ThemeIcon("folder");
+      pathItem.command = {
+        command: "apiApe.configureControllersPath",
+        title: "Set Controllers Path",
+      };
+
+      return [infoItem, serverItem, pathItem];
     },
   };
 
@@ -48,26 +80,111 @@ function registerPlaceholderExplorer(context, log) {
   });
   context.subscriptions.push(treeView);
 
-  // Register placeholder commands that show helpful messages
-  const noProjectMsg = "No api-ape project detected. Add 'api-ape' to your package.json dependencies.";
+  // Register configure server command (functional even without project)
+  context.subscriptions.push(
+    vscode.commands.registerCommand("apiApe.configureServer", async () => {
+      const config = vscode.workspace.getConfiguration("apiApe");
+      const currentUrl = config.get("serverUrl", "http://localhost:3000");
+
+      const newUrl = await vscode.window.showInputBox({
+        prompt: "Enter api-ape server URL",
+        value: currentUrl,
+        placeHolder: "http://localhost:3000",
+        validateInput: (value) => {
+          try {
+            new URL(value);
+            return null;
+          } catch {
+            return "Please enter a valid URL";
+          }
+        },
+      });
+
+      if (newUrl) {
+        await config.update("serverUrl", newUrl, vscode.ConfigurationTarget.Workspace);
+        vscode.window.showInformationMessage(`api-ape server URL updated to ${newUrl}`);
+        treeDataChanged.fire();
+      }
+    })
+  );
+
+  // Register configure controllers path command
+  context.subscriptions.push(
+    vscode.commands.registerCommand("apiApe.configureControllersPath", async () => {
+      const config = vscode.workspace.getConfiguration("apiApe");
+      const currentPath = config.get("controllersPath", "api");
+
+      const options = [
+        { label: "$(folder) Browse for folder...", action: "browse" },
+        { label: "$(edit) Enter path manually...", action: "manual" },
+      ];
+
+      const selected = await vscode.window.showQuickPick(options, {
+        placeHolder: `Current path: ${currentPath}`,
+      });
+
+      if (!selected) return;
+
+      let newPath;
+
+      if (selected.action === "browse") {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        const defaultUri = workspaceFolder
+          ? vscode.Uri.joinPath(workspaceFolder.uri, currentPath)
+          : undefined;
+
+        const folders = await vscode.window.showOpenDialog({
+          canSelectFiles: false,
+          canSelectFolders: true,
+          canSelectMany: false,
+          defaultUri,
+          openLabel: "Select Controllers Folder",
+        });
+
+        if (folders && folders[0]) {
+          // Make path relative to workspace if possible
+          if (workspaceFolder) {
+            newPath = vscode.workspace.asRelativePath(folders[0], false);
+          } else {
+            newPath = folders[0].fsPath;
+          }
+        }
+      } else {
+        newPath = await vscode.window.showInputBox({
+          prompt: "Enter path to controllers directory (relative to workspace)",
+          value: currentPath,
+          placeHolder: "api",
+        });
+      }
+
+      if (newPath) {
+        await config.update("controllersPath", newPath, vscode.ConfigurationTarget.Workspace);
+        vscode.window.showInformationMessage(`api-ape controllers path updated to ${newPath}`);
+        treeDataChanged.fire();
+      }
+    })
+  );
+
+  // Register other placeholder commands
   context.subscriptions.push(
     vscode.commands.registerCommand("apiApe.explorer.refresh", () => {
-      vscode.window.showInformationMessage("PLACEHOLDER | Refreshing... " + noProjectMsg);
+      treeDataChanged.fire();
+      vscode.window.showInformationMessage("api-ape: Configure server URL and controllers path to connect.");
     }),
     vscode.commands.registerCommand("apiApe.explorer.insertCall", () => {
-      vscode.window.showInformationMessage("PLACEHOLDER | Insert API Call: " + noProjectMsg);
+      vscode.window.showInformationMessage("api-ape: Configure server URL and controllers path to enable this feature.");
     }),
     vscode.commands.registerCommand("apiApe.refreshSchema", () => {
-      vscode.window.showInformationMessage("PLACEHOLDER | Refresh Schema: " + noProjectMsg);
+      vscode.window.showInformationMessage("api-ape: Configure settings, then reload window to connect to server.");
     }),
     vscode.commands.registerCommand("apiApe.generateTypes", () => {
-      vscode.window.showInformationMessage("PLACEHOLDER | Generate Types: " + noProjectMsg);
-    }),
-    vscode.commands.registerCommand("apiApe.configureServer", () => {
-      vscode.window.showInformationMessage("PLACEHOLDER | Configure Server: " + noProjectMsg);
+      vscode.window.showInformationMessage("api-ape: Configure settings, then reload window to generate types.");
     }),
     vscode.commands.registerCommand("apiApe.showStatus", () => {
-      vscode.window.showInformationMessage("PLACEHOLDER | Status: " + noProjectMsg);
+      const config = vscode.workspace.getConfiguration("apiApe");
+      vscode.window.showInformationMessage(
+        `api-ape Status: Server: ${config.get("serverUrl")} | Controllers: ${config.get("controllersPath")} | Not connected`
+      );
     })
   );
 }

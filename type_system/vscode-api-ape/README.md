@@ -41,6 +41,33 @@ Get instant feedback on invalid endpoints:
 - Suggestions for similar endpoint names
 - Works as you type
 
+### Learning Hub
+
+The Activity Bar includes a gamified learning experience to help you master api-ape:
+
+**Quests** - Interactive multi-step tutorials with challenges:
+- Create Your First Controller
+- Master Broadcasting
+- Subscribe to Your First Channel
+- Implement Basic Authentication
+- Master Lifecycle Hooks
+- Upload Your First File
+- And more...
+
+**Badges** - Earn 21 badges across 4 categories:
+- **Fundamentals**: Hello api-ape, RPC Rookie, Type Safe, Error Handler
+- **Realtime**: Subscriber, Listener, File Uploader, Connection Pro, Publisher, Broadcaster
+- **Security**: Tier 1 Auth, MFA Guardian, Security Shield, Fortress
+- **Advanced**: State Manager, Hook Master, Context Expert, Plugin Master, Forest Architect, Cluster Commander
+
+**XP & Leveling** - Gain experience points from completing quests and earning badges. Progress through 10 levels as you learn.
+
+**Skill Trees** - Choose your learning path:
+- **Client Path**: Focus on building frontend applications
+- **Server Path**: Focus on building backend controllers
+
+**Endpoint Explorer** - Browse all your API endpoints organized by namespace. Click to jump to the controller file, or right-click to insert an API call snippet.
+
 ## Installation
 
 ### From VS Code Marketplace
@@ -101,6 +128,9 @@ Open Settings (`Ctrl+,` / `Cmd+,`) and search for "api-ape":
 | `apiApe.autoGenerateTypes` | `true` | Auto-generate .d.ts on schema change |
 | `apiApe.typesOutputPath` | `.api-ape` | Output directory for generated types |
 | `apiApe.validateOnType` | `true` | Show warnings for invalid endpoints |
+| `apiApe.fetchTimeout` | `5000` | Timeout in ms for schema fetch (1000-30000) |
+| `apiApe.maxRetries` | `2` | Retry attempts for failed fetches (0-5) |
+| `apiApe.logLevel` | `warn` | Logging level (debug/info/warn/error) |
 
 ### Settings JSON
 
@@ -110,7 +140,10 @@ Open Settings (`Ctrl+,` / `Cmd+,`) and search for "api-ape":
   "apiApe.controllersPath": "src/api",
   "apiApe.autoGenerateTypes": true,
   "apiApe.typesOutputPath": ".api-ape",
-  "apiApe.validateOnType": true
+  "apiApe.validateOnType": true,
+  "apiApe.fetchTimeout": 5000,
+  "apiApe.maxRetries": 2,
+  "apiApe.logLevel": "warn"
 }
 ```
 
@@ -134,16 +167,35 @@ Open Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and type "api-ape":
 | `api-ape: Refresh Schema` | Force refresh schema from server |
 | `api-ape: Generate Type Definitions` | Generate .d.ts files using CLI |
 | `api-ape: Configure Server URL` | Quick-set server URL |
+| `api-ape: Set Controllers Path` | Set path to controllers directory |
+| `api-ape: Show Status` | Display connection status |
+| `api-ape: Check Server Connection` | Test server connectivity |
+| `api-ape: View Badges` | Show your badge collection |
+| `api-ape: Reset Learning Progress` | Reset all learning progress |
+| `Refresh` (Explorer context) | Refresh endpoints tree |
+| `Insert API Call` (Explorer context) | Insert endpoint call at cursor |
 
 ### Keyboard Shortcuts
 
-You can bind commands to keyboard shortcuts in `keybindings.json`:
+Default shortcuts (when editor has focus):
+
+| Shortcut | Mac | Command |
+|----------|-----|---------|
+| `Ctrl+Alt+R` | `Cmd+Alt+R` | Refresh Schema |
+| `Ctrl+Alt+G` | `Cmd+Alt+G` | Generate Types |
+
+You can customize shortcuts in `keybindings.json`:
 
 ```json
 [
   {
     "key": "ctrl+alt+r",
     "command": "apiApe.refreshSchema",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+g",
+    "command": "apiApe.generateTypes",
     "when": "editorTextFocus"
   }
 ]
@@ -339,7 +391,7 @@ Logs include:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/api-ape.git
+git clone https://github.com/codemeasandwich/api-ape.git
 cd api-ape/type_system/vscode-api-ape
 
 # Install dependencies

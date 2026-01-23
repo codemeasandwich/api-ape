@@ -13,7 +13,9 @@ const { registerPlaceholderExplorer, registerFallbackExplorer, registerFallbackC
 const { registerCommands, triggerAutoGenerate } = require("./commands");
 const { createStatusBar, updateStatusFromResult, startHealthMonitoring, checkSchemaFreshness } = require("./extension-status");
 const { ProgressService } = require("./services/ProgressService");
+const { ActionTracker } = require("./services/ActionTracker");
 const { GamifiedHubProvider } = require("./webviews/GamifiedHubProvider");
+const { ToolsProvider } = require("./webviews/ToolsProvider");
 
 /** @type {import('vscode-languageclient/node').LanguageClient | undefined} */
 let client;
@@ -29,6 +31,12 @@ let progressService;
 
 /** @type {import('./webviews/GamifiedHubProvider').GamifiedHubProvider | undefined} */
 let hubProvider;
+
+/** @type {import('./webviews/ToolsProvider').ToolsProvider | undefined} */
+let toolsProvider;
+
+/** @type {import('./services/ActionTracker').ActionTracker | undefined} */
+let actionTracker;
 
 /** @type {{timeout: NodeJS.Timeout | undefined}} */
 const autoGenerateState = { timeout: undefined };
@@ -158,19 +166,28 @@ async function activate(context) {
 
     // Initialize gamified learning hub
     progressService = new ProgressService(context);
-    hubProvider = new GamifiedHubProvider(context, progressService, client);
+    actionTracker = new ActionTracker(context);
+    hubProvider = new GamifiedHubProvider(context, progressService, actionTracker);
+    toolsProvider = new ToolsProvider(context, progressService, client, actionTracker);
 
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider("apiApeHub", hubProvider),
+      vscode.window.registerWebviewViewProvider("apiApeTools", toolsProvider),
       vscode.commands.registerCommand("apiApe.hub.viewBadges", () => {
         hubProvider._postMessage({ command: "viewBadges" });
       }),
       vscode.commands.registerCommand("apiApe.hub.resetProgress", () => {
         hubProvider._handleMessage({ command: "resetProgress" });
-      })
+      }),
+      // Track generate-types action for badge unlocking
+      vscode.commands.registerCommand("apiApe.generateTypes.tracked", async () => {
+        await vscode.commands.executeCommand("apiApe.generateTypes");
+        actionTracker.trackAction("generate-types");
+      }),
+      actionTracker
     );
 
-    log("[EXT] Gamified Hub registered");
+    log("[EXT] Gamified Hub and Tools registered");
 
     await checkSchemaFreshness(client, statusBarItem, log);
 

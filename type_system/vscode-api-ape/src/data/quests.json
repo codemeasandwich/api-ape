@@ -296,5 +296,532 @@
         "content": "You can now handle binary file uploads. Next: try downloading files!"
       }
     ]
+  },
+  "error-handling": {
+    "id": "error-handling",
+    "title": "Handle Errors Gracefully",
+    "description": "Learn to catch and handle API errors properly",
+    "track": "both",
+    "xpReward": 100,
+    "badgeId": "error-handler",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "Why Error Handling Matters",
+        "type": "concept",
+        "content": "API calls can fail for many reasons: network issues, server errors, invalid input, or authentication failures. Proper error handling ensures your app remains responsive and provides helpful feedback to users.",
+        "codeExample": "// Without error handling - app crashes!\nconst data = await api.users.get({ id: 'invalid' });\n\n// With error handling - graceful recovery\ntry {\n  const data = await api.users.get({ id: 'invalid' });\n} catch (error) {\n  console.error('Failed to fetch user:', error.message);\n  showErrorToast('User not found');\n}"
+      },
+      {
+        "id": "error-types",
+        "title": "Types of Errors",
+        "type": "concept",
+        "content": "api-ape errors include useful information:\n\n- **message**: Human-readable error description\n- **code**: Error code (e.g., 'NOT_FOUND', 'UNAUTHORIZED')\n- **status**: HTTP-like status code (404, 401, 500)\n- **details**: Additional error context",
+        "codeExample": "try {\n  await api.protected.resource();\n} catch (error) {\n  switch (error.code) {\n    case 'UNAUTHORIZED':\n      redirectToLogin();\n      break;\n    case 'NOT_FOUND':\n      show404Page();\n      break;\n    default:\n      showGenericError(error.message);\n  }\n}"
+      },
+      {
+        "id": "implement-error-handling",
+        "title": "Add Error Handling",
+        "type": "challenge",
+        "description": "Wrap an api-ape call in a try/catch block and handle the error appropriately",
+        "hint": "Use try { await api.x() } catch (e) { ... }",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "catch.*error|catch.*err|catch.*e\\)"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "Error Handler!",
+        "type": "complete",
+        "content": "You now know how to handle API errors gracefully. Your users will thank you!"
+      }
+    ]
+  },
+  "connection-handling": {
+    "id": "connection-handling",
+    "title": "Handle Reconnections",
+    "description": "Learn to handle WebSocket reconnections gracefully",
+    "track": "client",
+    "xpReward": 200,
+    "badgeId": "connection-pro",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "Why Reconnection Matters",
+        "type": "concept",
+        "content": "WebSocket connections can drop unexpectedly due to network changes, server restarts, or mobile devices going to sleep. api-ape automatically reconnects, but your app should handle this gracefully.",
+        "codeExample": "// api-ape handles reconnection automatically!\n// But you should know when it happens:\napi.onStateChange((state) => {\n  if (state === 'connecting') {\n    showReconnectingSpinner();\n  } else if (state === 'connected') {\n    hideSpinner();\n    refreshData(); // Re-fetch any stale data\n  }\n});"
+      },
+      {
+        "id": "buffered-calls",
+        "title": "Buffered Calls",
+        "type": "concept",
+        "content": "When disconnected, api-ape buffers your API calls and sends them when reconnected. This makes your code simpler - just call the API and it will work when possible.",
+        "codeExample": "// This works even if temporarily disconnected!\nasync function saveData(data) {\n  // Call is buffered if offline, sent when connected\n  const result = await api.data.save(data);\n  return result;\n}\n\n// Show user feedback about connection state\napi.onStateChange((state) => {\n  if (state === 'disconnected') {\n    showBanner('Working offline - changes will sync');\n  } else if (state === 'connected') {\n    hideBanner();\n  }\n});"
+      },
+      {
+        "id": "implement-reconnection",
+        "title": "Handle Reconnection",
+        "type": "challenge",
+        "description": "Add a state change handler that shows different UI states based on connection status",
+        "hint": "Use api.onStateChange(callback)",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "onStateChange"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "Connection Pro!",
+        "type": "complete",
+        "content": "You've mastered reconnection handling. Your app now provides a smooth experience even with unstable connections."
+      }
+    ]
+  },
+  "connection-states": {
+    "id": "connection-states",
+    "title": "Master Connection States",
+    "description": "Use all WebSocket connection states effectively",
+    "track": "client",
+    "xpReward": 250,
+    "badgeId": "state-manager",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "The 6 Connection States",
+        "type": "concept",
+        "content": "api-ape tracks 6 distinct connection states:\n\n- **offline**: No network connection (navigator.onLine = false)\n- **walled**: Behind a captive portal (hotel/airport WiFi)\n- **disconnected**: Has network but not connected to server\n- **connecting**: Establishing WebSocket connection\n- **connected**: Active connection, ready for API calls\n- **closing**: Connection shutting down",
+        "codeExample": "// Get current state\nconst state = api.state; // 'connected', 'disconnected', etc.\n\n// Listen for state changes\napi.onStateChange((newState, oldState) => {\n  console.log(`State changed: ${oldState} → ${newState}`);\n});"
+      },
+      {
+        "id": "special-states",
+        "title": "Special States",
+        "type": "concept",
+        "content": "Some states require special handling:\n\n- **walled**: User needs to complete captive portal login\n- **offline**: Show offline mode UI\n- **connecting**: Show reconnecting indicator",
+        "codeExample": "api.onStateChange((state) => {\n  switch (state) {\n    case 'offline':\n      showOfflineMode();\n      break;\n    case 'walled':\n      showCaptivePortalPrompt();\n      // Open captive portal page\n      window.open('http://captive.portal.test', '_blank');\n      break;\n    case 'connecting':\n      showReconnectingSpinner();\n      break;\n    case 'connected':\n      showOnlineMode();\n      syncPendingChanges();\n      break;\n    case 'disconnected':\n      showDisconnectedWarning();\n      break;\n  }\n});"
+      },
+      {
+        "id": "implement-states",
+        "title": "Handle All States",
+        "type": "challenge",
+        "description": "Create a connection status indicator that responds to all connection states",
+        "hint": "Use a switch statement in onStateChange",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "offline|walled|disconnected|connecting|connected"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "State Manager!",
+        "type": "complete",
+        "content": "You've mastered all connection states! Your app now handles every network scenario gracefully."
+      }
+    ]
+  },
+  "first-publish": {
+    "id": "first-publish",
+    "title": "Publish Your First Message",
+    "description": "Learn to publish messages to channels from the server",
+    "track": "server",
+    "xpReward": 150,
+    "badgeId": "publisher",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "Publishing vs Broadcasting",
+        "type": "concept",
+        "content": "While broadcasting sends to ALL clients, publishing sends only to clients subscribed to a specific channel. This is more efficient and allows targeted messaging.",
+        "codeExample": "// Broadcast - goes to EVERYONE\nthis.broadcast({ type: 'announcement', text: 'Server maintenance!' });\n\n// Publish - only to channel subscribers\nthis.publish.stock.AAPL({ price: 150.25 });\n// Only clients who called api.subscribe.stock.AAPL(...) receive this"
+      },
+      {
+        "id": "publish-syntax",
+        "title": "Publish Syntax",
+        "type": "concept",
+        "content": "Use `this.publish.channel.path(data)` in controllers, or `ape.publish.channel.path(data)` from anywhere (like timers or external events).",
+        "codeExample": "// In a controller\nexport function updateStock(symbol, price) {\n  this.publish.stock[symbol]({ price, time: Date.now() });\n  return { published: true };\n}\n\n// From outside controllers (e.g., cron job)\nsetInterval(() => {\n  const prices = fetchLatestPrices();\n  for (const [symbol, price] of Object.entries(prices)) {\n    ape.publish.stock[symbol]({ price });\n  }\n}, 1000);"
+      },
+      {
+        "id": "implement-publish",
+        "title": "Create a Publisher",
+        "type": "challenge",
+        "description": "Create a controller that publishes messages to a channel",
+        "hint": "Use this.publish.channelName(data)",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "this.publish|ape.publish",
+            "in": "api/**/*.js"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "Publisher!",
+        "type": "complete",
+        "content": "You can now publish targeted messages to channel subscribers. Perfect for real-time features like live updates, notifications, and chat rooms!"
+      }
+    ]
+  },
+  "controller-context": {
+    "id": "controller-context",
+    "title": "Master Controller Context",
+    "description": "Use all controller context methods effectively",
+    "track": "server",
+    "xpReward": 250,
+    "badgeId": "context-expert",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "The Controller Context",
+        "type": "concept",
+        "content": "Every controller function receives a rich context via `this`. This includes client info, communication methods, and authentication state.",
+        "codeExample": "export function whoami() {\n  return {\n    clientId: this.clientId,     // Unique client identifier\n    sessionId: this.sessionId,   // Session identifier\n    isAuth: this.isAuthenticated,\n    authTier: this.authTier,     // 0-3\n    browser: this.agent.browser, // 'Chrome', 'Firefox', etc.\n    online: this.online()        // Count of connected clients\n  };\n}"
+      },
+      {
+        "id": "communication-methods",
+        "title": "Communication Methods",
+        "type": "concept",
+        "content": "The context provides several ways to communicate with clients:\n\n- `this.broadcast(msg)` - Send to all clients\n- `this.broadcastOthers(msg)` - Send to all except caller\n- `this.publish.channel(data)` - Send to channel subscribers\n- `this.send(msg)` - Send directly to this client",
+        "codeExample": "export function notifyAll(message) {\n  // Broadcast to everyone except the sender\n  this.broadcastOthers({\n    type: 'notification',\n    from: this.clientId,\n    message\n  });\n  \n  // Also publish to a specific channel\n  this.publish.notifications.global({ message });\n  \n  return { sent: true, recipients: this.online() - 1 };\n}"
+      },
+      {
+        "id": "agent-info",
+        "title": "Client Agent Info",
+        "type": "concept",
+        "content": "The `this.agent` object provides detailed browser/device information parsed from the User-Agent header.",
+        "codeExample": "export function deviceInfo() {\n  const { agent } = this;\n  return {\n    browser: agent.browser,      // 'Chrome'\n    browserVersion: agent.browserVersion, // '120.0.0'\n    os: agent.os,                // 'macOS'\n    osVersion: agent.osVersion,  // '14.2'\n    device: agent.device,        // 'desktop'\n    isBot: agent.isBot,          // false\n    isMobile: agent.isMobile,    // false\n    isTablet: agent.isTablet     // false\n  };\n}"
+      },
+      {
+        "id": "implement-context",
+        "title": "Use Context Methods",
+        "type": "challenge",
+        "description": "Create an endpoint that uses at least 3 different context properties or methods",
+        "hint": "Combine clientId, agent info, broadcast, etc.",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "this\\.(clientId|sessionId|agent|broadcast|publish|online|isAuthenticated|authTier)",
+            "in": "api/**/*.js"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "Context Expert!",
+        "type": "complete",
+        "content": "You've mastered the controller context! You can now build sophisticated server-side logic with full client awareness."
+      }
+    ]
+  },
+  "mfa-setup": {
+    "id": "mfa-setup",
+    "title": "Enable Multi-Factor Authentication",
+    "description": "Add MFA to reach Tier 2 authentication",
+    "track": "both",
+    "xpReward": 300,
+    "badgeId": "mfa-guardian",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "What is MFA?",
+        "type": "concept",
+        "content": "Multi-Factor Authentication (MFA) requires users to prove their identity with multiple factors:\n\n- **Something you know**: Password (Tier 1)\n- **Something you have**: Phone/security key (Tier 2)\n- **Something you are**: Biometrics (advanced)\n\napi-ape supports WebAuthn (hardware keys, Face ID) and TOTP (authenticator apps).",
+        "codeExample": "// Check if user has MFA enabled\nexport function checkMfaStatus() {\n  return {\n    hasMfa: this.authTier >= 2,\n    currentTier: this.authTier\n  };\n}\n\n// Require MFA for sensitive operations\nexport function transferFunds(amount, to) {\n  if (this.authTier < 2) {\n    throw { code: 'MFA_REQUIRED', message: 'Enable MFA to transfer funds' };\n  }\n  return processTransfer(amount, to);\n}"
+      },
+      {
+        "id": "webauthn",
+        "title": "WebAuthn Setup",
+        "type": "concept",
+        "content": "WebAuthn uses hardware security keys or platform authenticators (Touch ID, Face ID, Windows Hello) for strong authentication.",
+        "codeExample": "// Server: Generate WebAuthn challenge\nexport async function startWebAuthnSetup() {\n  if (!this.isAuthenticated) throw new Error('Login first');\n  \n  const challenge = await auth.webauthn.generateRegistration({\n    userId: this.principal.userId,\n    userName: this.principal.email\n  });\n  \n  return challenge;\n}\n\n// Client: Complete WebAuthn registration\nconst challenge = await api.auth.startWebAuthnSetup();\nconst credential = await navigator.credentials.create({\n  publicKey: challenge\n});\nawait api.auth.completeWebAuthnSetup({ credential });"
+      },
+      {
+        "id": "totp",
+        "title": "TOTP Setup",
+        "type": "concept",
+        "content": "Time-based One-Time Passwords (TOTP) work with authenticator apps like Google Authenticator, Authy, or 1Password.",
+        "codeExample": "// Server: Generate TOTP secret\nexport async function startTotpSetup() {\n  if (!this.isAuthenticated) throw new Error('Login first');\n  \n  const { secret, qrCode } = await auth.totp.generateSecret({\n    label: this.principal.email,\n    issuer: 'MyApp'\n  });\n  \n  return { qrCode }; // Display this QR code to user\n}\n\n// Server: Verify TOTP code\nexport async function verifyTotp({ code }) {\n  const valid = await auth.totp.verify(this.principal.userId, code);\n  if (valid) {\n    await auth.elevateToTier2(this.sessionId);\n    return { success: true, tier: 2 };\n  }\n  throw new Error('Invalid code');\n}"
+      },
+      {
+        "id": "implement-mfa",
+        "title": "Add MFA Check",
+        "type": "challenge",
+        "description": "Create an endpoint that requires Tier 2 authentication",
+        "hint": "Check this.authTier >= 2",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "authTier.*2|authTier.*>=.*2",
+            "in": "api/**/*.js"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "MFA Guardian!",
+        "type": "complete",
+        "content": "You've implemented MFA! Your users now have an extra layer of security protecting their accounts."
+      }
+    ]
+  },
+  "tier-2-auth": {
+    "id": "tier-2-auth",
+    "title": "Reach Tier 2 Authentication",
+    "description": "Implement complete Tier 2 (MFA) authentication flow",
+    "track": "both",
+    "xpReward": 350,
+    "badgeId": "security-shield",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "Tier 2 Authentication",
+        "type": "concept",
+        "content": "Tier 2 authentication combines:\n\n- **Tier 1**: Password authentication (OPAQUE/PAKE)\n- **Tier 2**: Multi-factor authentication (WebAuthn or TOTP)\n\nUsers must complete both to reach Tier 2. This provides strong security while remaining user-friendly.",
+        "codeExample": "// Authentication state machine\n// Tier 0 (Guest) → Tier 1 (Basic) → Tier 2 (Elevated)\n\nexport function getAuthState() {\n  return {\n    tier: this.authTier,\n    isAuthenticated: this.isAuthenticated,\n    hasMfa: this.authTier >= 2,\n    principal: this.authTier >= 1 ? this.principal : null\n  };\n}"
+      },
+      {
+        "id": "elevation-flow",
+        "title": "Elevation Flow",
+        "type": "concept",
+        "content": "Users can be prompted to elevate their authentication for sensitive operations. The elevation is temporary and tied to the session.",
+        "codeExample": "// Controller that requires elevation\nexport async function sensitiveOperation(data) {\n  // Check current tier\n  if (this.authTier < 2) {\n    // Return challenge for MFA\n    return {\n      requiresElevation: true,\n      availableMethods: await auth.getMfaMethods(this.principal.userId)\n    };\n  }\n  \n  // User is at Tier 2, proceed with operation\n  return performSensitiveOperation(data);\n}\n\n// Client handling\nconst result = await api.account.sensitiveOperation(data);\nif (result.requiresElevation) {\n  await showMfaPrompt(result.availableMethods);\n  // Retry after MFA\n}"
+      },
+      {
+        "id": "implement-tier2",
+        "title": "Implement Tier 2 Flow",
+        "type": "challenge",
+        "description": "Create an endpoint that requires Tier 2 and returns elevation info if not met",
+        "hint": "Return { requiresElevation: true } if authTier < 2",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "requiresElevation|authTier.*<.*2",
+            "in": "api/**/*.js"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "Security Shield!",
+        "type": "complete",
+        "content": "You've implemented complete Tier 2 authentication! Your app now supports secure MFA-protected operations."
+      }
+    ]
+  },
+  "tier-3-auth": {
+    "id": "tier-3-auth",
+    "title": "Implement Tier 3 Authentication",
+    "description": "Use Shamir Secret Sharing for highest security",
+    "track": "both",
+    "xpReward": 500,
+    "badgeId": "fortress",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "Tier 3: Maximum Security",
+        "type": "concept",
+        "content": "Tier 3 uses **Shamir Secret Sharing** to split cryptographic keys across multiple locations. To authenticate, the user must provide 2-of-3 shares:\n\n- **Device share**: Stored on user's device\n- **Server share**: Stored encrypted on your server\n- **Recovery share**: Written down or stored in password manager\n\nEven if one share is compromised, the account remains secure.",
+        "codeExample": "// Tier 3 protects the most sensitive operations\nexport async function approveHighValueTransaction(txId) {\n  if (this.authTier < 3) {\n    throw {\n      code: 'TIER3_REQUIRED',\n      message: 'This operation requires Tier 3 authentication'\n    };\n  }\n  \n  // User has proven they control 2-of-3 key shares\n  return await processHighValueTransaction(txId);\n}"
+      },
+      {
+        "id": "sss-setup",
+        "title": "Shamir Secret Sharing Setup",
+        "type": "concept",
+        "content": "When a user enables Tier 3, their key is split into 3 shares. They must keep their recovery share safe - if they lose 2 shares, account recovery becomes complex.",
+        "codeExample": "// Server: Initialize Tier 3 for user\nexport async function setupTier3() {\n  if (this.authTier < 2) {\n    throw new Error('Enable MFA first');\n  }\n  \n  const { deviceShare, recoveryShare } = await auth.shamir.generateShares({\n    userId: this.principal.userId,\n    threshold: 2,  // Need 2-of-3 shares\n    total: 3\n  });\n  \n  // Server share is stored automatically\n  // Return device share and recovery share to client\n  return {\n    deviceShare,  // Store in device secure storage\n    recoveryShare // User must write this down!\n  };\n}"
+      },
+      {
+        "id": "tier3-verification",
+        "title": "Tier 3 Verification",
+        "type": "concept",
+        "content": "To reach Tier 3, the client provides 2 shares. The server combines them with its share to verify authenticity.",
+        "codeExample": "// Server: Verify Tier 3\nexport async function verifyTier3({ deviceShare, recoveryShare }) {\n  // User provides device share (from secure storage)\n  // and optionally recovery share (if device unavailable)\n  \n  const valid = await auth.shamir.verify({\n    userId: this.principal.userId,\n    shares: [deviceShare, recoveryShare].filter(Boolean)\n  });\n  \n  if (valid) {\n    await auth.elevateToTier3(this.sessionId);\n    return { tier: 3, elevated: true };\n  }\n  \n  throw new Error('Invalid shares');\n}"
+      },
+      {
+        "id": "implement-tier3",
+        "title": "Protect with Tier 3",
+        "type": "challenge",
+        "description": "Create an endpoint that requires Tier 3 authentication for maximum security",
+        "hint": "Check this.authTier >= 3",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "authTier.*3|TIER3_REQUIRED",
+            "in": "api/**/*.js"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "Fortress!",
+        "type": "complete",
+        "content": "You've implemented Tier 3 authentication with Shamir Secret Sharing! This is enterprise-grade security for your most critical operations."
+      }
+    ]
+  },
+  "custom-plugin": {
+    "id": "custom-plugin",
+    "title": "Create a Custom Plugin",
+    "description": "Extend api-ape with your own plugin",
+    "track": "both",
+    "xpReward": 400,
+    "badgeId": "plugin-master",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "What are Plugins?",
+        "type": "concept",
+        "content": "Plugins extend api-ape's functionality. They can:\n\n- Add middleware for all requests\n- Inject context methods into controllers\n- Add client-side features\n- Integrate with external services",
+        "codeExample": "// Simple plugin structure\nconst myPlugin = {\n  name: 'my-plugin',\n  \n  // Server-side hooks\n  server: {\n    onConnect: (socket, req) => { /* ... */ },\n    onReceive: (data, context) => { /* ... */ },\n    onSend: (data, context) => { /* ... */ }\n  },\n  \n  // Context methods added to controllers\n  context: {\n    myMethod: function() { return 'hello'; }\n  }\n};"
+      },
+      {
+        "id": "context-methods",
+        "title": "Adding Context Methods",
+        "type": "concept",
+        "content": "Plugins can add methods to the controller context (`this`). This is useful for shared functionality across endpoints.",
+        "codeExample": "const loggingPlugin = {\n  name: 'logging',\n  \n  context: {\n    // Available as this.log() in any controller\n    log: function(message) {\n      console.log(`[${this.clientId}] ${message}`);\n    },\n    \n    // Available as this.audit() in any controller\n    audit: function(action, details) {\n      db.auditLog.insert({\n        clientId: this.clientId,\n        userId: this.principal?.userId,\n        action,\n        details,\n        timestamp: new Date()\n      });\n    }\n  }\n};\n\n// In a controller:\nexport function deleteUser(userId) {\n  this.log(`Deleting user ${userId}`);\n  this.audit('user.delete', { userId });\n  // ...\n}"
+      },
+      {
+        "id": "register-plugin",
+        "title": "Registering Plugins",
+        "type": "concept",
+        "content": "Register plugins when initializing api-ape. They're loaded in order, so later plugins can depend on earlier ones.",
+        "codeExample": "import { ape } from 'api-ape';\nimport loggingPlugin from './plugins/logging';\nimport metricsPlugin from './plugins/metrics';\nimport rateLimitPlugin from './plugins/rateLimit';\n\nape(server, {\n  where: 'api',\n  plugins: [\n    loggingPlugin,\n    metricsPlugin,\n    rateLimitPlugin\n  ]\n});"
+      },
+      {
+        "id": "implement-plugin",
+        "title": "Create Your Plugin",
+        "type": "challenge",
+        "description": "Create a plugin that adds at least one context method",
+        "hint": "Export an object with name and context properties",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "plugins:|context:"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "Plugin Master!",
+        "type": "complete",
+        "content": "You've created your first api-ape plugin! Plugins are a powerful way to extend and customize api-ape for your needs."
+      }
+    ]
+  },
+  "forest-setup": {
+    "id": "forest-setup",
+    "title": "Configure Forest",
+    "description": "Set up distributed state with Forest database adapters",
+    "track": "server",
+    "xpReward": 400,
+    "badgeId": "forest-architect",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "What is Forest?",
+        "type": "concept",
+        "content": "Forest is api-ape's distributed mesh system. It allows multiple api-ape servers to:\n\n- Share connected client state\n- Broadcast across all servers\n- Publish/subscribe across the cluster\n- Maintain consistent session state\n\nThis enables horizontal scaling while keeping real-time features working.",
+        "codeExample": "// Without Forest: Single server\n// this.broadcast() only reaches clients on THIS server\n\n// With Forest: Multi-server cluster\n// this.broadcast() reaches clients on ALL servers\nape(server, {\n  where: 'api',\n  forest: {\n    adapter: 'redis',\n    config: { url: 'redis://localhost:6379' }\n  }\n});"
+      },
+      {
+        "id": "adapters",
+        "title": "Database Adapters",
+        "type": "concept",
+        "content": "Forest supports multiple database adapters for state synchronization:\n\n- **Redis**: Fast, widely supported, pub/sub built-in\n- **PostgreSQL**: LISTEN/NOTIFY for pub/sub\n- **MongoDB**: Change streams for sync\n- **Custom**: Implement your own adapter",
+        "codeExample": "// Redis adapter (recommended)\nforest: {\n  adapter: 'redis',\n  config: {\n    url: process.env.REDIS_URL,\n    prefix: 'api-ape:',  // Key prefix\n    ttl: 3600            // Session TTL\n  }\n}\n\n// PostgreSQL adapter\nforest: {\n  adapter: 'postgres',\n  config: {\n    connectionString: process.env.DATABASE_URL,\n    channel: 'api_ape_sync'\n  }\n}"
+      },
+      {
+        "id": "cluster-broadcast",
+        "title": "Cluster-Wide Broadcasting",
+        "type": "concept",
+        "content": "With Forest configured, all communication methods automatically work across the cluster.",
+        "codeExample": "// These work across ALL servers in the cluster:\n\n// Broadcast to all clients everywhere\nthis.broadcast({ type: 'globalAnnouncement', text: 'Hello cluster!' });\n\n// Publish to subscribers on any server\nthis.publish.notifications.all({ message: 'New feature!' });\n\n// Get total online count across cluster\nconst totalOnline = this.online(); // Returns cluster-wide count\n\n// Send to specific client (even on different server)\nape.sendTo(clientId, { type: 'directMessage', text: 'Hi!' });"
+      },
+      {
+        "id": "implement-forest",
+        "title": "Configure Forest",
+        "type": "challenge",
+        "description": "Add Forest configuration to your api-ape setup",
+        "hint": "Add forest: { adapter, config } to ape()",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "forest:|adapter:"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "Forest Architect!",
+        "type": "complete",
+        "content": "You've configured Forest! Your api-ape servers can now work together as a distributed cluster."
+      }
+    ]
+  },
+  "cluster-deployment": {
+    "id": "cluster-deployment",
+    "title": "Deploy a Multi-Server Cluster",
+    "description": "Scale horizontally with multiple api-ape servers",
+    "track": "server",
+    "xpReward": 500,
+    "badgeId": "cluster-commander",
+    "steps": [
+      {
+        "id": "intro",
+        "title": "Why Multi-Server?",
+        "type": "concept",
+        "content": "A single server has limits. Multi-server deployment provides:\n\n- **Scalability**: Handle more concurrent connections\n- **Reliability**: No single point of failure\n- **Geographic distribution**: Lower latency for global users\n- **Zero-downtime deployments**: Roll updates gradually",
+        "codeExample": "// Architecture overview\n//\n// Load Balancer (sticky sessions)\n//        │\n//    ┌───┴───┬───────┐\n//    │       │       │\n//   API-1  API-2  API-3\n//    │       │       │\n//    └───┬───┴───────┘\n//        │\n//    Redis (Forest)\n//        │\n//    Database"
+      },
+      {
+        "id": "sticky-sessions",
+        "title": "Load Balancer Setup",
+        "type": "concept",
+        "content": "WebSocket connections require sticky sessions - once a client connects to a server, they must stay on that server for the duration of the connection.",
+        "codeExample": "# Nginx example with sticky sessions\nupstream api_cluster {\n    ip_hash;  # Sticky sessions based on IP\n    server api-1:3000;\n    server api-2:3000;\n    server api-3:3000;\n}\n\nserver {\n    location /api/ape {\n        proxy_pass http://api_cluster;\n        proxy_http_version 1.1;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection \"upgrade\";\n    }\n}"
+      },
+      {
+        "id": "docker-compose",
+        "title": "Docker Compose Cluster",
+        "type": "concept",
+        "content": "Use Docker Compose to easily run a local cluster for testing.",
+        "codeExample": "# docker-compose.yml\nversion: '3.8'\nservices:\n  redis:\n    image: redis:alpine\n    ports: ['6379:6379']\n\n  api-1:\n    build: .\n    environment:\n      - PORT=3001\n      - REDIS_URL=redis://redis:6379\n    depends_on: [redis]\n\n  api-2:\n    build: .\n    environment:\n      - PORT=3002\n      - REDIS_URL=redis://redis:6379\n    depends_on: [redis]\n\n  nginx:\n    image: nginx:alpine\n    ports: ['3000:80']\n    volumes:\n      - ./nginx.conf:/etc/nginx/nginx.conf\n    depends_on: [api-1, api-2]"
+      },
+      {
+        "id": "health-checks",
+        "title": "Health Checks",
+        "type": "concept",
+        "content": "Add health check endpoints for load balancers and orchestrators to monitor server health.",
+        "codeExample": "// api/health.js\nexport function check() {\n  return {\n    status: 'healthy',\n    timestamp: Date.now(),\n    connections: this.online(),\n    uptime: process.uptime()\n  };\n}\n\nexport async function deep() {\n  // Check all dependencies\n  const checks = await Promise.all([\n    checkRedis(),\n    checkDatabase(),\n    checkExternalApi()\n  ]);\n  \n  const healthy = checks.every(c => c.ok);\n  return {\n    status: healthy ? 'healthy' : 'degraded',\n    checks\n  };\n}"
+      },
+      {
+        "id": "implement-cluster",
+        "title": "Create Cluster Config",
+        "type": "challenge",
+        "description": "Set up configuration for running multiple api-ape instances",
+        "hint": "Create docker-compose.yml or add health endpoints",
+        "validators": [
+          {
+            "type": "code-contains",
+            "pattern": "docker-compose|health|REDIS_URL"
+          }
+        ]
+      },
+      {
+        "id": "complete",
+        "title": "Cluster Commander!",
+        "type": "complete",
+        "content": "You've mastered multi-server deployment! Your api-ape cluster can now scale horizontally to handle any load."
+      }
+    ]
   }
 }
