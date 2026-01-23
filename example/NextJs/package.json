@@ -11,7 +11,7 @@
   "dependencies": {
     "@types/node": "18.19.130",
     "@types/react": "18.3.27",
-    "@types/react-dom": "18.0.9",
+    "@types/react-dom": "18.3.7",
     "api-ape": "file:../..",
     "eslint": "^8.57.0",
     "eslint-config-next": "15.5.9",
