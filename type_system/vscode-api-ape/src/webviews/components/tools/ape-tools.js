@@ -174,7 +174,7 @@ customElements.define(
      */
     render(Html, state) {
       Html`
-        <div class="app">
+        <main class="app">
           <ape-tab-bar
             data-active="${state.activeTab}">
           </ape-tab-bar>
@@ -205,7 +205,7 @@ customElements.define(
               </ape-docs-panel>
             `
             : ''}
-        </div>
+        </main>
 
         ${state.modal.open
           ? Html.wire(this, ':modal')`

@@ -33,31 +33,31 @@ customElements.define(
       const recap = this.dataset.recap;
 
       if (!recap) {
-        return Html`<div class="modal hidden"></div>`;
+        return Html`<dialog class="modal hidden"></dialog>`;
       }
 
       Html`
-        <div class="modal">
-          <div class="modal-header">
+        <dialog class="modal">
+          <header class="modal-header">
             <span>${recap.title}</span>
             <button class="modal-close" onclick=${() => this.handleClose()}>&times;</button>
-          </div>
-          <div class="modal-content">
-            <div class="recap-summary">${recap.summary}</div>
+          </header>
+          <section class="modal-content">
+            <p class="recap-summary">${recap.summary}</p>
 
             ${recap.methods?.length
               ? Html.wire(this, ':methods')`
-                <div class="recap-methods">
+                <section class="recap-methods">
                   ${recap.methods.map(
                     (m) =>
                       Html.wire(m, ':method')`
-                    <div class="recap-method">
-                      <span class="recap-method-name">${m.name}</span>
-                      <span class="recap-method-desc">${m.description}</span>
-                    </div>
+                    <dl class="recap-method">
+                      <dt class="recap-method-name">${m.name}</dt>
+                      <dd class="recap-method-desc">${m.description}</dd>
+                    </dl>
                   `
                   )}
-                </div>
+                </section>
               `
               : ''}
 
@@ -76,19 +76,21 @@ customElements.define(
 
             ${recap.tips?.length
               ? Html.wire(this, ':tips')`
-                <div class="recap-tips">
-                  <div class="recap-tips-title">TIPS</div>
-                  ${recap.tips.map(
-                    (tip, i) =>
-                      Html.wire({ tip, i }, ':tip')`
-                    <div class="recap-tip">${tip}</div>
-                  `
-                  )}
-                </div>
+                <section class="recap-tips">
+                  <h3 class="recap-tips-title">TIPS</h3>
+                  <ul>
+                    ${recap.tips.map(
+                      (tip, i) =>
+                        Html.wire({ tip, i }, ':tip')`
+                      <li class="recap-tip">${tip}</li>
+                    `
+                    )}
+                  </ul>
+                </section>
               `
               : ''}
-          </div>
-        </div>
+          </section>
+        </dialog>
       `;
     }
 

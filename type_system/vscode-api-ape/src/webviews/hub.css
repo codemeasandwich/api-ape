@@ -33,6 +33,54 @@
   padding: 0;
 }
 
+/* Reset semantic elements to match div behavior */
+main, section, article, header, footer, nav, aside, details, summary, dialog, output {
+  display: block;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+ul, ol {
+  list-style: none;
+}
+
+dl, dt, dd {
+  margin: 0;
+}
+
+dialog {
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+dialog::backdrop {
+  display: none;
+}
+
+/* Reset button styling for semantic buttons used as interactive elements */
+button.section-header,
+button.track-badge,
+button.skill-node,
+button.recap-bookmark,
+button.recap-item-content,
+button.endpoint-item {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Ensure strong maintains inline display */
+strong {
+  display: inline;
+}
+
 body {
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size, 13px);
@@ -335,6 +383,11 @@ body {
   gap: 4px;
 }
 
+.skill-tree-nodes > li {
+  display: flex;
+  align-items: center;
+}
+
 .skill-node {
   position: relative;
   width: 32px;
@@ -372,6 +425,7 @@ body {
   width: 12px;
   height: 2px;
   background: var(--border-color);
+  display: block;
 }
 
 .skill-connector.earned {
@@ -1254,6 +1308,8 @@ body {
 
 .quest-validators {
   margin-top: 8px;
+  list-style: none;
+  padding: 0;
 }
 
 .quest-validator {

@@ -54,16 +54,16 @@ customElements.define(
       const newLevel = parseInt(this.dataset.newLevel, 10) || 0;
 
       Html`
-        <div class="toast">
+        <output class="toast">
           <div class="toast-icon">${{ ToastIcon: Html.lite }}</div>
           <div class="toast-content">
-            <div class="toast-title">Badge Unlocked!</div>
-            <div class="toast-badge-name">${badge.name}</div>
-            <div class="toast-xp">
+            <strong class="toast-title">Badge Unlocked!</strong>
+            <p class="toast-badge-name">${badge.name}</p>
+            <p class="toast-xp">
               +${xpEarned} XP${leveledUp ? ` - Level ${newLevel}!` : ''}
-            </div>
+            </p>
           </div>
-        </div>
+        </output>
       `;
     }
   }

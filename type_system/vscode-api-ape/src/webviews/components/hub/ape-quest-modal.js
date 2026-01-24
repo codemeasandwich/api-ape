@@ -36,7 +36,7 @@ customElements.define(
       const validation = this.dataset.validation ? JSON.parse(this.dataset.validation) : null;
 
       if (!quest) {
-        return Html`<div class="modal hidden"></div>`;
+        return Html`<dialog class="modal hidden"></dialog>`;
       }
 
       const step = quest.steps?.[stepIndex];
@@ -45,15 +45,15 @@ customElements.define(
       const isChallenge = step?.type === 'challenge';
 
       Html`
-        <div class="modal">
-          <div class="modal-header">
+        <dialog class="modal">
+          <header class="modal-header">
             <span>${quest.title}</span>
             <button class="modal-close" onclick=${() => this.handleClose()}>&times;</button>
-          </div>
-          <div class="modal-content">
-            <div class="quest-step">
-              <div class="quest-step-header">STEP ${stepIndex + 1} OF ${total}</div>
-              <div class="quest-step-title">${step?.title}</div>
+          </header>
+          <section class="modal-content">
+            <article class="quest-step">
+              <h3 class="quest-step-header">STEP ${stepIndex + 1} OF ${total}</h3>
+              <h2 class="quest-step-title">${step?.title}</h2>
 
               ${step?.type === 'concept' || step?.type === 'complete'
                 ? Html.wire(this, ':concept')`
@@ -90,7 +90,7 @@ customElements.define(
                       : ''}
                     ${step.validators?.length
                       ? Html.wire(this, ':validators')`
-                        <div class="quest-validators">
+                        <ul class="quest-validators">
                           ${step.validators.map((v, i) => {
                             const result = validation?.[i];
                             const statusClass = result
@@ -100,13 +100,13 @@ customElements.define(
                               : '';
                             const icon = result ? (result.passed ? '\u2713' : '\u2717') : '';
                             return Html.wire(v, ':validator')`
-                              <div class="${'quest-validator ' + statusClass}">
-                                <div class="quest-validator-icon">${icon}</div>
+                              <li class="${'quest-validator ' + statusClass}">
+                                <span class="quest-validator-icon">${icon}</span>
                                 <span>${getValidatorLabel(v)}</span>
-                              </div>
+                              </li>
                             `;
                           })}
-                        </div>
+                        </ul>
                       `
                       : ''}
                   </div>
@@ -128,7 +128,7 @@ customElements.define(
                 `
                 : ''}
 
-              <div class="quest-nav">
+              <footer class="quest-nav">
                 <button
                   class="btn secondary"
                   disabled=${stepIndex === 0}
@@ -146,10 +146,10 @@ customElements.define(
                       ${isLastStep ? 'Complete' : 'Next >'}
                     </button>
                   `}
-              </div>
-            </div>
-          </div>
-        </div>
+              </footer>
+            </article>
+          </section>
+        </dialog>
       `;
     }
 

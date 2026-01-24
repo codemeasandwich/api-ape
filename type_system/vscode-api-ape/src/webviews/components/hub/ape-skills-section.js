@@ -14,11 +14,11 @@ customElements.define(
       const expanded = this.dataset.expanded === 'true';
 
       Html`
-        <div class="section">
-          <div class="section-header" onclick=${() => this.handleToggle()}>
+        <section class="section">
+          <button class="section-header" onclick=${() => this.handleToggle()}>
             SKILL TREES
             <span class="toggle-icon">${expanded ? 'v' : '>'}</span>
-          </div>
+          </button>
           <div class="${'collapsible' + (expanded ? ' expanded' : '')}">
             <ape-skill-tree
               track=${'client'}
@@ -29,7 +29,7 @@ customElements.define(
               nodes=${trees.server}>
             </ape-skill-tree>
           </div>
-        </div>
+        </section>
       `;
     }
 
@@ -55,27 +55,29 @@ customElements.define(
       const nodes = this.nodes || [];
 
       Html`
-        <div class="skill-tree">
-          <div class="skill-tree-label">${track.toUpperCase()} PATH:</div>
-          <div class="skill-tree-nodes">
+        <section class="skill-tree">
+          <h3 class="skill-tree-label">${track.toUpperCase()} PATH:</h3>
+          <ul class="skill-tree-nodes">
             ${nodes.map((node, index) => {
               const prevEarned = index > 0 && nodes[index - 1].earned;
               return Html.wire(node, ':node')`
                 ${index > 0
                   ? Html.wire(node, ':conn')`
-                    <div class="${'skill-connector' + (prevEarned ? ' earned' : '')}"></div>
+                    <li class="${'skill-connector' + (prevEarned ? ' earned' : '')}"></li>
                   `
                   : ''}
-                <div
-                  class="${'skill-node ' + (node.earned ? 'earned' : node.inProgress ? 'in-progress' : 'locked')}"
-                  title="${node.id}"
-                  onclick=${() => this.handleNodeClick(node)}>
-                  ${node.label}
-                </div>
+                <li>
+                  <button
+                    class="${'skill-node ' + (node.earned ? 'earned' : node.inProgress ? 'in-progress' : 'locked')}"
+                    title="${node.id}"
+                    onclick=${() => this.handleNodeClick(node)}>
+                    ${node.label}
+                  </button>
+                </li>
               `;
             })}
-          </div>
-        </div>
+          </ul>
+        </section>
       `;
     }
 

@@ -15,7 +15,7 @@ customElements.define(
       const filter = this.filter || '';
 
       Html`
-        <div class="tool-panel active">
+        <section class="tool-panel active">
           <div class="tool-search">
             <input
               type="text"
@@ -28,7 +28,7 @@ customElements.define(
             error=${error || ''}
             filter=${filter}>
           </ape-endpoint-tree>
-        </div>
+        </section>
       `;
     }
 
@@ -144,16 +144,14 @@ customElements.define(
       const collapsed = this.collapsed;
 
       Html`
-        <div class="endpoint-group">
-          <div
+        <details class="endpoint-group" open=${!collapsed}>
+          <summary
             class="endpoint-group-header"
-            onclick=${() => this.handleToggle()}>
+            onclick=${(e) => { e.preventDefault(); this.handleToggle(); }}>
             <span class="icon">${collapsed ? '>' : 'v'}</span>
             <span>${ns} (${endpoints.length})</span>
-          </div>
-          <div
-            class="endpoint-group-items"
-            style="${collapsed ? 'display:none' : 'display:block'}">
+          </summary>
+          <div class="endpoint-group-items">
             ${endpoints.map(
               (ep) =>
                 Html.wire(ep, ':item')`
@@ -166,7 +164,7 @@ customElements.define(
               `
             )}
           </div>
-        </div>
+        </details>
       `;
     }
 
@@ -201,10 +199,10 @@ customElements.define(
       const name = path.split('.').pop();
 
       Html`
-        <div class="endpoint-item" data-path="${path}">
+        <button class="endpoint-item" data-path="${path}">
           <span class="endpoint-name">${name}</span>
           <span class="endpoint-type">->${returnType}</span>
-        </div>
+        </button>
       `;
     }
   }

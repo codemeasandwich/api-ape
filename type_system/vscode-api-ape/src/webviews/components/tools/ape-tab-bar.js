@@ -18,7 +18,7 @@ customElements.define(
       ];
 
       Html`
-        <div class="tools-tabs">
+        <nav class="tools-tabs">
           ${tabs.map(
             (tab) =>
               Html.wire(tab, ':tab')`
@@ -29,7 +29,7 @@ customElements.define(
               </button>
             `
           )}
-        </div>
+        </nav>
       `;
     }
 

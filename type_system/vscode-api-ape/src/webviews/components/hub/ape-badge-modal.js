@@ -48,22 +48,22 @@ customElements.define(
       const categories = ['fundamentals', 'realtime', 'security', 'advanced'];
 
       Html`
-        <div class="modal">
-          <div class="modal-header">
+        <dialog class="modal">
+          <header class="modal-header">
             <span>BADGE COLLECTION</span>
             <button class="modal-close" onclick=${() => this.handleClose()}>&times;</button>
-          </div>
-          <div class="modal-content">
+          </header>
+          <section class="modal-content">
             ${categories.map((cat) => {
               const category = badges[cat];
               if (!category?.badges?.length) return '';
               const earned = category.badges.filter((b) => b.earned).length;
               return Html.wire(category, ':cat')`
-                <div class="badge-category">
-                  <div class="badge-category-title">
+                <section class="badge-category">
+                  <h2 class="badge-category-title">
                     <span>${category.name.toUpperCase()}</span>
                     <span>${earned}/${category.badges.length}</span>
-                  </div>
+                  </h2>
                   <div class="badge-grid">
                     ${category.badges.map(
                       (badge) =>
@@ -75,11 +75,11 @@ customElements.define(
                       `
                     )}
                   </div>
-                </div>
+                </section>
               `;
             })}
-          </div>
-        </div>
+          </section>
+        </dialog>
       `;
     }
 

@@ -14,8 +14,8 @@ customElements.define(
       const progress = this.dataset.progress ? JSON.parse(this.dataset.progress) : null;
 
       Html`
-        <div class="section">
-          <div class="section-header">CURRENT QUEST</div>
+        <section class="section">
+          <h2 class="section-header">CURRENT QUEST</h2>
           ${quest
             ? Html.wire(this, ':quest-card')`
               <ape-quest-card
@@ -27,7 +27,7 @@ customElements.define(
               <ape-no-quest-card>
               </ape-no-quest-card>
             `}
-        </div>
+        </section>
       `;
     }
   }
@@ -51,9 +51,9 @@ customElements.define(
       const pct = Math.round((currentStep / totalSteps) * 100);
 
       Html`
-        <div class="card quest-card">
-          <div class="quest-title"><span>!</span> ${quest.title}</div>
-          <div class="quest-description">${quest.description}</div>
+        <article class="card quest-card">
+          <h3 class="quest-title"><span>!</span> ${quest.title}</h3>
+          <p class="quest-description">${quest.description}</p>
           <div class="quest-progress">
             <div class="quest-progress-bar">
               <div class="quest-progress-fill" style="width: ${pct}%"></div>
@@ -68,7 +68,7 @@ customElements.define(
               Skip
             </button>
           </div>
-        </div>
+        </article>
       `;
     }
 
@@ -96,12 +96,12 @@ customElements.define(
      */
     render(Html) {
       Html`
-        <div class="card no-quest-card">
-          <div class="no-quest-text">Select a quest to begin</div>
+        <article class="card no-quest-card">
+          <p class="no-quest-text">Select a quest to begin</p>
           <button class="btn primary" onclick=${() => this.handleSuggest()}>
             Suggest Quest
           </button>
-        </div>
+        </article>
       `;
     }
 

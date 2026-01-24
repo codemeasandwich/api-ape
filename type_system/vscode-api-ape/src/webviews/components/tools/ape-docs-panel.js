@@ -15,25 +15,25 @@ customElements.define(
       const bookmarkedRecaps = recaps.filter((r) => bookmarked.includes(r.id));
 
       Html`
-        <div class="tool-panel active">
-          <div class="docs-section">
-            <div class="docs-label">RECENT RECAPS</div>
+        <section class="tool-panel active">
+          <section class="docs-section">
+            <h2 class="docs-label">RECENT RECAPS</h2>
             <ape-recap-list
               recaps=${recaps}
               bookmarked=${bookmarked}>
             </ape-recap-list>
-          </div>
-          <div class="docs-section">
-            <div class="docs-label">BOOKMARKED</div>
+          </section>
+          <section class="docs-section">
+            <h2 class="docs-label">BOOKMARKED</h2>
             <ape-recap-list
               recaps=${bookmarkedRecaps}
               bookmarked=${bookmarked}>
             </ape-recap-list>
-          </div>
+          </section>
           <button class="btn secondary full-width" onclick=${() => this.handleSearchDocs()}>
             Search Docs...
           </button>
-        </div>
+        </section>
       `;
     }
 
@@ -59,12 +59,12 @@ customElements.define(
 
       if (!recaps.length) {
         return Html`
-          <div class="text-muted" style="font-size:11px;padding:8px;">No recaps yet</div>
+          <p class="text-muted" style="font-size:11px;padding:8px;">No recaps yet</p>
         `;
       }
 
       Html`
-        <div class="recap-list">
+        <ul class="recap-list">
           ${recaps.map(
             (recap) =>
               Html.wire(recap, ':recap')`
@@ -74,7 +74,7 @@ customElements.define(
               </ape-recap-item>
             `
           )}
-        </div>
+        </ul>
       `;
     }
   }
@@ -95,14 +95,17 @@ customElements.define(
       const isBookmarked = this.bookmarked;
 
       Html`
-        <div class="recap-item" onclick=${(e) => this.handleClick(e)}>
-          <span>${recap.title}</span>
-          <span
+        <li class="recap-item">
+          <button class="recap-item-content" onclick=${(e) => this.handleClick(e)}>
+            ${recap.title}
+          </button>
+          <button
             class="${'recap-bookmark' + (isBookmarked ? ' bookmarked' : '')}"
-            data-action="bookmark">
+            data-action="bookmark"
+            onclick=${(e) => this.handleClick(e)}>
             *
-          </span>
-        </div>
+          </button>
+        </li>
       `;
     }
 

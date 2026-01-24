@@ -18,7 +18,7 @@ customElements.define(
       };
 
       Html`
-        <div class="tool-panel active">
+        <section class="tool-panel active">
           <div class="config-row">
             <label>Server:</label>
             <span>${config.serverUrl}</span>
@@ -41,7 +41,7 @@ customElements.define(
             <button class="btn secondary" onclick=${() => this.handleRefresh()}>Refresh</button>
             <button class="btn secondary" onclick=${() => this.handleGenerate()}>Generate Types</button>
           </div>
-        </div>
+        </section>
       `;
     }
 

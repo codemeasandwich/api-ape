@@ -187,11 +187,11 @@ customElements.define(
      */
     render(Html, state) {
       if (!state.summary) {
-        return Html`<div class="app"><div class="level-card"><div class="level-title">Loading...</div></div></div>`;
+        return Html`<main class="app"><article class="level-card"><h2 class="level-title">Loading...</h2></article></main>`;
       }
 
       Html`
-        <div class="app">
+        <main class="app">
           <ape-level-card
             data-summary='${JSON.stringify(state.summary)}'>
           </ape-level-card>
@@ -205,7 +205,7 @@ customElements.define(
             data-trees='${JSON.stringify(state.skillTrees)}'
             data-expanded="${state.skillsExpanded}">
           </ape-skills-section>
-        </div>
+        </main>
 
         ${state.modals.badge.open
           ? Html.wire(this, ':badge-modal')`
