@@ -10,28 +10,29 @@ customElements.define(
      * @param {Function} Html - hyperHTML tagged template function
      */
     render(Html) {
-      const xpTotal = this.summary.xp + (this.summary.levelProgress?.required - this.summary.levelProgress?.current);
+      const summary = this.attrs.summary || {};
+      const xpTotal = (summary.xp || 0) + ((summary.levelProgress?.required || 0) - (summary.levelProgress?.current || 0));
 
       Html`
         <section class="section">
           <article class="level-card" onclick=${() => this.handleClick()}>
-            <h2 class="level-title">LEVEL ${this.summary.level}: ${this.summary.levelTitle}</h2>
+            <h2 class="level-title">${summary.level ? `LEVEL ${summary.level}: ${summary.levelTitle}` : 'Loading...'}</h2>
             <div class="xp-bar">
-              <div class="xp-fill" style="width: ${this.summary.levelProgress?.percentage || 0}%"></div>
+              <div class="xp-fill" style="width: ${summary.levelProgress?.percentage || 0}%"></div>
             </div>
-            <div class="xp-text">${this.summary.xp} / ${xpTotal} XP</div>
+            <div class="xp-text">${summary.xp != null ? `${summary.xp} / ${xpTotal} XP` : '-- / -- XP'}</div>
             <div class="track-badges">
               <button
-                class="track-badge${this.summary.track === 'client' ? ' selected' : ''}"
+                class="track-badge${summary.track === 'client' ? ' selected' : ''}"
                 onclick=${(e) => this.selectTrack(e, 'client')}>
                 <span class="track-icon">CL</span>
-                <span class="track-pct">${this.summary.clientProgress}%</span>
+                <span class="track-pct">${summary.clientProgress ?? '--'}%</span>
               </button>
               <button
-                class="track-badge${this.summary.track === 'server' ? ' selected' : ''}"
+                class="track-badge${summary.track === 'server' ? ' selected' : ''}"
                 onclick=${(e) => this.selectTrack(e, 'server')}>
                 <span class="track-icon">SV</span>
-                <span class="track-pct">${this.summary.serverProgress}%</span>
+                <span class="track-pct">${summary.serverProgress ?? '--'}%</span>
               </button>
             </div>
           </article>

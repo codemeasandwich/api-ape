@@ -44,6 +44,7 @@ customElements.define(
      * @param {Function} Html - hyperHTML tagged template function
      */
     render(Html) {
+      const badges = this.attrs.badges || {};
       const categories = ['fundamentals', 'realtime', 'security', 'advanced'];
 
       Html`
@@ -54,7 +55,7 @@ customElements.define(
           </header>
           <section class="modal-content">
             ${categories.map((cat) => {
-              const category = this.badges[cat];
+              const category = badges[cat];
               if (!category?.badges?.length) return '';
               const earned = category.badges.filter((b) => b.earned).length;
               return Html.wire(category, ':cat')`

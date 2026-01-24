@@ -10,20 +10,23 @@ customElements.define(
      * @param {Function} Html - hyperHTML tagged template function
      */
     render(Html) {
+      const trees = this.attrs.trees || { client: [], server: [] };
+      const expanded = this.attrs.expanded;
+
       Html`
         <section class="section">
           <button class="section-header" onclick=${() => this.handleToggle()}>
             SKILL TREES
-            <span class="toggle-icon">${this.expanded ? 'v' : '>'}</span>
+            <span class="toggle-icon">${expanded ? 'v' : '>'}</span>
           </button>
-          <div class="collapsible${this.expanded ? ' expanded' : ''}">
+          <div class="collapsible${expanded ? ' expanded' : ''}">
             <ape-skill-tree
               track=${'client'}
-              nodes=${this.trees.client}>
+              nodes=${trees.client}>
             </ape-skill-tree>
             <ape-skill-tree
               track=${'server'}
-              nodes=${this.trees.server}>
+              nodes=${trees.server}>
             </ape-skill-tree>
           </div>
         </section>

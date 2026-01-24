@@ -10,14 +10,17 @@ customElements.define(
      * @param {Function} Html - hyperHTML tagged template function
      */
     render(Html) {
+      const quest = this.attrs.quest;
+      const progress = this.attrs.progress;
+
       Html`
         <section class="section">
           <h2 class="section-header">CURRENT QUEST</h2>
-          ${this.quest
+          ${quest
             ? Html.wire(this, ':quest-card')`
               <ape-quest-card
-                quest=${this.quest}
-                progress=${this.progress}>
+                quest=${quest}
+                progress=${progress}>
               </ape-quest-card>
             `
             : Html.wire(this, ':no-quest')`
