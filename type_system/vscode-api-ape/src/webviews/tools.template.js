@@ -1,17 +1,27 @@
 /**
  * @fileoverview HTML template for the Tools webview
+ * Uses hyper-element custom components for reactive rendering
  */
 
 /**
  * Generate the HTML content for the tools webview
  * @param {object} params - Template parameters
  * @param {string} params.cssUri - URI for the CSS file
- * @param {string} params.jsUri - URI for the JavaScript file
  * @param {string} params.cspSource - Content Security Policy source
  * @param {string} params.nonce - Nonce for script security
+ * @param {string} params.hyperHtmlUri - URI for hyperhtml library
+ * @param {string} params.hyperElementUri - URI for hyper-element library
+ * @param {object} params.componentUris - URIs for component scripts
  * @returns {string} HTML content
  */
-function getToolsTemplate({ cssUri, jsUri, cspSource, nonce }) {
+function getToolsTemplate({
+  cssUri,
+  cspSource,
+  nonce,
+  hyperHtmlUri,
+  hyperElementUri,
+  componentUris
+}) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,44 +32,20 @@ function getToolsTemplate({ cssUri, jsUri, cspSource, nonce }) {
   <title>api-ape Tools</title>
 </head>
 <body>
-  <div id="app">
-    <div id="tools-tabs">
-      <button class="tool-tab active" data-tab="endpoints">Endpoints</button>
-      <button class="tool-tab" data-tab="config">Config</button>
-      <button class="tool-tab" data-tab="docs">Docs</button>
-    </div>
+  <!-- Root hyper-element component -->
+  <ape-tools></ape-tools>
 
-    <!-- Endpoints Tab -->
-    <div id="endpoints-tab" class="tool-panel active">
-      <div class="tool-search"><input type="text" id="endpoint-search" placeholder="Search endpoints..."></div>
-      <div id="endpoints-tree"></div>
-    </div>
+  <!-- Load hyper-element libraries -->
+  <script nonce="${nonce}" src="${hyperHtmlUri}"></script>
+  <script nonce="${nonce}" src="${hyperElementUri}"></script>
 
-    <!-- Config Tab -->
-    <div id="config-tab" class="tool-panel">
-      <div class="config-row"><label>Server:</label><span id="config-server">localhost:3000</span><button class="btn-icon" id="edit-server">E</button></div>
-      <div class="config-row"><label>Controllers:</label><span id="config-controllers">api/</span></div>
-      <div class="config-row"><label>Status:</label><span id="config-status" class="status-dot connected"></span><span id="config-status-text">Connected</span></div>
-      <div class="config-checkbox"><input type="checkbox" id="config-autogen" checked><label for="config-autogen">Auto-generate types</label></div>
-      <div class="config-actions"><button id="btn-refresh" class="btn secondary">Refresh</button><button id="btn-generate" class="btn secondary">Generate Types</button></div>
-    </div>
-
-    <!-- Docs Tab -->
-    <div id="docs-tab" class="tool-panel">
-      <div class="docs-section"><div class="docs-label">RECENT RECAPS</div><div id="recent-recaps"></div></div>
-      <div class="docs-section"><div class="docs-label">BOOKMARKED</div><div id="bookmarked-recaps"></div></div>
-      <button id="search-docs" class="btn secondary full-width">Search Docs...</button>
-    </div>
-  </div>
-
-  <!-- Recap Modal -->
-  <div id="modal-backdrop" class="hidden"></div>
-  <div id="recap-modal" class="modal hidden">
-    <div class="modal-header"><span id="recap-modal-title">Recap</span><button class="modal-close">&times;</button></div>
-    <div class="modal-content" id="recap-modal-content"></div>
-  </div>
-
-  <script nonce="${nonce}" src="${jsUri}"></script>
+  <!-- Load components in dependency order -->
+  <script nonce="${nonce}" src="${componentUris.tabBar}"></script>
+  <script nonce="${nonce}" src="${componentUris.endpointsPanel}"></script>
+  <script nonce="${nonce}" src="${componentUris.configPanel}"></script>
+  <script nonce="${nonce}" src="${componentUris.docsPanel}"></script>
+  <script nonce="${nonce}" src="${componentUris.modal}"></script>
+  <script nonce="${nonce}" src="${componentUris.tools}"></script>
 </body>
 </html>`;
 }

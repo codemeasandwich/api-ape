@@ -22,7 +22,8 @@ while IFS= read -r file; do
        [[ "$file" =~ ^coverage/ ]] || \
        [[ "$file" =~ \.next/ ]] || \
        [[ "$file" =~ ^example/ ]] || \
-       [[ "$file" =~ \.test\.js$ ]]; then
+       [[ "$file" =~ \.test\.js$ ]] || \
+       [[ "$file" =~ \.min\.js$ ]]; then
         continue
     fi
 

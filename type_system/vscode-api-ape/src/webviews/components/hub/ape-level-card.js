@@ -1,0 +1,65 @@
+/**
+ * @fileoverview Level card component showing XP, level, and track progress
+ */
+
+customElements.define(
+  'ape-level-card',
+  class extends hyperElement {
+    /**
+     * Render the level card with XP bar and track badges
+     * @param {Function} Html - hyperHTML tagged template function
+     */
+    render(Html) {
+      const summary = this.dataset.summary ? JSON.parse(this.dataset.summary) : {};
+      const xpTotal = summary.xp + (summary.levelProgress?.required - summary.levelProgress?.current);
+
+      Html`
+        <div id="header-section" class="section">
+          <div id="level-card" onclick=${() => this.handleClick()}>
+            <div id="level-title">LEVEL ${summary.level}: ${summary.levelTitle}</div>
+            <div id="xp-bar">
+              <div id="xp-fill" style="width: ${summary.levelProgress?.percentage || 0}%"></div>
+            </div>
+            <div id="xp-text">${summary.xp} / ${xpTotal} XP</div>
+            <div id="track-badges">
+              <div
+                class="${'track-badge' + (summary.track === 'client' ? ' selected' : '')}"
+                id="client-track"
+                onclick=${(e) => this.selectTrack(e, 'client')}>
+                <span class="track-icon">CL</span>
+                <span class="track-pct">${summary.clientProgress}%</span>
+              </div>
+              <div
+                class="${'track-badge' + (summary.track === 'server' ? ' selected' : '')}"
+                id="server-track"
+                onclick=${(e) => this.selectTrack(e, 'server')}>
+                <span class="track-icon">SV</span>
+                <span class="track-pct">${summary.serverProgress}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    /** Dispatch view-badges event when card is clicked */
+    handleClick() {
+      this.element.dispatchEvent(new CustomEvent('view-badges', { bubbles: true }));
+    }
+
+    /**
+     * Dispatch track-select event for track badge clicks
+     * @param {Event} e - Click event
+     * @param {string} track - Track identifier ('client' or 'server')
+     */
+    selectTrack(e, track) {
+      e.stopPropagation();
+      this.element.dispatchEvent(
+        new CustomEvent('track-select', {
+          bubbles: true,
+          detail: { track }
+        })
+      );
+    }
+  }
+);

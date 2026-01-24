@@ -1,19 +1,29 @@
 /**
  * @fileoverview HTML template for the gamified learning hub webview
+ * Uses hyper-element custom components for reactive rendering
  */
 
 /**
  * Generate the HTML content for the hub webview
  * @param {object} params - Template parameters
  * @param {string} params.cssUri - URI for the CSS file
- * @param {string} params.jsUri - URI for the JavaScript file
  * @param {string} params.badgeSvgsUri - URI for the badge SVGs JavaScript file
- * @param {string} params.badgesUri - URI for the badges directory
  * @param {string} params.cspSource - Content Security Policy source
  * @param {string} params.nonce - Nonce for script security
+ * @param {string} params.hyperHtmlUri - URI for hyperhtml library
+ * @param {string} params.hyperElementUri - URI for hyper-element library
+ * @param {object} params.componentUris - URIs for component scripts
  * @returns {string} HTML content
  */
-function getHubTemplate({ cssUri, jsUri, badgeSvgsUri, badgesUri, cspSource, nonce }) {
+function getHubTemplate({
+  cssUri,
+  badgeSvgsUri,
+  cspSource,
+  nonce,
+  hyperHtmlUri,
+  hyperElementUri,
+  componentUris
+}) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,84 +33,26 @@ function getHubTemplate({ cssUri, jsUri, badgeSvgsUri, badgesUri, cspSource, non
   <link rel="stylesheet" href="${cssUri}">
   <title>api-ape Hub</title>
 </head>
-<body data-badges-uri="${badgesUri}">
-  <div id="app">
-    <!-- Header Section -->
-    <div id="header-section" class="section">
-      <div id="level-card">
-        <div id="level-title">Loading...</div>
-        <div id="xp-bar"><div id="xp-fill"></div></div>
-        <div id="xp-text">0 / 0 XP</div>
-        <div id="track-badges">
-          <div class="track-badge" id="client-track" data-track="client">
-            <span class="track-icon">CL</span><span class="track-pct">0%</span>
-          </div>
-          <div class="track-badge" id="server-track" data-track="server">
-            <span class="track-icon">SV</span><span class="track-pct">0%</span>
-          </div>
-        </div>
-      </div>
-    </div>
+<body>
+  <!-- Root hyper-element component -->
+  <ape-hub></ape-hub>
 
-    <!-- Current Quest Section -->
-    <div id="quest-section" class="section">
-      <div class="section-header">CURRENT QUEST</div>
-      <div id="quest-card" class="card">
-        <div id="quest-title">No active quest</div>
-        <div id="quest-description"></div>
-        <div id="quest-progress">
-          <div id="quest-progress-bar"><div id="quest-progress-fill"></div></div>
-          <span id="quest-progress-text"></span>
-        </div>
-        <div id="quest-actions">
-          <button id="quest-continue" class="btn primary">Continue</button>
-          <button id="quest-skip" class="btn secondary">Skip</button>
-        </div>
-      </div>
-      <div id="no-quest-card" class="card hidden">
-        <div id="no-quest-text">Select a quest to begin</div>
-        <button id="suggest-quest" class="btn primary">Suggest Quest</button>
-      </div>
-    </div>
+  <!-- Load hyper-element libraries -->
+  <script nonce="${nonce}" src="${hyperHtmlUri}"></script>
+  <script nonce="${nonce}" src="${hyperElementUri}"></script>
 
-    <!-- Skill Trees Section -->
-    <div id="skills-section" class="section">
-      <div class="section-header">SKILL TREES <span id="skills-toggle" class="toggle-icon">&gt;</span></div>
-      <div id="skills-content" class="collapsible">
-        <div class="skill-tree">
-          <div class="skill-tree-label">CLIENT PATH:</div>
-          <div class="skill-tree-nodes" id="client-skill-nodes"></div>
-        </div>
-        <div class="skill-tree">
-          <div class="skill-tree-label">SERVER PATH:</div>
-          <div class="skill-tree-nodes" id="server-skill-nodes"></div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- Modals -->
-  <div id="modal-backdrop" class="hidden"></div>
-  <div id="badge-modal" class="modal hidden">
-    <div class="modal-header"><span>BADGE COLLECTION</span><button class="modal-close">&times;</button></div>
-    <div class="modal-content" id="badge-modal-content"></div>
-  </div>
-  <div id="quest-modal" class="modal hidden">
-    <div class="modal-header"><span id="quest-modal-title">Quest</span><button class="modal-close">&times;</button></div>
-    <div class="modal-content" id="quest-modal-content"></div>
-  </div>
-  <div id="recap-modal" class="modal hidden">
-    <div class="modal-header"><span id="recap-modal-title">Recap</span><button class="modal-close">&times;</button></div>
-    <div class="modal-content" id="recap-modal-content"></div>
-  </div>
-  <div id="badge-unlock-toast" class="toast hidden">
-    <div class="toast-icon">T</div>
-    <div class="toast-content"><div class="toast-title">Badge Unlocked!</div><div class="toast-badge-name"></div><div class="toast-xp">+0 XP</div></div>
-  </div>
-
+  <!-- Load badge SVGs (global for components) -->
   <script nonce="${nonce}" src="${badgeSvgsUri}"></script>
-  <script nonce="${nonce}" src="${jsUri}"></script>
+
+  <!-- Load components in dependency order -->
+  <script nonce="${nonce}" src="${componentUris.levelCard}"></script>
+  <script nonce="${nonce}" src="${componentUris.questSection}"></script>
+  <script nonce="${nonce}" src="${componentUris.skillsSection}"></script>
+  <script nonce="${nonce}" src="${componentUris.modalBackdrop}"></script>
+  <script nonce="${nonce}" src="${componentUris.badgeModal}"></script>
+  <script nonce="${nonce}" src="${componentUris.questModal}"></script>
+  <script nonce="${nonce}" src="${componentUris.toast}"></script>
+  <script nonce="${nonce}" src="${componentUris.hub}"></script>
 </body>
 </html>`;
 }

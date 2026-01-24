@@ -35,8 +35,8 @@ for file in $STAGED_FILES; do
         continue
     fi
 
-    # Skip test files
-    if echo "$file" | grep -qE '\.test\.js$'; then
+    # Skip test files and minified vendor files
+    if echo "$file" | grep -qE '\.test\.js$|\.min\.js$'; then
         continue
     fi
 

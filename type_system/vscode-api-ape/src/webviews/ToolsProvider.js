@@ -143,11 +143,26 @@ class ToolsProvider {
    * @returns {string}
    */
   _getHtmlContent(webview) {
+    const webviewsPath = vscode.Uri.joinPath(this.context.extensionUri, "src", "webviews");
+    const libPath = vscode.Uri.joinPath(webviewsPath, "lib");
+    const componentsPath = vscode.Uri.joinPath(webviewsPath, "components", "tools");
+
     return getToolsTemplate({
-      cssUri: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "src", "webviews", "tools.css")),
-      jsUri: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "src", "webviews", "tools.js")),
+      cssUri: webview.asWebviewUri(vscode.Uri.joinPath(webviewsPath, "tools.css")),
       cspSource: webview.cspSource,
       nonce: this._getNonce(),
+      // hyper-element libraries
+      hyperHtmlUri: webview.asWebviewUri(vscode.Uri.joinPath(libPath, "hyperhtml.min.js")),
+      hyperElementUri: webview.asWebviewUri(vscode.Uri.joinPath(libPath, "hyper-element.min.js")),
+      // Component URIs
+      componentUris: {
+        tabBar: webview.asWebviewUri(vscode.Uri.joinPath(componentsPath, "ape-tab-bar.js")),
+        endpointsPanel: webview.asWebviewUri(vscode.Uri.joinPath(componentsPath, "ape-endpoints-panel.js")),
+        configPanel: webview.asWebviewUri(vscode.Uri.joinPath(componentsPath, "ape-config-panel.js")),
+        docsPanel: webview.asWebviewUri(vscode.Uri.joinPath(componentsPath, "ape-docs-panel.js")),
+        modal: webview.asWebviewUri(vscode.Uri.joinPath(componentsPath, "ape-modal.js")),
+        tools: webview.asWebviewUri(vscode.Uri.joinPath(componentsPath, "ape-tools.js")),
+      },
     });
   }
 
