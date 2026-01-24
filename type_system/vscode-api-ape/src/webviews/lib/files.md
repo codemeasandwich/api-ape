@@ -12,20 +12,21 @@ This module contains third-party libraries and utilities for VS Code webview com
 
 ```
 lib/
-├── hyperhtml.min.js      # hyperHTML library for reactive DOM updates
-├── hyper-element.min.js  # Custom element base class using hyperHTML
+├── hyperElement.min.js   # Combined hyperHTML + hyper-element bundle (fetched at build time)
 └── hyper-utils.js        # VS Code bridge utilities for hyper-element
 ```
 
 ## Files
 
-### `hyperhtml.min.js`
+### `hyperElement.min.js`
 
-Third-party hyperHTML library (v2.x) providing lightweight reactive DOM updates via tagged template literals. Creates efficient DOM diffing without a virtual DOM. Exposes `hyperHTML` global.
+Combined bundle fetched from jsDelivr CDN at build time via `npm run fetch:hyper-element`. Includes:
+- hyperHTML library for reactive DOM updates via tagged template literals
+- hyper-element custom element base class
 
-### `hyper-element.min.js`
+Components extend `hyperElement` and implement `setup()` and `render()` methods. Exposes `hyperHTML` and `hyperElement` globals.
 
-Third-party hyper-element library providing a custom element base class that integrates with hyperHTML. Components extend `hyperElement` and implement `setup()` and `render()` methods. Exposes `hyperElement` global.
+**Note:** This file is not committed to source control. It is downloaded during `npm install` (via prepare script) or `vsce package` (via prepublish script).
 
 ### `hyper-utils.js`
 

@@ -151,9 +151,8 @@ class ToolsProvider {
       cssUri: webview.asWebviewUri(vscode.Uri.joinPath(webviewsPath, "tools.css")),
       cspSource: webview.cspSource,
       nonce: this._getNonce(),
-      // hyper-element libraries
-      hyperHtmlUri: webview.asWebviewUri(vscode.Uri.joinPath(libPath, "hyperhtml.min.js")),
-      hyperElementUri: webview.asWebviewUri(vscode.Uri.joinPath(libPath, "hyper-element.min.js")),
+      // hyper-element bundle (includes hyperhtml)
+      hyperElementUri: webview.asWebviewUri(vscode.Uri.joinPath(libPath, "hyperElement.min.js")),
       // Component URIs
       componentUris: {
         tabBar: webview.asWebviewUri(vscode.Uri.joinPath(componentsPath, "ape-tab-bar.js")),

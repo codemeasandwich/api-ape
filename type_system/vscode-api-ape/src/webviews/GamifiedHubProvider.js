@@ -306,7 +306,7 @@ class GamifiedHubProvider {
     const uri = (p) => webview.asWebviewUri(vscode.Uri.joinPath(wv, p));
     const comp = ["levelCard", "questSection", "skillsSection", "modalBackdrop", "badgeModal", "questModal", "toast", "hub"];
     const compUris = Object.fromEntries(comp.map((c) => [c, uri(`components/hub/ape-${c.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase())}.js`)]));
-    return getHubTemplate({ cssUri: uri("hub.css"), badgeSvgsUri: uri("badgeSvgs.js"), cspSource: webview.cspSource, nonce: this._getNonce(), hyperHtmlUri: uri("lib/hyperhtml.min.js"), hyperElementUri: uri("lib/hyper-element.min.js"), componentUris: compUris });
+    return getHubTemplate({ cssUri: uri("hub.css"), badgeSvgsUri: uri("badgeSvgs.js"), cspSource: webview.cspSource, nonce: this._getNonce(), hyperElementUri: uri("lib/hyperElement.min.js"), componentUris: compUris });
   }
 
   /**

@@ -138,15 +138,9 @@ customElements.define(
       }
     }
 
-    /**
-     * Send message to VS Code extension
-     * @param {Object} message - Message to send
-     */
+    /** Send message to VS Code extension @param {Object} message - Message to send */
     postMessage(message) { if (this.vscode) this.vscode.postMessage(message); }
-    /**
-     * Select a learning track
-     * @param {string} track - Track identifier
-     */
+    /** Select a learning track @param {string} track - Track identifier */
     selectTrack(track) { this.postMessage({ command: 'selectTrack', track }); }
     /** Continue the active quest */
     continueQuest() { if (this.state.activeQuest) this.postMessage({ command: 'continueQuest', questId: this.state.activeQuest.id }); }
@@ -159,11 +153,7 @@ customElements.define(
       for (const qid of quests) { if (!completed.includes(qid)) { this.postMessage({ command: 'startQuest', questId: qid }); return; } }
       alert("All quests complete! You've mastered api-ape!");
     }
-
-    /**
-     * Start quest for a specific badge
-     * @param {string} badgeId - Badge to start quest for
-     */
+    /** Start quest for a specific badge @param {string} badgeId - Badge to start quest for */
     startQuestForBadge(badgeId) {
       const badge = Object.values(this.state.badges || {}).flatMap((cat) => cat.badges || []).find((b) => b.id === badgeId);
       if (badge && !badge.earned && badge.requirements?.questId) { this.closeModals(); this.postMessage({ command: 'startQuest', questId: badge.requirements.questId }); }
@@ -172,10 +162,7 @@ customElements.define(
     toggleSkills() { this.state.skillsExpanded = !this.state.skillsExpanded; this.onStoreChange(); }
     /** Close all open modals */
     closeModals() { this.state.modals = { badge: { open: false }, quest: { open: false, quest: null, step: 0 } }; this.state.validationResults = null; this.onStoreChange(); }
-    /**
-     * Set current quest step
-     * @param {number} step - Step index
-     */
+    /** Set current quest step @param {number} step - Step index */
     setQuestStep(step) { this.state.modals.quest.step = step; this.state.validationResults = null; this.onStoreChange(); }
     /** Complete current quest step and notify extension */
     completeQuestStep() { const { quest, step } = this.state.modals.quest; if (quest) this.postMessage({ command: 'completeQuestStep', questId: quest.id, stepIndex: step }); }
@@ -187,9 +174,12 @@ customElements.define(
      */
     render(Html, state) {
       if (!state.summary) {
-        return Html`<main class="app"><article class="level-card"><h2 class="level-title">Loading...</h2></article></main>`;
+        return Html`<main class="app">
+          <article class="level-card">
+            <h2 class="level-title">Loading...</h2>
+          </article>
+        </main>`;
       }
-
       Html`
         <main class="app">
           <ape-level-card summary=${state.summary}>
@@ -210,8 +200,7 @@ customElements.define(
           ? Html.wire(this, ':badge-modal')`
             <ape-modal-backdrop></ape-modal-backdrop>
             <ape-badge-modal badges=${state.badges}>
-            </ape-badge-modal>
-          `
+            </ape-badge-modal>`
           : ''}
 
         ${state.modals.quest.open
@@ -221,8 +210,7 @@ customElements.define(
               quest=${state.modals.quest.quest}
               step=${state.modals.quest.step}
               validation=${state.validationResults}>
-            </ape-quest-modal>
-          `
+            </ape-quest-modal>`
           : ''}
 
         ${state.toast.visible
@@ -232,8 +220,7 @@ customElements.define(
               xp=${state.toast.xpEarned}
               leveledUp=${state.toast.leveledUp}
               newLevel=${state.toast.newLevel}>
-            </ape-badge-toast>
-          `
+            </ape-badge-toast>`
           : ''}
       `;
     }

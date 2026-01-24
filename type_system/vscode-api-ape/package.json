@@ -247,8 +247,10 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "echo 'No compile step needed'"
+    "fetch:hyper-element": "node scripts/download-hyper-element.js",
+    "vscode:prepublish": "npm run fetch:hyper-element",
+    "compile": "echo 'No compile step needed'",
+    "prepare": "npm run fetch:hyper-element"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"

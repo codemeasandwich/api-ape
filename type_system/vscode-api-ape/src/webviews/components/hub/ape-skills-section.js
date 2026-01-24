@@ -15,7 +15,7 @@ customElements.define(
 
       Html`
         <section class="section">
-          <button class="section-header" onclick=${() => this.handleToggle()}>
+          <button class="section-header" onclick=${this.handleToggle}>
             SKILL TREES
             <span class="toggle-icon">${expanded ? 'v' : '>'}</span>
           </button>
@@ -56,44 +56,46 @@ customElements.define(
 
       Html`
         <section class="skill-tree">
-          <h3 class="skill-tree-label">${track.toUpperCase()} PATH:</h3>
+          <h3 class="skill-tree-label">${
+            track.toUpperCase()
+          } PATH:</h3>
           <ul class="skill-tree-nodes">
             ${nodes.map((node, index) => {
               const prevEarned = index > 0 && nodes[index - 1].earned;
               return Html.wire(node, ':node')`
                 ${index > 0
                   ? Html.wire(node, ':conn')`
-                    <li class="skill-connector${prevEarned ? ' earned' : ''}"></li>
-                  `
+                    <li class="skill-connector${prevEarned ? ' earned' : ''}"></li>`
                   : ''}
                 <li>
                   <button
-                    class="skill-node ${node.earned ? 'earned' : node.inProgress ? 'in-progress' : 'locked'}"
+                    class="skill-node ${
+                      node.earned     ? 'earned' :
+                      node.inProgress ? 'in-progress' 
+                                      : 'locked'}"
                     title="${node.id}"
                     onclick=${() => this.handleNodeClick(node)}>
                     ${node.label}
                   </button>
-                </li>
-              `;
+                </li>`;
             })}
           </ul>
-        </section>
-      `;
-    }
+        </section>`;
+    } // END render
 
     /**
      * Handle click on skill node - starts quest for unearned badges
      * @param {Object} node - Skill node with id, label, earned status
      */
     handleNodeClick(node) {
-      if (!node.earned) {
+      if ( ! node.earned) {
         this.element.dispatchEvent(
           new CustomEvent('skill-click', {
             bubbles: true,
             detail: { nodeId: node.id }
-          })
-        );
-      }
-    }
+          }) // END CustomEvent
+        ); // END dispatchEvent
+      } // END if
+    } // END handleNodeClick
   }
 );

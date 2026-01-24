@@ -9,8 +9,7 @@
  * @param {string} params.cssUri - URI for the CSS file
  * @param {string} params.cspSource - Content Security Policy source
  * @param {string} params.nonce - Nonce for script security
- * @param {string} params.hyperHtmlUri - URI for hyperhtml library
- * @param {string} params.hyperElementUri - URI for hyper-element library
+ * @param {string} params.hyperElementUri - URI for hyper-element bundle (includes hyperhtml)
  * @param {object} params.componentUris - URIs for component scripts
  * @returns {string} HTML content
  */
@@ -18,7 +17,6 @@ function getToolsTemplate({
   cssUri,
   cspSource,
   nonce,
-  hyperHtmlUri,
   hyperElementUri,
   componentUris
 }) {
@@ -35,8 +33,7 @@ function getToolsTemplate({
   <!-- Root hyper-element component -->
   <ape-tools></ape-tools>
 
-  <!-- Load hyper-element libraries -->
-  <script nonce="${nonce}" src="${hyperHtmlUri}"></script>
+  <!-- Load hyper-element bundle (includes hyperhtml) -->
   <script nonce="${nonce}" src="${hyperElementUri}"></script>
 
   <!-- Load components in dependency order -->

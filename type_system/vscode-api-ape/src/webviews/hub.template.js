@@ -10,8 +10,7 @@
  * @param {string} params.badgeSvgsUri - URI for the badge SVGs JavaScript file
  * @param {string} params.cspSource - Content Security Policy source
  * @param {string} params.nonce - Nonce for script security
- * @param {string} params.hyperHtmlUri - URI for hyperhtml library
- * @param {string} params.hyperElementUri - URI for hyper-element library
+ * @param {string} params.hyperElementUri - URI for hyper-element bundle (includes hyperhtml)
  * @param {object} params.componentUris - URIs for component scripts
  * @returns {string} HTML content
  */
@@ -20,7 +19,6 @@ function getHubTemplate({
   badgeSvgsUri,
   cspSource,
   nonce,
-  hyperHtmlUri,
   hyperElementUri,
   componentUris
 }) {
@@ -37,8 +35,7 @@ function getHubTemplate({
   <!-- Root hyper-element component -->
   <ape-hub></ape-hub>
 
-  <!-- Load hyper-element libraries -->
-  <script nonce="${nonce}" src="${hyperHtmlUri}"></script>
+  <!-- Load hyper-element bundle (includes hyperhtml) -->
   <script nonce="${nonce}" src="${hyperElementUri}"></script>
 
   <!-- Load badge SVGs (global for components) -->

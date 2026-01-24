@@ -16,3 +16,6 @@ __snapshots__
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# VS Code extension - fetched at build time from CDN
+type_system/vscode-api-ape/src/webviews/lib/hyperElement.min.js

@@ -44,8 +44,8 @@ customElements.define(
      * @param {Function} Html - hyperHTML tagged template function
      */
     render(Html) {
-      const quest = this.quest || {};
-      const progress = this.progress || {};
+      const quest = this.attrs.quest || {};
+      const progress = this.attrs.progress || {};
       const currentStep = progress.currentStep || 0;
       const totalSteps = quest.steps?.length || 1;
       const pct = Math.round((currentStep / totalSteps) * 100);
