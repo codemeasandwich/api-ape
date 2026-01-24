@@ -10,23 +10,20 @@ customElements.define(
      * @param {Function} Html - hyperHTML tagged template function
      */
     render(Html) {
-      const trees = this.dataset.trees ? JSON.parse(this.dataset.trees) : { client: [], server: [] };
-      const expanded = this.dataset.expanded === 'true';
-
       Html`
         <section class="section">
           <button class="section-header" onclick=${() => this.handleToggle()}>
             SKILL TREES
-            <span class="toggle-icon">${expanded ? 'v' : '>'}</span>
+            <span class="toggle-icon">${this.expanded ? 'v' : '>'}</span>
           </button>
-          <div class="${'collapsible' + (expanded ? ' expanded' : '')}">
+          <div class="collapsible${this.expanded ? ' expanded' : ''}">
             <ape-skill-tree
               track=${'client'}
-              nodes=${trees.client}>
+              nodes=${this.trees.client}>
             </ape-skill-tree>
             <ape-skill-tree
               track=${'server'}
-              nodes=${trees.server}>
+              nodes=${this.trees.server}>
             </ape-skill-tree>
           </div>
         </section>
@@ -63,12 +60,12 @@ customElements.define(
               return Html.wire(node, ':node')`
                 ${index > 0
                   ? Html.wire(node, ':conn')`
-                    <li class="${'skill-connector' + (prevEarned ? ' earned' : '')}"></li>
+                    <li class="skill-connector${prevEarned ? ' earned' : ''}"></li>
                   `
                   : ''}
                 <li>
                   <button
-                    class="${'skill-node ' + (node.earned ? 'earned' : node.inProgress ? 'in-progress' : 'locked')}"
+                    class="skill-node ${node.earned ? 'earned' : node.inProgress ? 'in-progress' : 'locked'}"
                     title="${node.id}"
                     onclick=${() => this.handleNodeClick(node)}>
                     ${node.label}

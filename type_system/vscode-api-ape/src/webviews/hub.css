@@ -38,6 +38,20 @@ main, section, article, header, footer, nav, aside, details, summary, dialog, ou
   display: block;
 }
 
+/* Custom elements need display: block to contain their children */
+ape-hub,
+ape-level-card,
+ape-quest-section,
+ape-quest-card,
+ape-no-quest-card,
+ape-skills-section,
+ape-modal-backdrop,
+ape-badge-modal,
+ape-quest-modal,
+ape-badge-toast {
+  display: block;
+}
+
 h1, h2, h3, h4, h5, h6 {
   font-size: inherit;
   font-weight: inherit;

@@ -10,17 +10,14 @@ customElements.define(
      * @param {Function} Html - hyperHTML tagged template function
      */
     render(Html) {
-      const quest = this.dataset.quest ? JSON.parse(this.dataset.quest) : null;
-      const progress = this.dataset.progress ? JSON.parse(this.dataset.progress) : null;
-
       Html`
         <section class="section">
           <h2 class="section-header">CURRENT QUEST</h2>
-          ${quest
+          ${this.quest
             ? Html.wire(this, ':quest-card')`
               <ape-quest-card
-                quest=${quest}
-                progress=${progress}>
+                quest=${this.quest}
+                progress=${this.progress}>
               </ape-quest-card>
             `
             : Html.wire(this, ':no-quest')`

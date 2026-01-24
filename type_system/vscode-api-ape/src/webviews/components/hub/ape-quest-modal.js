@@ -31,28 +31,24 @@ customElements.define(
      * @returns {void|*} Early return for empty quest state
      */
     render(Html) {
-      const quest = this.dataset.quest ? JSON.parse(this.dataset.quest) : null;
-      const stepIndex = parseInt(this.dataset.step, 10) || 0;
-      const validation = this.dataset.validation ? JSON.parse(this.dataset.validation) : null;
-
-      if (!quest) {
+      if (!this.quest) {
         return Html`<dialog class="modal hidden"></dialog>`;
       }
 
-      const step = quest.steps?.[stepIndex];
-      const total = quest.steps?.length || 1;
-      const isLastStep = stepIndex === total - 1;
+      const step = this.quest.steps?.[this.step];
+      const total = this.quest.steps?.length || 1;
+      const isLastStep = this.step === total - 1;
       const isChallenge = step?.type === 'challenge';
 
       Html`
         <dialog class="modal">
           <header class="modal-header">
-            <span>${quest.title}</span>
+            <span>${this.quest.title}</span>
             <button class="modal-close" onclick=${() => this.handleClose()}>&times;</button>
           </header>
           <section class="modal-content">
             <article class="quest-step">
-              <h3 class="quest-step-header">STEP ${stepIndex + 1} OF ${total}</h3>
+              <h3 class="quest-step-header">STEP ${this.step + 1} OF ${total}</h3>
               <h2 class="quest-step-title">${step?.title}</h2>
 
               ${step?.type === 'concept' || step?.type === 'complete'
@@ -92,7 +88,7 @@ customElements.define(
                       ? Html.wire(this, ':validators')`
                         <ul class="quest-validators">
                           ${step.validators.map((v, i) => {
-                            const result = validation?.[i];
+                            const result = this.validation?.[i];
                             const statusClass = result
                               ? result.passed
                                 ? 'passed'
@@ -100,7 +96,7 @@ customElements.define(
                               : '';
                             const icon = result ? (result.passed ? '\u2713' : '\u2717') : '';
                             return Html.wire(v, ':validator')`
-                              <li class="${'quest-validator ' + statusClass}">
+                              <li class="quest-validator ${statusClass}">
                                 <span class="quest-validator-icon">${icon}</span>
                                 <span>${getValidatorLabel(v)}</span>
                               </li>
@@ -113,10 +109,10 @@ customElements.define(
                 `
                 : ''}
 
-              ${validation && validation.some((r) => !r.passed)
+              ${this.validation && this.validation.some((r) => !r.passed)
                 ? Html.wire(this, ':validation-hint')`
                   <div class="validation-hint">
-                    ${validation
+                    ${this.validation
                       .filter((r) => !r.passed)
                       .map(
                         (r) =>
@@ -131,7 +127,7 @@ customElements.define(
               <footer class="quest-nav">
                 <button
                   class="btn secondary"
-                  disabled=${stepIndex === 0}
+                  disabled=${this.step === 0}
                   onclick=${() => this.handlePrev()}>
                   &lt; Prev
                 </button>

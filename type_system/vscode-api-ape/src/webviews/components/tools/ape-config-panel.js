@@ -30,7 +30,7 @@ customElements.define(
           </div>
           <div class="config-row">
             <label>Status:</label>
-            <span class="${'status-dot ' + (config.connected ? 'connected' : 'disconnected')}"></span>
+            <span class="status-dot ${config.connected ? 'connected' : 'disconnected'}"></span>
             <span>${config.connected ? 'Connected' : 'Disconnected'}</span>
           </div>
           <div class="config-checkbox">

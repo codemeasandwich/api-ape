@@ -100,7 +100,7 @@ customElements.define(
             ${recap.title}
           </button>
           <button
-            class="${'recap-bookmark' + (isBookmarked ? ' bookmarked' : '')}"
+            class="recap-bookmark${isBookmarked ? ' bookmarked' : ''}"
             data-action="bookmark"
             onclick=${(e) => this.handleClick(e)}>
             *

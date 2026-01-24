@@ -36,7 +36,7 @@ customElements.define(
      * @returns {Object} Wire object with SVG html
      */
     ToastIcon(lite) {
-      const badge = this.dataset.badge ? JSON.parse(this.dataset.badge) : null;
+      const badge = this.badge || null;
       const iconName = toastIconMap[badge?.icon] || 'star';
       // badgeSvgs is a global from badgeSvgs.js
       const svg = typeof badgeSvgs !== 'undefined' ? badgeSvgs[iconName] || badgeSvgs.star : '';
@@ -48,19 +48,14 @@ customElements.define(
      * @param {Function} Html - hyperHTML tagged template function
      */
     render(Html) {
-      const badge = this.dataset.badge ? JSON.parse(this.dataset.badge) : {};
-      const xpEarned = parseInt(this.dataset.xp, 10) || 0;
-      const leveledUp = this.dataset.leveledUp === 'true';
-      const newLevel = parseInt(this.dataset.newLevel, 10) || 0;
-
       Html`
         <output class="toast">
           <div class="toast-icon">${{ ToastIcon: Html.lite }}</div>
           <div class="toast-content">
             <strong class="toast-title">Badge Unlocked!</strong>
-            <p class="toast-badge-name">${badge.name}</p>
+            <p class="toast-badge-name">${this.badge.name}</p>
             <p class="toast-xp">
-              +${xpEarned} XP${leveledUp ? ` - Level ${newLevel}!` : ''}
+              +${this.xp} XP${this.leveledUp ? ` - Level ${this.newLevel}!` : ''}
             </p>
           </div>
         </output>

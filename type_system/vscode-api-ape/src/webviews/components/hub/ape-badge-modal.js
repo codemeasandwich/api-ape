@@ -44,7 +44,6 @@ customElements.define(
      * @param {Function} Html - hyperHTML tagged template function
      */
     render(Html) {
-      const badges = this.dataset.badges ? JSON.parse(this.dataset.badges) : {};
       const categories = ['fundamentals', 'realtime', 'security', 'advanced'];
 
       Html`
@@ -55,7 +54,7 @@ customElements.define(
           </header>
           <section class="modal-content">
             ${categories.map((cat) => {
-              const category = badges[cat];
+              const category = this.badges[cat];
               if (!category?.badges?.length) return '';
               const earned = category.badges.filter((b) => b.earned).length;
               return Html.wire(category, ':cat')`
@@ -114,14 +113,11 @@ customElements.define(
      */
     render(Html) {
       const badge = this.badge || {};
-      const iconName = this.icon || 'star';
       const status = badge.earned ? 'earned' : badge.inProgress ? 'in-progress' : 'locked';
 
       Html`
         <div
-          class="${'badge-item ' + status}"
-          data-badge-id="${badge.id}"
-          data-icon="${iconName}"
+          class="badge-item ${status}"
           title="${badge.description}"
           onclick=${() => this.handleClick()}>
           <div class="badge-icon">${{ BadgeSvg: Html.lite }}</div>

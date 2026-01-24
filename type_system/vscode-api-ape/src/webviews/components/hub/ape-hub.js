@@ -192,26 +192,24 @@ customElements.define(
 
       Html`
         <main class="app">
-          <ape-level-card
-            data-summary='${JSON.stringify(state.summary)}'>
+          <ape-level-card summary=${state.summary}>
           </ape-level-card>
 
           <ape-quest-section
-            data-quest='${JSON.stringify(state.activeQuest)}'
-            data-progress='${JSON.stringify(state.questProgress)}'>
+            quest=${state.activeQuest}
+            progress=${state.questProgress}>
           </ape-quest-section>
 
           <ape-skills-section
-            data-trees='${JSON.stringify(state.skillTrees)}'
-            data-expanded="${state.skillsExpanded}">
+            trees=${state.skillTrees}
+            expanded=${state.skillsExpanded}>
           </ape-skills-section>
         </main>
 
         ${state.modals.badge.open
           ? Html.wire(this, ':badge-modal')`
             <ape-modal-backdrop></ape-modal-backdrop>
-            <ape-badge-modal
-              data-badges='${JSON.stringify(state.badges)}'>
+            <ape-badge-modal badges=${state.badges}>
             </ape-badge-modal>
           `
           : ''}
@@ -220,9 +218,9 @@ customElements.define(
           ? Html.wire(this, ':quest-modal')`
             <ape-modal-backdrop></ape-modal-backdrop>
             <ape-quest-modal
-              data-quest='${JSON.stringify(state.modals.quest.quest)}'
-              data-step="${state.modals.quest.step}"
-              data-validation='${JSON.stringify(state.validationResults)}'>
+              quest=${state.modals.quest.quest}
+              step=${state.modals.quest.step}
+              validation=${state.validationResults}>
             </ape-quest-modal>
           `
           : ''}
@@ -230,10 +228,10 @@ customElements.define(
         ${state.toast.visible
           ? Html.wire(this, ':toast')`
             <ape-badge-toast
-              data-badge='${JSON.stringify(state.toast.badge)}'
-              data-xp="${state.toast.xpEarned}"
-              data-leveled-up="${state.toast.leveledUp}"
-              data-new-level="${state.toast.newLevel}">
+              badge=${state.toast.badge}
+              xp=${state.toast.xpEarned}
+              leveledUp=${state.toast.leveledUp}
+              newLevel=${state.toast.newLevel}>
             </ape-badge-toast>
           `
           : ''}

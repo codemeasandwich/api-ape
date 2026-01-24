@@ -23,7 +23,7 @@ customElements.define(
             (tab) =>
               Html.wire(tab, ':tab')`
               <button
-                class="${'tool-tab' + (active === tab.id ? ' active' : '')}"
+                class="tool-tab${active === tab.id ? ' active' : ''}"
                 onclick=${() => this.selectTab(tab.id)}>
                 ${tab.label}
               </button>
