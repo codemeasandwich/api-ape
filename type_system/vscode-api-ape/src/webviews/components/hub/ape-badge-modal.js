@@ -48,12 +48,12 @@ customElements.define(
       const categories = ['fundamentals', 'realtime', 'security', 'advanced'];
 
       Html`
-        <div id="badge-modal" class="modal">
+        <div class="modal">
           <div class="modal-header">
             <span>BADGE COLLECTION</span>
             <button class="modal-close" onclick=${() => this.handleClose()}>&times;</button>
           </div>
-          <div class="modal-content" id="badge-modal-content">
+          <div class="modal-content">
             ${categories.map((cat) => {
               const category = badges[cat];
               if (!category?.badges?.length) return '';

@@ -14,7 +14,7 @@ customElements.define(
       const progress = this.dataset.progress ? JSON.parse(this.dataset.progress) : null;
 
       Html`
-        <div id="quest-section" class="section">
+        <div class="section">
           <div class="section-header">CURRENT QUEST</div>
           ${quest
             ? Html.wire(this, ':quest-card')`
@@ -51,20 +51,20 @@ customElements.define(
       const pct = Math.round((currentStep / totalSteps) * 100);
 
       Html`
-        <div id="quest-card" class="card">
-          <div id="quest-title"><span>!</span> ${quest.title}</div>
-          <div id="quest-description">${quest.description}</div>
-          <div id="quest-progress">
-            <div id="quest-progress-bar">
-              <div id="quest-progress-fill" style="width: ${pct}%"></div>
+        <div class="card quest-card">
+          <div class="quest-title"><span>!</span> ${quest.title}</div>
+          <div class="quest-description">${quest.description}</div>
+          <div class="quest-progress">
+            <div class="quest-progress-bar">
+              <div class="quest-progress-fill" style="width: ${pct}%"></div>
             </div>
-            <span id="quest-progress-text">${currentStep}/${totalSteps}</span>
+            <span class="quest-progress-text">${currentStep}/${totalSteps}</span>
           </div>
-          <div id="quest-actions">
-            <button id="quest-continue" class="btn primary" onclick=${() => this.handleContinue()}>
+          <div class="quest-actions">
+            <button class="btn primary" onclick=${() => this.handleContinue()}>
               Continue
             </button>
-            <button id="quest-skip" class="btn secondary" onclick=${() => this.handleSkip()}>
+            <button class="btn secondary" onclick=${() => this.handleSkip()}>
               Skip
             </button>
           </div>
@@ -96,9 +96,9 @@ customElements.define(
      */
     render(Html) {
       Html`
-        <div id="no-quest-card" class="card">
-          <div id="no-quest-text">Select a quest to begin</div>
-          <button id="suggest-quest" class="btn primary" onclick=${() => this.handleSuggest()}>
+        <div class="card no-quest-card">
+          <div class="no-quest-text">Select a quest to begin</div>
+          <button class="btn primary" onclick=${() => this.handleSuggest()}>
             Suggest Quest
           </button>
         </div>

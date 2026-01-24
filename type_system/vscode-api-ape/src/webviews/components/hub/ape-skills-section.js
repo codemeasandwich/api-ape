@@ -14,12 +14,12 @@ customElements.define(
       const expanded = this.dataset.expanded === 'true';
 
       Html`
-        <div id="skills-section" class="section">
+        <div class="section">
           <div class="section-header" onclick=${() => this.handleToggle()}>
             SKILL TREES
-            <span id="skills-toggle" class="toggle-icon">${expanded ? 'v' : '>'}</span>
+            <span class="toggle-icon">${expanded ? 'v' : '>'}</span>
           </div>
-          <div id="skills-content" class="${'collapsible' + (expanded ? ' expanded' : '')}">
+          <div class="${'collapsible' + (expanded ? ' expanded' : '')}">
             <ape-skill-tree
               track=${'client'}
               nodes=${trees.client}>
@@ -57,7 +57,7 @@ customElements.define(
       Html`
         <div class="skill-tree">
           <div class="skill-tree-label">${track.toUpperCase()} PATH:</div>
-          <div class="skill-tree-nodes" id="${track}-skill-nodes">
+          <div class="skill-tree-nodes">
             ${nodes.map((node, index) => {
               const prevEarned = index > 0 && nodes[index - 1].earned;
               return Html.wire(node, ':node')`

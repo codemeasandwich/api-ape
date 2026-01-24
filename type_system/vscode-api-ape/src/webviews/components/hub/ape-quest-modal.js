@@ -36,7 +36,7 @@ customElements.define(
       const validation = this.dataset.validation ? JSON.parse(this.dataset.validation) : null;
 
       if (!quest) {
-        return Html`<div id="quest-modal" class="modal hidden"></div>`;
+        return Html`<div class="modal hidden"></div>`;
       }
 
       const step = quest.steps?.[stepIndex];
@@ -45,12 +45,12 @@ customElements.define(
       const isChallenge = step?.type === 'challenge';
 
       Html`
-        <div id="quest-modal" class="modal">
+        <div class="modal">
           <div class="modal-header">
-            <span id="quest-modal-title">${quest.title}</span>
+            <span>${quest.title}</span>
             <button class="modal-close" onclick=${() => this.handleClose()}>&times;</button>
           </div>
-          <div class="modal-content" id="quest-modal-content">
+          <div class="modal-content">
             <div class="quest-step">
               <div class="quest-step-header">STEP ${stepIndex + 1} OF ${total}</div>
               <div class="quest-step-title">${step?.title}</div>

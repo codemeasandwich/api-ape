@@ -15,7 +15,7 @@ customElements.define(
       const bookmarkedRecaps = recaps.filter((r) => bookmarked.includes(r.id));
 
       Html`
-        <div id="docs-tab" class="tool-panel active">
+        <div class="tool-panel active">
           <div class="docs-section">
             <div class="docs-label">RECENT RECAPS</div>
             <ape-recap-list

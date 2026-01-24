@@ -15,11 +15,10 @@ customElements.define(
       const filter = this.filter || '';
 
       Html`
-        <div id="endpoints-tab" class="tool-panel active">
+        <div class="tool-panel active">
           <div class="tool-search">
             <input
               type="text"
-              id="endpoint-search"
               placeholder="Search endpoints..."
               value="${filter}"
               oninput=${(e) => this.handleFilter(e.target.value)}>
@@ -72,7 +71,7 @@ customElements.define(
 
       if (error) {
         return Html`
-          <div id="endpoints-tree">
+          <div class="endpoints-tree">
             <div class="text-muted" style="font-size:11px;padding:8px;color:var(--error-color);">
               ${error}
             </div>
@@ -82,7 +81,7 @@ customElements.define(
 
       if (!endpoints.length) {
         return Html`
-          <div id="endpoints-tree">
+          <div class="endpoints-tree">
             <div class="text-muted" style="font-size:11px;padding:8px;">No endpoints found</div>
           </div>
         `;
@@ -105,7 +104,7 @@ customElements.define(
         .filter((g) => g.endpoints.length > 0);
 
       Html`
-        <div id="endpoints-tree">
+        <div class="endpoints-tree">
           ${filteredGroups.map(
             (group) =>
               Html.wire(group, ':group')`

@@ -11,7 +11,7 @@ customElements.define(
      */
     render(Html) {
       Html`
-        <div id="modal-backdrop" onclick=${() => this.handleClose()}></div>
+        <div class="modal-backdrop" onclick=${() => this.handleClose()}></div>
       `;
     }
 

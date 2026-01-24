@@ -187,11 +187,11 @@ customElements.define(
      */
     render(Html, state) {
       if (!state.summary) {
-        return Html`<div id="app"><div id="level-card"><div id="level-title">Loading...</div></div></div>`;
+        return Html`<div class="app"><div class="level-card"><div class="level-title">Loading...</div></div></div>`;
       }
 
       Html`
-        <div id="app">
+        <div class="app">
           <ape-level-card
             data-summary='${JSON.stringify(state.summary)}'>
           </ape-level-card>

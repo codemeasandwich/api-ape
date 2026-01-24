@@ -42,7 +42,7 @@ body {
   overflow-x: hidden;
 }
 
-#app {
+.app {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -95,21 +95,21 @@ body {
    Level Card (Header)
    ============================================================================= */
 
-#level-card {
+.level-card {
   background: var(--bg-secondary);
   border-radius: 6px;
   padding: 12px;
   text-align: center;
 }
 
-#level-title {
+.level-title {
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 8px;
   color: var(--accent-color);
 }
 
-#xp-bar {
+.xp-bar {
   height: 8px;
   background: var(--bg-hover);
   border-radius: 4px;
@@ -117,7 +117,7 @@ body {
   margin-bottom: 4px;
 }
 
-#xp-fill {
+.xp-fill {
   height: 100%;
   background: var(--xp-bar-bg);
   border-radius: 4px;
@@ -125,13 +125,13 @@ body {
   width: 0%;
 }
 
-#xp-text {
+.xp-text {
   font-size: 11px;
   color: var(--text-secondary);
   margin-bottom: 12px;
 }
 
-#track-badges {
+.track-badges {
   display: flex;
   justify-content: center;
   gap: 16px;
@@ -184,12 +184,12 @@ body {
   border: 1px solid var(--border-color);
 }
 
-#quest-card,
-#no-quest-card {
+.quest-card,
+.no-quest-card {
   margin-top: 8px;
 }
 
-#quest-title {
+.quest-title {
   font-weight: 600;
   margin-bottom: 4px;
   display: flex;
@@ -197,7 +197,7 @@ body {
   gap: 6px;
 }
 
-#quest-title::before {
+.quest-title::before {
   content: "!";
   display: inline-flex;
   align-items: center;
@@ -211,20 +211,20 @@ body {
   font-weight: bold;
 }
 
-#quest-description {
+.quest-description {
   font-size: 12px;
   color: var(--text-secondary);
   margin-bottom: 12px;
 }
 
-#quest-progress {
+.quest-progress {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
 }
 
-#quest-progress-bar {
+.quest-progress-bar {
   flex: 1;
   height: 6px;
   background: var(--bg-hover);
@@ -232,29 +232,29 @@ body {
   overflow: hidden;
 }
 
-#quest-progress-fill {
+.quest-progress-fill {
   height: 100%;
   background: var(--success-color);
   transition: width 0.3s;
   width: 0%;
 }
 
-#quest-progress-text {
+.quest-progress-text {
   font-size: 11px;
   color: var(--text-secondary);
   min-width: 30px;
 }
 
-#quest-actions {
+.quest-actions {
   display: flex;
   gap: 8px;
 }
 
-#no-quest-card {
+.no-quest-card {
   text-align: center;
 }
 
-#no-quest-text {
+.no-quest-text {
   color: var(--text-secondary);
   margin-bottom: 12px;
 }
@@ -382,7 +382,7 @@ body {
    Tools Section
    ============================================================================= */
 
-#tools-tabs {
+.tools-tabs {
   display: flex;
   gap: 4px;
   margin-bottom: 12px;
@@ -439,7 +439,7 @@ body {
   border-color: var(--accent-color);
 }
 
-#endpoints-tree {
+.endpoints-tree {
   max-height: 200px;
   overflow-y: auto;
 }
@@ -585,7 +585,7 @@ body {
    Modals
    ============================================================================= */
 
-#modal-backdrop {
+.modal-backdrop {
   position: fixed;
   top: 0;
   left: 0;

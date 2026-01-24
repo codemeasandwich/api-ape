@@ -18,20 +18,20 @@ customElements.define(
       };
 
       Html`
-        <div id="config-tab" class="tool-panel active">
+        <div class="tool-panel active">
           <div class="config-row">
             <label>Server:</label>
-            <span id="config-server">${config.serverUrl}</span>
+            <span>${config.serverUrl}</span>
             <button class="btn-icon" onclick=${() => this.handleEditServer()}>E</button>
           </div>
           <div class="config-row">
             <label>Controllers:</label>
-            <span id="config-controllers">${config.controllersPath}</span>
+            <span>${config.controllersPath}</span>
           </div>
           <div class="config-row">
             <label>Status:</label>
-            <span id="config-status" class="${'status-dot ' + (config.connected ? 'connected' : 'disconnected')}"></span>
-            <span id="config-status-text">${config.connected ? 'Connected' : 'Disconnected'}</span>
+            <span class="${'status-dot ' + (config.connected ? 'connected' : 'disconnected')}"></span>
+            <span>${config.connected ? 'Connected' : 'Disconnected'}</span>
           </div>
           <div class="config-checkbox">
             <input type="checkbox" id="config-autogen" checked=${config.autoGenerate}>

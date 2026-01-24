@@ -174,7 +174,7 @@ customElements.define(
      */
     render(Html, state) {
       Html`
-        <div id="app">
+        <div class="app">
           <ape-tab-bar
             data-active="${state.activeTab}">
           </ape-tab-bar>

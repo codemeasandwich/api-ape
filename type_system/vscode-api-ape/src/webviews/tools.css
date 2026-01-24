@@ -36,7 +36,7 @@ body {
   overflow-x: hidden;
 }
 
-#app {
+.app {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -103,7 +103,7 @@ body {
    Tools Tabs
    ============================================================================= */
 
-#tools-tabs {
+.tools-tabs {
   display: flex;
   gap: 4px;
   margin-bottom: 12px;
@@ -163,7 +163,7 @@ body {
   border-color: var(--accent-color);
 }
 
-#endpoints-tree {
+.endpoints-tree {
   max-height: calc(100vh - 150px);
   overflow-y: auto;
 }
@@ -315,7 +315,7 @@ body {
    Modals
    ============================================================================= */
 
-#modal-backdrop {
+.modal-backdrop {
   position: fixed;
   top: 0;
   left: 0;

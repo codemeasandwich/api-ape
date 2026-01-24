@@ -14,24 +14,22 @@ customElements.define(
       const xpTotal = summary.xp + (summary.levelProgress?.required - summary.levelProgress?.current);
 
       Html`
-        <div id="header-section" class="section">
-          <div id="level-card" onclick=${() => this.handleClick()}>
-            <div id="level-title">LEVEL ${summary.level}: ${summary.levelTitle}</div>
-            <div id="xp-bar">
-              <div id="xp-fill" style="width: ${summary.levelProgress?.percentage || 0}%"></div>
+        <div class="section">
+          <div class="level-card" onclick=${() => this.handleClick()}>
+            <div class="level-title">LEVEL ${summary.level}: ${summary.levelTitle}</div>
+            <div class="xp-bar">
+              <div class="xp-fill" style="width: ${summary.levelProgress?.percentage || 0}%"></div>
             </div>
-            <div id="xp-text">${summary.xp} / ${xpTotal} XP</div>
-            <div id="track-badges">
+            <div class="xp-text">${summary.xp} / ${xpTotal} XP</div>
+            <div class="track-badges">
               <div
                 class="${'track-badge' + (summary.track === 'client' ? ' selected' : '')}"
-                id="client-track"
                 onclick=${(e) => this.selectTrack(e, 'client')}>
                 <span class="track-icon">CL</span>
                 <span class="track-pct">${summary.clientProgress}%</span>
               </div>
               <div
                 class="${'track-badge' + (summary.track === 'server' ? ' selected' : '')}"
-                id="server-track"
                 onclick=${(e) => this.selectTrack(e, 'server')}>
                 <span class="track-icon">SV</span>
                 <span class="track-pct">${summary.serverProgress}%</span>

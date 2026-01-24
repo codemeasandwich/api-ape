@@ -54,7 +54,7 @@ customElements.define(
       const newLevel = parseInt(this.dataset.newLevel, 10) || 0;
 
       Html`
-        <div id="badge-unlock-toast" class="toast">
+        <div class="toast">
           <div class="toast-icon">${{ ToastIcon: Html.lite }}</div>
           <div class="toast-content">
             <div class="toast-title">Badge Unlocked!</div>

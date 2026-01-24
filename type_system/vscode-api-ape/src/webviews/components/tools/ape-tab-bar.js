@@ -18,7 +18,7 @@ customElements.define(
       ];
 
       Html`
-        <div id="tools-tabs">
+        <div class="tools-tabs">
           ${tabs.map(
             (tab) =>
               Html.wire(tab, ':tab')`

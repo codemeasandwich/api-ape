@@ -12,7 +12,7 @@ customElements.define(
      * Render modal backdrop overlay
      * @param {Function} Html - hyperHTML tagged template function
      */
-    render(Html) { Html`<div id="modal-backdrop" onclick=${() => this.handleClose()}></div>`; }
+    render(Html) { Html`<div class="modal-backdrop" onclick=${() => this.handleClose()}></div>`; }
     /** Dispatch close event */
     handleClose() { this.element.dispatchEvent(new CustomEvent('close', { bubbles: true })); }
   }
@@ -37,12 +37,12 @@ customElements.define(
       }
 
       Html`
-        <div id="recap-modal" class="modal">
+        <div class="modal">
           <div class="modal-header">
-            <span id="recap-modal-title">${recap.title}</span>
+            <span>${recap.title}</span>
             <button class="modal-close" onclick=${() => this.handleClose()}>&times;</button>
           </div>
-          <div class="modal-content" id="recap-modal-content">
+          <div class="modal-content">
             <div class="recap-summary">${recap.summary}</div>
 
             ${recap.methods?.length
