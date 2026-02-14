@@ -13,7 +13,7 @@
     "@types/react": "18.3.27",
     "@types/react-dom": "18.0.9",
     "api-ape": "file:../..",
-    "eslint": "^8.57.0",
+    "eslint": "^10.0.0",
     "eslint-config-next": "15.5.9",
     "next": "14.2.35",
     "react": "18.3.1",
