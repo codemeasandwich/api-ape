@@ -36,6 +36,7 @@
  */
 
 const jss = require("../../utils/jss");
+const messageHash = require("../../utils/messageHash");
 const { WebSocket: WsPolyfill } = require("../lib/ws");
 
 /**
@@ -118,13 +119,6 @@ const receiverArray = [];
  * @type {Object<string, Array<function({err: *, type: string, data: *}): void>>}
  */
 const ofTypesOb = {};
-
-/**
- * Counter for generating unique query IDs.
- * @private
- * @type {number}
- */
-let queryCounter = 0;
 
 /**
  * Queue of requests waiting to be sent when connection is established.
@@ -210,22 +204,6 @@ function notifyConnectionChange(newState) {
 }
 
 /**
- * Generates a unique query ID for request/response correlation.
- * Format: "q{timestamp36}_{counter36}" for compactness and uniqueness.
- *
- * @private
- * @function generateQueryId
- * @returns {string} Unique query identifier
- *
- * @example
- * generateQueryId() // "qlxyz123_0"
- * generateQueryId() // "qlxyz123_1"
- */
-function generateQueryId() {
-  return `q${Date.now().toString(36)}_${(queryCounter++).toString(36)}`;
-}
-
-/**
  * Sends a message over the WebSocket and returns a promise for the response.
  *
  * The message is assigned a unique query ID that correlates the request
@@ -244,7 +222,13 @@ function generateQueryId() {
  * const result = await send('/users/list', { limit: 10 })
  */
 function send(type, data, createdAt = Date.now()) {
-  const queryId = generateQueryId();
+  // Serialize the message without a queryId — the server computes the
+  // queryId by hashing the raw message string (Jenkins one-at-a-time).
+  // The client hashes the same string so both sides agree on the queryId
+  // for request/response correlation.
+  const message = jss.stringify({ type, data, createdAt });
+  const queryId = messageHash(message);
+
   return new Promise((resolve, reject) => {
     // Set up timeout for server response
     const timer = setTimeout(() => {
@@ -259,8 +243,8 @@ function send(type, data, createdAt = Date.now()) {
       else resolve(result);
     };
 
-    // Send the message with JSS encoding
-    ws.send(jss.stringify({ type, data, queryId, createdAt }));
+    // Send the pre-serialized message
+    ws.send(message);
   });
 }
 
