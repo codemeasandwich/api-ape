@@ -273,5 +273,117 @@
       "type": "quest",
       "questId": "cluster-deployment"
     }
+  },
+  "first-call": {
+    "id": "first-call",
+    "name": "First Call",
+    "description": "Make your first API request",
+    "icon": "target",
+    "track": "both",
+    "category": "achievements",
+    "xpReward": 50,
+    "requirements": {
+      "type": "action",
+      "action": "api-call",
+      "count": 1
+    }
+  },
+  "connector": {
+    "id": "connector",
+    "name": "Connector",
+    "description": "Connect to 5 different servers",
+    "icon": "link",
+    "track": "both",
+    "category": "achievements",
+    "xpReward": 100,
+    "requirements": {
+      "type": "action",
+      "action": "server-connect",
+      "count": 5
+    }
+  },
+  "broadcaster-achievement": {
+    "id": "broadcaster-achievement",
+    "name": "Broadcaster",
+    "description": "Subscribe to 10 channels",
+    "icon": "antenna",
+    "track": "client",
+    "category": "achievements",
+    "xpReward": 100,
+    "requirements": {
+      "type": "action",
+      "action": "channel-subscribe",
+      "count": 10
+    }
+  },
+  "tester": {
+    "id": "tester",
+    "name": "Tester",
+    "description": "Run 100 endpoint tests",
+    "icon": "beaker",
+    "track": "both",
+    "category": "achievements",
+    "xpReward": 200,
+    "requirements": {
+      "type": "action",
+      "action": "endpoint-test",
+      "count": 100
+    }
+  },
+  "type-master": {
+    "id": "type-master",
+    "name": "Type Master",
+    "description": "Generate SDK in 3 languages",
+    "icon": "book",
+    "track": "both",
+    "category": "achievements",
+    "xpReward": 150,
+    "requirements": {
+      "type": "action",
+      "action": "sdk-generate-language",
+      "count": 3
+    }
+  },
+  "designer": {
+    "id": "designer",
+    "name": "Designer",
+    "description": "Create 10 custom endpoints",
+    "icon": "palette",
+    "track": "server",
+    "category": "achievements",
+    "xpReward": 150,
+    "requirements": {
+      "type": "action",
+      "action": "endpoint-create",
+      "count": 10
+    }
+  },
+  "ai-whisperer": {
+    "id": "ai-whisperer",
+    "name": "AI Whisperer",
+    "description": "Ask 50 questions",
+    "icon": "lightbulb",
+    "track": "both",
+    "category": "achievements",
+    "xpReward": 150,
+    "requirements": {
+      "type": "action",
+      "action": "ai-question",
+      "count": 50
+    }
+  },
+  "speed-demon": {
+    "id": "speed-demon",
+    "name": "Speed Demon",
+    "description": "Test 10 endpoints in under 1 minute",
+    "icon": "zap",
+    "track": "both",
+    "category": "achievements",
+    "xpReward": 200,
+    "requirements": {
+      "type": "action",
+      "action": "speed-test-complete",
+      "count": 1
+    }
   }
 }

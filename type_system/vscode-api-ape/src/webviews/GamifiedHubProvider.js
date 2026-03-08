@@ -122,7 +122,7 @@ class GamifiedHubProvider {
    */
   _getBadgeData() {
     const earnedBadges = this.progressService.getBadges();
-    const categories = { fundamentals: { name: "Fundamentals", badges: [] }, realtime: { name: "Real-time", badges: [] }, security: { name: "Security", badges: [] }, advanced: { name: "Advanced", badges: [] } };
+    const categories = { fundamentals: { name: "Fundamentals", badges: [] }, realtime: { name: "Real-time", badges: [] }, security: { name: "Security", badges: [] }, advanced: { name: "Advanced", badges: [] }, achievements: { name: "Achievements", badges: [] } };
     for (const [id, badge] of Object.entries(this.badges)) {
       if (categories[badge.category]) {
         categories[badge.category].badges.push({

@@ -7,10 +7,10 @@
 const vscode = require("vscode");
 
 /** @type {number[]} XP required to reach each level (1-10) */
-const LEVEL_THRESHOLDS = [0, 500, 1200, 2100, 3200, 4500, 6000, 7700, 9600, 12000];
+const LEVEL_THRESHOLDS = [0, 100, 250, 500, 1000, 2000, 4000, 7000, 10000, 15000];
 
 /** @type {string[]} */
-const LEVEL_TITLES = ["Newbie", "Apprentice", "Explorer", "Developer", "API Explorer", "Practitioner", "Expert", "Master", "Architect", "Legend"];
+const LEVEL_TITLES = ["Newbie", "Beginner", "Explorer", "Developer", "Builder", "Expert", "Master", "Guru", "Wizard", "Legend"];
 
 class ProgressService {
   /**

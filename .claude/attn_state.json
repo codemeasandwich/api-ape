@@ -1,0 +1,19 @@
+{
+  "scores": {
+    "CLAUDE.md": 0.48999999999999994,
+    "personas/persona-tars.md": 0.43440949999999995,
+    "personas/persona-stem.md": 0.48999999999999994,
+    "personas/persona-red-queen.md": 0.16806999999999994,
+    "todo/Authentication.md": 0.48999999999999994,
+    "todo/Authorization.md": 0.48999999999999994,
+    "todo/Query.md": 0.48999999999999994,
+    "todo/Security.md": 0.48999999999999994,
+    "todo/browser.md": 0.48999999999999994,
+    "todo/implementation-checklist.md": 0.48999999999999994,
+    "todo/login.md": 0.48999999999999994,
+    "todo/session.md": 0.48999999999999994
+  },
+  "turn_count": 6,
+  "current_phase": 5,
+  "last_update": "2026-01-30T11:16:02.761Z"
+}

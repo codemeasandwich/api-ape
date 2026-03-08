@@ -22,15 +22,11 @@ customElements.define(
             </div>
             <div class="xp-text">${summary.xp != null ? `${summary.xp} / ${xpTotal} XP` : '-- / -- XP'}</div>
             <div class="track-badges">
-              <button
-                class="track-badge${summary.track === 'client' ? ' selected' : ''}"
-                onclick=${(e) => this.selectTrack(e, 'client')}>
+              <button class="track-badge${summary.track === 'client' ? ' selected' : ''}" onclick=${(e) => this.selectTrack(e, 'client')}>
                 <span class="track-icon">CL</span>
                 <span class="track-pct">${summary.clientProgress ?? '--'}%</span>
               </button>
-              <button
-                class="track-badge${summary.track === 'server' ? ' selected' : ''}"
-                onclick=${(e) => this.selectTrack(e, 'server')}>
+              <button class="track-badge${summary.track === 'server' ? ' selected' : ''}" onclick=${(e) => this.selectTrack(e, 'server')}>
                 <span class="track-icon">SV</span>
                 <span class="track-pct">${summary.serverProgress ?? '--'}%</span>
               </button>

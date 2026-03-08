@@ -51,8 +51,8 @@ customElements.define(
      * @param {Function} Html - hyperHTML tagged template function
      */
     render(Html) {
-      const track = this.track || '';
-      const nodes = this.nodes || [];
+      const track = this.attrs.track || '';
+      const nodes = this.attrs.nodes || [];
 
       Html`
         <section class="skill-tree">

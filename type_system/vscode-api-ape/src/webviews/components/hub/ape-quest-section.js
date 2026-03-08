@@ -52,8 +52,8 @@ customElements.define(
 
       Html`
         <article class="card quest-card">
-          <h3 class="quest-title"><span>!</span> ${quest.title}</h3>
-          <p class="quest-description">${quest.description}</p>
+          <h3 class="quest-title"><span>!</span> ${quest.title || 'Quest'}</h3>
+          <p class="quest-description">${quest.description || 'Loading quest details...'}</p>
           <div class="quest-progress">
             <div class="quest-progress-bar">
               <div class="quest-progress-fill" style="width: ${pct}%"></div>
