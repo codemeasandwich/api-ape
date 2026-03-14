@@ -14,8 +14,9 @@ This module enables api-ape servers to act as WebSocket clients, connecting outb
 
 ```
 client/
-├── index.js        # Main entry point (proxy-based API client)
-└── connection.js   # Client connection management
+├── index.js                 # Main entry point (proxy-based API client)
+├── connection.js            # Connection lifecycle (connect, close, send, error handling)
+└── connection-receivers.js  # Subscription registry (receivers, on, onConnectionChange)
 ```
 
 ## Files
@@ -33,8 +34,19 @@ Main entry point for the server-side WebSocket client. Provides the proxy-based 
 Manages outbound WebSocket connections from the server:
 
 - **Connection lifecycle** — Connect, disconnect, and reconnect handling
-- **Exponential backoff** — Automatic reconnection with increasing delays
+- **Auto-reconnection** — Automatic reconnection with 1-second delay
 - **Message queuing** — Queues messages during disconnection periods
+- **Fast-fail on disconnect** — Pending RPC callbacks are rejected immediately when the socket closes, with diagnostic error messages including the server URL, pending request count, and actionable fix steps
+- **Diagnostic error logging** — WebSocket errors log the server URL, pending request count, and numbered fix steps (health check commands, log inspection, firewall diagnosis, timeout configuration)
 - **JSS encoding/decoding** — Full support for extended types (Date, Set, Map, etc.)
 - **Request/response correlation** — Tracks pending requests via `queryId`
-- **Event emission** — Emits `message`, `open`, `close`, and `error` events
+- **Delegates subscriptions** — Imports receiver/subscription functions from `connection-receivers.js` via late-binding
+
+### `connection-receivers.js`
+
+Message receiver and subscription registry, extracted from `connection.js` to keep both modules under the 260-SLOC limit:
+
+- **Receiver management** — Register, remove, buffer, flush, and dispatch typed/untyped message receivers
+- **Public subscription API** — `on()`, `onConnectionChange()`, `isReady()`, `getWs()` functions
+- **Late-binding** — Uses `bindConnection()` to inject live connection state getters from `connection.js`, avoiding circular dependency
+- **Connection state tracking** — Owns `connectionState` and `connectionChangeListeners`, deduplicates state notifications

@@ -38,6 +38,7 @@
 const jss = require("../../utils/jss");
 const messageHash = require("../../utils/messageHash");
 const { WebSocket: WsPolyfill } = require("../lib/ws");
+const receivers = require("./connection-receivers");
 
 /**
  * WebSocket constructor - uses native if available, falls back to polyfill.
@@ -73,9 +74,7 @@ const ConnectionState = {
   Closing: "closing",
 };
 
-// ============================================================================
-// INTERNAL STATE
-// ============================================================================
+/* ========== INTERNAL STATE ========== */
 
 /**
  * Active WebSocket connection instance.
@@ -83,20 +82,6 @@ const ConnectionState = {
  * @type {WebSocket|null}
  */
 let ws = null;
-
-/**
- * Current connection state.
- * @private
- * @type {string}
- */
-let connectionState = ConnectionState.Disconnected;
-
-/**
- * Array of connection state change listeners.
- * @private
- * @type {Array<function(string): void>}
- */
-const connectionChangeListeners = [];
 
 /**
  * Map of pending request callbacks keyed by query ID.
@@ -107,32 +92,11 @@ const connectionChangeListeners = [];
 const waitingOn = {};
 
 /**
- * Array of general message receivers (handles all message types).
- * @private
- * @type {Array<function({err: *, type: string, data: *}): void>}
- */
-const receiverArray = [];
-
-/**
- * Map of typed message receivers keyed by message type.
- * @private
- * @type {Object<string, Array<function({err: *, type: string, data: *}): void>>}
- */
-const ofTypesOb = {};
-
-/**
  * Queue of requests waiting to be sent when connection is established.
  * @private
  * @type {Array<{type: string, data: *, resolve: function, reject: function, createdAt: number, timer: NodeJS.Timeout}>}
  */
 let bufferedCalls = [];
-
-/**
- * Queue of receivers waiting to be registered when connection is established.
- * @private
- * @type {Array<{type: string|null, handler: function}>}
- */
-let bufferedReceivers = [];
 
 /**
  * Whether the connection is ready to send messages.
@@ -164,9 +128,7 @@ let reconnectTimer = null;
  */
 let serverUrl = process.env.APE_SERVER || null;
 
-// ============================================================================
-// CONFIGURATION CONSTANTS
-// ============================================================================
+/* ========== CONFIGURATION CONSTANTS ========== */
 
 /**
  * Timeout for initial connection in milliseconds.
@@ -182,26 +144,24 @@ const connectTimeout = 5000;
  * @private
  * @constant {number}
  */
-const totalRequestTimeout = 10000;
+const totalRequestTimeout = parseInt(process.env.APE_REQUEST_TIMEOUT, 10) || 120000;
 
-// ============================================================================
-// INTERNAL FUNCTIONS
-// ============================================================================
+/* ========== RECEIVER MODULE BINDING ========== */
 
 /**
- * Notifies all listeners of a connection state change.
- * Only triggers if the state actually changed.
- *
- * @private
- * @function notifyConnectionChange
- * @param {string} newState - The new connection state
+ * Inject live connection state into the receiver module.
+ * This late-binding avoids circular dependency — receivers need
+ * to check ready/serverUrl/ws but connection.js owns those vars.
+ * Must happen at module load time, before any on() calls.
  */
-function notifyConnectionChange(newState) {
-  if (connectionState !== newState) {
-    connectionState = newState;
-    connectionChangeListeners.forEach((fn) => fn(newState));
-  }
-}
+receivers.bindConnection({
+  getReady: () => ready,
+  getServerUrl: () => serverUrl,
+  getWs: () => ws,
+  triggerConnect: () => connect(),
+});
+
+/* ========== INTERNAL FUNCTIONS ========== */
 
 /**
  * Sends a message over the WebSocket and returns a promise for the response.
@@ -230,17 +190,45 @@ function send(type, data, createdAt = Date.now()) {
   const queryId = messageHash(message);
 
   return new Promise((resolve, reject) => {
-    // Set up timeout for server response
-    const timer = setTimeout(() => {
-      delete waitingOn[queryId];
-      reject(new Error(`Request timeout: ${type}`));
-    }, totalRequestTimeout);
+    // Mutable timer ref — keepalive signals from the server reset this
+    // timer to prevent long-running RPC calls from timing out.
+    const timerRef = {};
+    /**
+     * Start (or restart) the response timeout timer.
+     * Resets on each keepalive signal from the server so long-running
+     * RPCs don't time out while the server is actively processing.
+     * Rejects the promise with a diagnostic error if no response arrives.
+     */
+    const startTimer = () => {
+      clearTimeout(timerRef.id);
+      timerRef.id = setTimeout(() => {
+        delete waitingOn[queryId];
+        // Diagnostic timeout error message containing What, Why, and How to prevent it.
+        reject(new Error(
+          `Failed to receive response for request '${type}'. ` +
+          `The server did not respond within the ${totalRequestTimeout}ms timeout limit. ` +
+          `To fix this, check if the server is overloaded, verify the route for '${type}' is fully implemented and returning a value, or increase the timeout limit via the APE_REQUEST_TIMEOUT environment variable (currently ${totalRequestTimeout}ms).`
+        ));
+      }, totalRequestTimeout);
+    };
+    startTimer();
 
-    // Register callback for when response arrives
-    waitingOn[queryId] = (err, result) => {
-      clearTimeout(timer);
-      if (err) reject(typeof err === "string" ? new Error(err) : err);
-      else resolve(result);
+    // Register callback for when response arrives.
+    // The _keepalive flag is set when the server sends a heartbeat
+    // to indicate the request is still being processed. In that case,
+    // we reset the timer but do NOT resolve the promise.
+    waitingOn[queryId] = (err, result, _keepalive) => {
+      if (_keepalive) {
+        startTimer();
+        return;
+      }
+      clearTimeout(timerRef.id);
+      if (err) {
+        // Wrap a remote string error with context indicating it originated remotely
+        reject(typeof err === "string" ? new Error(`Remote RPC error on '${type}': ${err}`) : err);
+      } else {
+        resolve(result);
+      }
     };
 
     // Send the pre-serialized message
@@ -248,26 +236,8 @@ function send(type, data, createdAt = Date.now()) {
   });
 }
 
-/**
- * Registers a message receiver for a specific type or all messages.
- *
- * @private
- * @function setOnReceiver
- * @param {string|null} type - Message type to listen for, or null for all
- * @param {function} handler - Callback function for received messages
- */
-function setOnReceiver(type, handler) {
-  if (type === null) {
-    receiverArray.push(handler);
-  } else {
-    if (!ofTypesOb[type]) ofTypesOb[type] = [];
-    ofTypesOb[type].push(handler);
-  }
-}
 
-// ============================================================================
-// PUBLIC FUNCTIONS
-// ============================================================================
+/* ========== PUBLIC FUNCTIONS ========== */
 
 /**
  * Establishes a WebSocket connection to the api-ape server.
@@ -303,7 +273,7 @@ function connect(host, port) {
   // Don't create duplicate connections
   if (ws && ws.readyState !== WebSocket.CLOSED) return;
 
-  notifyConnectionChange(ConnectionState.Connecting);
+  receivers.notifyConnectionChange(ConnectionState.Connecting);
   ws = new WebSocket(serverUrl);
 
   /**
@@ -312,13 +282,10 @@ function connect(host, port) {
    */
   ws.onopen = () => {
     ready = true;
-    notifyConnectionChange(ConnectionState.Connected);
+    receivers.notifyConnectionChange(ConnectionState.Connected);
 
     // Register any receivers that were added while disconnected
-    bufferedReceivers.forEach(({ type, handler }) =>
-      setOnReceiver(type, handler),
-    );
-    bufferedReceivers = [];
+    receivers.flushBufferedReceivers();
 
     // Send any requests that were queued while disconnected
     bufferedCalls.forEach(
@@ -338,37 +305,86 @@ function connect(host, port) {
     const msg = jss.parse(
       typeof event.data === "string" ? event.data : event.data.toString(),
     );
-    const { err, type, queryId, data } = msg;
+    const { err, type, queryId, data, _keepalive } = msg;
 
-    // If this is a response to a pending request, invoke the callback
+    // If this is a response to a pending request, invoke the callback.
+    // Keepalive signals reset the timer without resolving the promise.
     if (queryId && waitingOn[queryId]) {
+      if (_keepalive) {
+        waitingOn[queryId](null, null, true);
+        return;
+      }
       waitingOn[queryId](err, data);
       delete waitingOn[queryId];
       return;
     }
 
-    // Otherwise, broadcast to type-specific receivers
-    if (ofTypesOb[type]) ofTypesOb[type].forEach((h) => h({ err, type, data }));
-
-    // And to general receivers
-    receiverArray.forEach((h) => h({ err, type, data }));
+    // Dispatch to typed and general receivers via the receiver module
+    receivers.dispatchToReceivers(type, err, data);
   };
 
   /**
    * Handle WebSocket errors.
-   * Logs the error but doesn't close the connection (onclose will fire).
+   * Logs full diagnostic context so a developer reading logs from any
+   * service in the stack can identify the failing service, what went
+   * wrong, and exactly how to fix it. Does not reject pending requests
+   * here — onclose always fires after onerror and handles that.
    */
-  ws.onerror = (err) =>
-    console.error("🦍 api-ape client error:", err.message || err);
+  ws.onerror = (err) => {
+    const pendingCount = Object.keys(waitingOn).length;
+    const detail = err.message || '(no message — raw ErrorEvent)';
+    // Extract host:port safely — serverUrl is a ws:// URL, avoid
+    // throwing in the error handler if it's somehow malformed.
+    let hostPort = 'unknown';
+    try { const u = new URL(serverUrl); hostPort = `${u.hostname}:${u.port}`; } catch (_) {}
+    console.error(
+      `🦍 [api-ape client] WebSocket connection to ${serverUrl || 'unknown'} failed. ` +
+      `${pendingCount} pending RPC request(s) will be rejected on close. ` +
+      `Detail: ${detail}. ` +
+      `Fix: 1) Verify the server is running: curl http://${hostPort}/health ` +
+      `2) Check server logs for crashes or port conflicts. ` +
+      `3) If the server is running, check for firewall or proxy issues on ${hostPort}. ` +
+      `4) Increase APE_REQUEST_TIMEOUT (currently ${totalRequestTimeout}ms) if the server is slow to respond.`
+    );
+  };
 
   /**
    * Handle connection close.
+   * Rejects all pending RPC callbacks immediately so callers fail fast
+   * instead of hanging until their individual timeout fires (up to 120s).
    * Triggers auto-reconnect after delay if enabled.
    */
   ws.onclose = () => {
     ready = false;
+
+    // Reject all pending RPC callbacks — the socket is gone,
+    // they will never receive a response. Fail fast so retry
+    // logic (e.g. Marvin's retryWithBackoff) can kick in.
+    // Pass Error objects (not strings) so the send() callback
+    // rejects directly without wrapping as "Remote RPC error".
+    const pendingIds = Object.keys(waitingOn);
+    if (pendingIds.length > 0) {
+      // Extract host:port safely — avoid throwing in the close
+      // handler if serverUrl is somehow malformed.
+      let hostPort = 'unknown';
+      let port = '??';
+      try { const u = new URL(serverUrl); hostPort = `${u.hostname}:${u.port}`; port = u.port; } catch (_) {}
+      const disconnectErr = new Error(
+        `[api-ape client] WebSocket to ${serverUrl || 'unknown'} closed while ${pendingIds.length} RPC request(s) were awaiting responses. ` +
+        `The server may have crashed, restarted, or the network dropped. ` +
+        `Fix: 1) Check server process is alive: lsof -i :${port} ` +
+        `2) Check server logs for errors or OOM kills. ` +
+        `3) Verify network connectivity: curl http://${hostPort}/health ` +
+        `4) If the server is restarting, the client will auto-reconnect in 1s — retryable callers should retry the request.`
+      );
+      for (const qid of pendingIds) {
+        waitingOn[qid](disconnectErr);
+        delete waitingOn[qid];
+      }
+    }
+
     ws = null;
-    notifyConnectionChange(ConnectionState.Disconnected);
+    receivers.notifyConnectionChange(ConnectionState.Disconnected);
 
     // Auto-reconnect after 1 second if not explicitly closed
     if (reconnectEnabled && serverUrl) {
@@ -399,7 +415,7 @@ function close() {
     reconnectTimer = null;
   }
   if (ws) {
-    notifyConnectionChange(ConnectionState.Closing);
+    receivers.notifyConnectionChange(ConnectionState.Closing);
     ws.close();
   }
 }
@@ -435,112 +451,25 @@ function queueOrSend(type, data) {
     const timer = setTimeout(() => {
       const idx = bufferedCalls.findIndex((m) => m.createdAt === createdAt);
       if (idx > -1) bufferedCalls.splice(idx, 1);
-      reject(new Error(`Connection timeout: ${type}`));
+      // Diagnostic timeout error message indicating host failure
+      reject(new Error(
+        `Failed to queue and send request '${type}'. ` +
+        `The WebSocket connection to '${serverUrl || "unknown host"}' could not be established within the ${connectTimeout}ms limit. ` +
+        `To fix this, ensure the api-ape server is currently running on the target host and port, and check for network or firewall blockage.`
+      ));
     }, connectTimeout);
 
     // Add to queue
     bufferedCalls.push({ type, data, resolve, reject, createdAt, timer });
 
     // Trigger connection if not already connecting
-    if (connectionState === ConnectionState.Disconnected && serverUrl) {
+    if (!ws && serverUrl) {
       connect();
     }
   });
 }
 
-/**
- * Subscribes to server-sent events.
- *
- * @function on
- * @param {string|function} type - Event type to listen for, or handler for all events
- * @param {function} [handler] - Handler function (if type is a string)
- *
- * @example
- * // Listen for specific event type
- * on('notification', (data) => {
- *     console.log('Notification:', data)
- * })
- *
- * @example
- * // Listen for all events
- * on((event) => {
- *     console.log('Event:', event.type, event.data)
- * })
- */
-function on(type, handler) {
-  // Support on(handler) syntax for listening to all events
-  if (typeof type === "function") {
-    handler = type;
-    type = null;
-  }
-
-  // If connected, register immediately
-  if (ready) {
-    setOnReceiver(type, handler);
-  } else {
-    // Otherwise, buffer for when connection opens
-    bufferedReceivers.push({ type, handler });
-
-    // Trigger connection if we have a server URL
-    if (serverUrl) connect();
-  }
-}
-
-/**
- * Subscribes to connection state changes.
- *
- * The handler is called immediately with the current state,
- * and then again whenever the state changes.
- *
- * @function onConnectionChange
- * @param {function(string): void} handler - Callback receiving ConnectionState values
- * @returns {function(): void} Unsubscribe function
- *
- * @example
- * const unsubscribe = onConnectionChange((state) => {
- *     console.log('Connection state:', state)
- * })
- *
- * // Later, stop listening
- * unsubscribe()
- */
-function onConnectionChange(handler) {
-  connectionChangeListeners.push(handler);
-
-  // Immediately invoke with current state
-  handler(connectionState);
-
-  // Return unsubscribe function
-  return () => {
-    const idx = connectionChangeListeners.indexOf(handler);
-    if (idx > -1) connectionChangeListeners.splice(idx, 1);
-  };
-}
-
-/**
- * Checks if the connection is ready to send messages.
- *
- * @function isReady
- * @returns {boolean} True if connected and ready
- */
-function isReady() {
-  return ready;
-}
-
-/**
- * Gets the current WebSocket instance.
- * Useful for advanced use cases like accessing readyState directly.
- *
- * @function getWs
- * @returns {WebSocket|null} The WebSocket instance, or null if not connected
- */
-function getWs() {
-  return ws;
-}
-
-// ============================================================================
-// EXPORTS
-// ============================================================================
+/* ========== EXPORTS ========== */
 
 module.exports = {
   /** Connection state enumeration */
@@ -553,18 +482,20 @@ module.exports = {
   send,
   /** Queue or send a message */
   queueOrSend,
-  /** Subscribe to server events */
-  on,
-  /** Subscribe to connection state changes */
-  onConnectionChange,
-  /** Register a message receiver (internal) */
-  setOnReceiver,
-  /** Notify connection state change (internal) */
-  notifyConnectionChange,
-  /** Check if connection is ready */
-  isReady,
-  /** Get WebSocket instance */
-  getWs,
+  /** Subscribe to server events (delegated to connection-receivers) */
+  on: receivers.on,
+  /** Subscribe to connection state changes (delegated to connection-receivers) */
+  onConnectionChange: receivers.onConnectionChange,
+  /** Register a message receiver (delegated to connection-receivers) */
+  setOnReceiver: receivers.setOnReceiver,
+  /** Remove a message receiver (delegated to connection-receivers) */
+  removeOnReceiver: receivers.removeOnReceiver,
+  /** Notify connection state change (delegated to connection-receivers) */
+  notifyConnectionChange: receivers.notifyConnectionChange,
+  /** Check if connection is ready (delegated to connection-receivers) */
+  isReady: receivers.isReady,
+  /** Get WebSocket instance (delegated to connection-receivers) */
+  getWs: receivers.getWs,
   /** WebSocket constructor (native or polyfill) */
   WebSocket,
 };

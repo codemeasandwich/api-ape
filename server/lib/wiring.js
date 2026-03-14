@@ -409,6 +409,25 @@ module.exports = function wiring(controllers, onConnect, fileTransfer, options =
     });
 
     /**
+     * Handle socket-level errors so they don't propagate as uncaught.
+     * The close event will still fire afterward and trigger client
+     * cleanup via removeClient. Logging here gives server operators
+     * visibility into connection issues (network drops, client crashes,
+     * protocol violations, TLS failures).
+     */
+    socket.on("error", (err) => {
+      const detail = err.message || String(err);
+      const code = err.code || 'UNKNOWN';
+      console.error(
+        `🦍 [api-ape server] Socket error for client ${clientId} (code: ${code}): ${detail}. ` +
+        `The client connection will be closed and cleaned up automatically. ` +
+        `Fix: 1) If '${code}' is ECONNRESET or EPIPE — the client disconnected abruptly; check client-side logs for crashes or network issues. ` +
+        `2) If repeated for the same client — the client may be in a reconnect loop; check client-side onerror/onclose handlers. ` +
+        `3) If affecting many clients — check server resource limits (ulimit -n), memory usage, and event loop lag.`
+      );
+    });
+
+    /**
      * Call onConnect and handle the result
      *
      * onConnect can be sync or async. We normalize to Promise

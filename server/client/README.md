@@ -10,6 +10,8 @@ The server client module enables api-ape servers to act as WebSocket clients, co
 - **Proxy-based API** — Same `api.users.list()` syntax as the browser client
 - **Auto-reconnection** — Automatic reconnection with exponential backoff
 - **Message queuing** — Queues messages during disconnection periods
+- **Fast-fail on disconnect** — Pending RPC callbacks are rejected immediately when the socket closes, with diagnostic error messages including the server URL, pending request count, and actionable fix steps
+- **Diagnostic error logging** — WebSocket errors log the server URL, pending request count, and numbered fix steps (health check commands, log inspection, firewall diagnosis, timeout configuration)
 - **JSS encoding** — Full support for Date, Set, Map, and other extended types
 
 The client provides the same proxy-based API as the browser client (`api.users.list()`), making server-to-server calls feel like local function calls.
