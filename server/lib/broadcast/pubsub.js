@@ -10,6 +10,34 @@
 const { _clients } = require("./clients");
 
 /**
+ * Per-publish log verbosity. By default the pub/sub layer emits ONE
+ * line per publish ("📣 Published to …"), which is useful during
+ * channel-wiring debugging but catastrophic once a real producer (e.g.
+ * a multi-GB Ollama model pull streaming NDJSON progress frames) runs
+ * in a terminal that also hosts another api-ape server. Gate the log
+ * behind an opt-in env var so the default posture is quiet and only
+ * operators who need the trace pay the noise cost.
+ *
+ * Subscribe/unsubscribe logs stay on — those are one-shot lifecycle
+ * events, not per-message chatter, and are valuable at session-start
+ * debugging even in production.
+ *
+ * Evaluated lazily (per call) instead of at module load because test
+ * harnesses flip the env mid-run; a one-time boot read would stick to
+ * whatever the first process saw.
+ *
+ * @returns {boolean} True when APIAPE_PUBSUB_LOG is set to a truthy value
+ *   (anything other than unset/empty/"0"/"false"/"off", case-insensitive).
+ * @private
+ */
+function isPublishLoggingEnabled() {
+  const v = process.env.APIAPE_PUBSUB_LOG;
+  if (v === undefined) return false;
+  const lowered = String(v).toLowerCase();
+  return !(lowered === "" || lowered === "0" || lowered === "false" || lowered === "off");
+}
+
+/**
  * Subscription tracking for pub/sub channels
  * Maps channel name to Set of subscribed clientIds
  * @type {Map<string, Set<string>>}
@@ -94,11 +122,15 @@ function publish(channel, data) {
 
   const subscribers = _subscriptions.get(channel);
   if (!subscribers || subscribers.size === 0) {
-    console.log(`📣 Published to "${channel}" (0 subscribers)`);
+    if (isPublishLoggingEnabled()) {
+      console.log(`📣 Published to "${channel}" (0 subscribers)`);
+    }
     return;
   }
 
-  console.log(`📣 Publishing to "${channel}" (${subscribers.size} subscribers)`);
+  if (isPublishLoggingEnabled()) {
+    console.log(`📣 Publishing to "${channel}" (${subscribers.size} subscribers)`);
+  }
 
   subscribers.forEach((clientId) => {
     const wrapper = _clients.get(clientId);
