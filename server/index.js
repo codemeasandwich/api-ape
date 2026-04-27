@@ -116,8 +116,9 @@
  * const result = await api.chat({ message: 'Hello!' })
  */
 
+const { configureApeLogging } = require("../utils/apeLogger");
 const serverApe = require("./lib/main");
-const { clients, publish } = require("./lib/broadcast");
+const { clients, publish, broadcast, broadcastOthers } = require("./lib/broadcast");
 const createPublishProxy = require("./lib/broadcast/publishProxy");
 const api = require("./client");
 const { _queueOrSend } = require("./client");
@@ -139,6 +140,8 @@ const publishProxy = createPublishProxy();
  */
 serverApe.clients = clients;
 serverApe.publish = publishProxy;
+serverApe.broadcast = broadcast;
+serverApe.broadcastOthers = broadcastOthers;
 
 /**
  * Check if a value looks like an HTTP server instance
@@ -339,5 +342,8 @@ module.exports = api;
 module.exports.ape = ape;
 module.exports.api = api;
 module.exports.publish = publishProxy;
+module.exports.broadcast = broadcast;
+module.exports.broadcastOthers = broadcastOthers;
 module.exports.clients = clients;
+module.exports.configureApeLogging = configureApeLogging;
 module.exports.default = api;
