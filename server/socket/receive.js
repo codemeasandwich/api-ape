@@ -7,6 +7,7 @@
  * @see {@link module:server/socket/receiveContext} for controller context
  */
 
+const { apeLog } = require("../../utils/apeLogger");
 const messageHash = require("../../utils/messageHash");
 const { subscribe, unsubscribe } = require("../lib/broadcast");
 const jss = require("../../utils/jss");
@@ -88,7 +89,7 @@ module.exports = function receiveHandler(ape) {
         }
       }
 
-      const onFinish = events.onReceive(queryId, data, type) || (() => {});
+      const onFinish = events.onReceive(queryId, data, type) || (() => { });
 
       // Check authorization if middleware is configured
       if (authMiddleware && socketAuth) {
@@ -123,7 +124,7 @@ module.exports = function receiveHandler(ape) {
           } catch (pluginErr) {
             try {
               send(queryId, false, false, pluginErr);
-            } catch (sendErr) {}
+            } catch (sendErr) { }
             if (typeof onFinish === "function") onFinish(pluginErr, true);
             return;
           }
@@ -147,7 +148,7 @@ module.exports = function receiveHandler(ape) {
             } catch (uploadErr) {
               try {
                 send(queryId, false, false, uploadErr);
-              } catch (sendErr) {}
+              } catch (sendErr) { }
               if (typeof onFinish === "function") onFinish(uploadErr, true);
               return;
             }
@@ -171,6 +172,19 @@ module.exports = function receiveHandler(ape) {
           }
 
           checkReply(queryId, createdAt);
+
+          // Inject a per-request keepalive function onto the controller
+          // context. Long-running controllers (e.g., sessions/message with
+          // stream:false) call this.keepalive() periodically to send a
+          // heartbeat signal that resets the client's RPC timeout timer,
+          // preventing legitimate slow operations from timing out.
+          that._currentQueryId = queryId;
+          that.keepalive = () => {
+            try {
+              send(queryId, false, false, false, true);
+            } catch (_) { /* socket may be closed */ }
+          };
+
           resolve(controller.call(that, processedData));
         } catch (err) {
           reject(err);
@@ -182,18 +196,24 @@ module.exports = function receiveHandler(ape) {
           if (undefined !== val) {
             try {
               send(queryId, false, val, false);
-            } catch (sendErr) {}
+            } catch (sendErr) { }
           }
           if (typeof onFinish === "function") onFinish(false, val);
         })
         .catch((err) => {
           try {
             send(queryId, false, false, err);
-          } catch (sendErr) {}
+          } catch (sendErr) { }
           if (typeof onFinish === "function") onFinish(err, true);
         });
     } catch (err) {
-      events.onError(clientId, queryId, err.message || err);
+      // Wrap in try/catch — if the error is a RangeError (stack overflow),
+      // even calling events.onError() can fail due to stack exhaustion.
+      try {
+        events.onError(clientId, queryId, err.message || err);
+      } catch (_) {
+        apeLog.error('[api-ape] Fatal: error handler failed for message processing.', err);
+      }
     }
   };
 };

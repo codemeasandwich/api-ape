@@ -179,6 +179,15 @@
  *     await adapter.leave()
  * })
  */
+const { apeLog } = require("../../utils/apeLogger");
+
+/**
+ * Builds a replicated pub/sub adapter backed by Supabase (Postgres + Realtime).
+ *
+ * @param {*} supabase - Configured `@supabase/supabase-js` client
+ * @param {{ serverId: string, namespace?: string }} options - Cluster identity namespace
+ * @returns {Promise<object>} Ready adapter facade
+ */
 async function createSupabaseAdapter(
   supabase,
   { serverId, namespace = "ape" },
@@ -324,7 +333,7 @@ async function createSupabaseAdapter(
         .subscribe();
 
       state = "JOINED";
-      console.log(`✅ Supabase adapter: joined as ${sid}`);
+      apeLog.log(`Supabase adapter: joined as ${sid}`);
     },
 
     /**
@@ -349,8 +358,8 @@ async function createSupabaseAdapter(
       if (state !== "JOINED") return;
       state = "LEFT";
 
-      console.log(
-        `🔴 Supabase adapter: leaving, cleaning up ${ownedClients.size} clients`,
+      apeLog.log(
+        `Supabase adapter: leaving, cleaning up ${ownedClients.size} clients`,
       );
 
       // Unsubscribe from channels
@@ -399,8 +408,8 @@ async function createSupabaseAdapter(
           throw new Error(`Supabase lookup.add failed: ${error.message}`);
 
         ownedClients.add(clientId);
-        console.log(
-          `📍 Supabase adapter: registered client ${clientId} -> ${serverId}`,
+        apeLog.log(
+          `Supabase adapter: registered client ${clientId} -> ${serverId}`,
         );
       },
 
@@ -464,7 +473,7 @@ async function createSupabaseAdapter(
           throw new Error(`Supabase lookup.remove failed: ${error.message}`);
 
         ownedClients.delete(clientId);
-        console.log(`🗑️ Supabase adapter: removed client ${clientId}`);
+        apeLog.log(`Supabase adapter: removed client ${clientId}`);
       },
     },
 
@@ -515,11 +524,11 @@ async function createSupabaseAdapter(
         });
 
         if (targetServerId) {
-          console.log(
-            `📤 Supabase adapter: pushed to server ${targetServerId}`,
+          apeLog.log(
+            `Supabase adapter: pushed to server ${targetServerId}`,
           );
         } else {
-          console.log(`📢 Supabase adapter: broadcast to all servers`);
+          apeLog.log(`Supabase adapter: broadcast to all servers`);
         }
       },
 

@@ -7,6 +7,7 @@
  * @see {@link module:server/lib/broadcast} for the main broadcast module
  */
 
+const { apeLog } = require("../../../utils/apeLogger");
 const createSendProxy = require("./sendProxy");
 
 /**
@@ -82,8 +83,8 @@ function createClientWrapper(clientInfo) {
           clientInfo.send(false, type, data, false);
         } catch (e) {
           /* istanbul ignore next */
-          console.error(
-            `📢 send failed for ${clientInfo.clientId}:`,
+          apeLog.error(
+            `send failed for ${clientInfo.clientId}:`,
             e.message,
           );
         }
@@ -136,8 +137,8 @@ function addClient(clientInfo, onAdd) {
   const wrapper = createClientWrapper(clientInfo);
   _clients.set(clientInfo.clientId, wrapper);
   wrapper._raw = clientInfo;
-  console.log(
-    `🟢 Client added: ${clientInfo.clientId} (total: ${_clients.size})`,
+  apeLog.log(
+    `Client added: ${clientInfo.clientId} (total: ${_clients.size})`,
   );
   if (onAdd) onAdd(clientInfo.clientId);
 }
@@ -158,10 +159,10 @@ function removeClient(clientIdOrInfo, onRemove) {
   if (_clients.has(clientId)) {
     _clients.delete(clientId);
     if (onRemove) onRemove(clientId);
-    console.log(`🔴 Client removed: ${clientId} (total: ${_clients.size})`);
+    apeLog.log(`Client removed: ${clientId} (total: ${_clients.size})`);
   } else {
-    console.log(
-      `⚠️ Client not found for removal: ${clientId} (total: ${_clients.size})`,
+    apeLog.log(
+      `Client not found for removal: ${clientId} (total: ${_clients.size})`,
     );
   }
 }

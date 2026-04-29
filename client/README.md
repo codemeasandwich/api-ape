@@ -76,6 +76,30 @@ api.onConnectionChange((state) => {
 
 **No async setup needed!** The client auto-initializes and buffers calls until connected.
 
+## Framework logging
+
+The browser client emits **internal** diagnostics in some cases (for example streaming fallback, dev-only ping checks on `localhost`, subscription callback errors, binary fetch progress). Application code you write is unaffected.
+
+**Prefer configuring before the first RPC or subscription** so early messages respect the setting:
+
+```js
+import api, { configureApeLogging } from 'api-ape'
+
+configureApeLogging(false) // or pass a custom { log, warn, error, ... } object
+
+// Then use api as usual
+await api.ping()
+```
+
+Equivalent accessors:
+
+- `api.configureLogging(false)` — same function, exposed on the default export proxy.
+- Low-level `connectSocket` (advanced): `connectSocket({ logging: false })` or `connectSocket.configureLogging(false)` from `api-ape/client` if you use that entry.
+
+Semantics match the server: `false` silences internal framework logs; `true` or omit uses `console`; an object merges custom functions with `console` for missing levels.
+
+See also: [Server README](../server/README.md#framework-logging) for `ape(server, { logging })`.
+
 ## Features
 
 - **Proxy-based API** — `ape.path.method(data)` converts to WebSocket calls

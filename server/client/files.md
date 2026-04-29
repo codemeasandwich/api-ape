@@ -14,9 +14,11 @@ This module enables api-ape servers to act as WebSocket clients, connecting outb
 
 ```
 client/
-├── index.js                 # Main entry point (proxy-based API client)
-├── connection.js            # Connection lifecycle (connect, close, send, error handling)
-└── connection-receivers.js  # Subscription registry (receivers, on, onConnectionChange)
+├── index.js                   # Main entry point (proxy-based API client)
+├── connection.js              # Connection lifecycle + queue/send wiring
+├── connection-send.js         # Factories for correlated RPC promises + timeouts
+├── connection-reconnect.js    # Backoff timers + suppressed error logging helpers
+└── connection-receivers.js    # Subscription registry (receivers, on, onConnectionChange)
 ```
 
 ## Files
@@ -34,13 +36,20 @@ Main entry point for the server-side WebSocket client. Provides the proxy-based 
 Manages outbound WebSocket connections from the server:
 
 - **Connection lifecycle** — Connect, disconnect, and reconnect handling
-- **Auto-reconnection** — Automatic reconnection with 1-second delay
+- **Auto-reconnection** — Exponential backoff with jitter capped at ~30 s plus error log throttling
+- **Configurable logging** — `connect(_, _, { logging })` and `configureApeLogging()`
 - **Message queuing** — Queues messages during disconnection periods
-- **Fast-fail on disconnect** — Pending RPC callbacks are rejected immediately when the socket closes, with diagnostic error messages including the server URL, pending request count, and actionable fix steps
-- **Diagnostic error logging** — WebSocket errors log the server URL, pending request count, and numbered fix steps (health check commands, log inspection, firewall diagnosis, timeout configuration)
+- **Fast-fail on disconnect** — Pending RPC callbacks are rejected immediately when the socket closes
 - **JSS encoding/decoding** — Full support for extended types (Date, Set, Map, etc.)
-- **Request/response correlation** — Tracks pending requests via `queryId`
-- **Delegates subscriptions** — Imports receiver/subscription functions from `connection-receivers.js` via late-binding
+- **Delegates heavy logic** — Receivers in `connection-receivers.js`, RPC promise factory in `connection-send.js`, reconnect helper in `connection-reconnect.js`
+
+### `connection-send.js`
+
+Produces the correlated `send(type, payload)` RPC helper wired to Jenkins `queryId`, keepalive timer resets, and WebSocket payloads.
+
+### `connection-reconnect.js`
+
+Implements backoff scheduling (`scheduleReconnect`, `cancelReconnect`, `resetBackoff`) and suppressed WebSocket error log accounting so outages do not flood consoles.
 
 ### `connection-receivers.js`
 

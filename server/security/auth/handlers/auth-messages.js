@@ -8,6 +8,7 @@
  * @see {@link module:server/security/auth} for the auth framework
  */
 
+const { apeLog } = require("../../../../utils/apeLogger");
 const { isAuthMessage, OpaqueMessageType, WebAuthnMessageType, TOTPMessageType } = require("../index");
 
 /**
@@ -47,7 +48,7 @@ function createAuthMessageHandler(socketAuth, send) {
       try {
         send(queryId, response.type, response, null);
       } catch (sendErr) {
-        console.error("📢 Failed to send auth response:", sendErr.message);
+        apeLog.error("Failed to send auth response:", sendErr.message);
       }
 
       return true;
@@ -61,7 +62,7 @@ function createAuthMessageHandler(socketAuth, send) {
       try {
         send(queryId, errorResponse.type, errorResponse, err);
       } catch (sendErr) {
-        console.error("📢 Failed to send auth error:", sendErr.message);
+        apeLog.error("Failed to send auth error:", sendErr.message);
       }
 
       return true;

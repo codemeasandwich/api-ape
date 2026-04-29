@@ -20,18 +20,18 @@ function getHistory() {
 
 export function onConnect(socket: any, req: any, send: any) {
     const clientID = send.toString()
-    console.log(`🦍 Client connected: ${clientID}`)
+    console.log(`Client connected: ${clientID}`)
 
     // Send init message with history and user count
-    console.log(`📤 Sending init to ${clientID}, users: ${ape.clients.size}`)
+    console.log(`Sending init to ${clientID}, users: ${ape.clients.size}`)
     try {
         send('init', {
             history: getHistory(),
             users: ape.clients.size
         })
-        console.log(`✅ Init sent to ${clientID}`)
+        console.log(`Init sent to ${clientID}`)
     } catch (e) {
-        console.error(`❌ Failed to send init:`, e)
+        console.error(`Failed to send init:`, e)
     }
 
     // Publish updated user count to subscribers
@@ -39,7 +39,7 @@ export function onConnect(socket: any, req: any, send: any) {
 
     return {
         onDisconnect: () => {
-            console.info(`👋 Disconnected [${clientID}]`)
+            console.info(`Disconnected [${clientID}]`)
             // Publish updated user count after disconnect
             // Use setTimeout to ensure client is removed first
             setTimeout(() => {

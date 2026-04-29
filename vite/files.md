@@ -8,6 +8,7 @@ This module provides a Vite plugin that integrates api-ape directly into Vite's 
 - **Lazy loading** — The api-ape server module is loaded at runtime, not during config bundling
 - **SSR module loading** — Uses Vite's `ssrLoadModule` for TypeScript support in onConnect handlers
 - **Dual format** — Exports both ESM (.mjs) and CommonJS (.js) for maximum compatibility
+- **Forwarded options** — Any `ape(server, options)` field not handled by the plugin (for example `logging: false` to silence internal framework logs on the dev server) is passed through via `...rest` to `server/lib/main`
 
 ## Directory Structure
 

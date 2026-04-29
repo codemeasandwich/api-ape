@@ -83,6 +83,7 @@
  */
 
 const { EventEmitter } = require("events");
+const { apeLog } = require("../../../../utils/apeLogger");
 
 /**
  * WebSocket ready state constants matching the W3C WebSocket API.
@@ -368,6 +369,8 @@ class DenoWebSocket extends EventEmitter {
    * @example
    * // Server shutdown
    * ws.close(1001, 'Server restarting')
+   *
+   * @returns {void|undefined}
    */
   close(code = 1000, reason = "") {
     // Don't close if already closing or closed
@@ -598,7 +601,7 @@ class DenoWebSocketServer extends EventEmitter {
       // Return the response for Deno's handler to return
       return { response };
     } catch (err) {
-      console.error("[api-ape] Deno WebSocket upgrade failed:", err);
+      apeLog.error("[api-ape] Deno WebSocket upgrade failed:", err);
       return null;
     }
   }

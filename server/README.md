@@ -94,6 +94,48 @@ This enables server-side microservice patterns while keeping the familiar api-ap
 | `fileTransferOptions` | `object` | Binary transfer settings (see below) |
 | `authFramework` | `object` | Authentication framework instance (see below) |
 | `authMiddleware` | `object` | Authorization middleware instance (see below) |
+| `logging` | `boolean` \| `object` | Framework diagnostics (see [Framework logging](#framework-logging) below) |
+
+### Framework logging
+
+api-ape prints optional **internal** diagnostics (adapter join/leave, client add/remove, pub/sub lifecycle, wiring errors, hot-reload lines, etc.). Your own `console.log` calls in controllers and `onConnect` are unchanged.
+
+Pass `logging` on `ape(server, options)`:
+
+| Value | Behavior |
+|-------|----------|
+| Omitted or `true` | Internal logs use `console` (default; same as before this option existed). |
+| `false` | Internal framework logs are suppressed (no-op sink). |
+| `object` | Custom handlers: optional `log`, `warn`, `error`, `info`, `debug` functions. Any level you omit falls back to `console` for that level. |
+
+```js
+const { ape } = require('api-ape')
+
+// Silence api-ape framework logs only
+ape(server, { where: 'api', logging: false })
+
+// Send framework errors through your logger
+ape(server, {
+  where: 'api',
+  logging: {
+    error: (...args) => myLogger.error('api-ape', ...args),
+    // log, warn, info, debug still use console if omitted
+  },
+})
+```
+
+You can also set the sink **before** `ape()` (or from another module) with the named export:
+
+```js
+const { configureApeLogging, ape } = require('api-ape')
+
+configureApeLogging(false)
+ape(server, { where: 'api' }) // inherits the same sink
+```
+
+For **Node.js outbound clients** (same package, server-to-server), see [Server Client README](../client/README.md#framework-logging) and [`client/README.md`](../../client/README.md#framework-logging) for the browser.
+
+**Pub/sub publish tracing:** Extra per-publish lines in the pub/sub layer are still gated by the environment variable `APIAPE_PUBSUB_LOG` (see [`server/lib/broadcast/pubsub.js`](./lib/broadcast/pubsub.js)). When framework `logging` is `false`, those messages are discarded even if `APIAPE_PUBSUB_LOG` is enabled, because they go through the same internal logger.
 
 ### File Transfer Options
 

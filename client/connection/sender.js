@@ -50,6 +50,7 @@
  * sender('/users', { name: 'Alice' })
  */
 
+import { apeLog } from "../../utils/apeLogger.js";
 import messageHash from "../../utils/messageHash";
 import jss from "../../utils/jss";
 import { processBinaryForUpload, uploadBinaryData } from "./fileHandling";
@@ -167,7 +168,7 @@ export function createWsSend(getSocket, waitingOn) {
       // Upload any binary data via HTTP
       if (uploads.length > 0) {
         uploadBinaryData(queryId, uploads).catch((err) => {
-          console.error("🦍 Binary upload failed:", err);
+          apeLog.error("Binary upload failed:", err);
         });
       }
     });

@@ -125,7 +125,7 @@ class Harness {
     });
 
     this.clients.on("client:created", (client) => {
-      console.log(`[Harness] Client created: ${client.id} → ${client.url}`);
+      console.log(`[Harness] Client created: ${client.id} -> ${client.url}`);
     });
 
     this.clients.on("client:closed", (id) => {
@@ -134,7 +134,7 @@ class Harness {
 
     this.db.logging = true;
     this.db.on("message", ({ from, to, message }) => {
-      console.log(`[Harness] DB message: ${from} → ${to}`, message);
+      console.log(`[Harness] DB message: ${from} -> ${to}`, message);
     });
   }
 
@@ -306,6 +306,7 @@ class Harness {
     return new Promise((resolve, reject) => {
       const startTime = Date.now();
 
+      /** Single timer-driven poll iteration for {@link waitFor}. */
       const check = () => {
         try {
           if (condition()) {

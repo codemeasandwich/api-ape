@@ -31,7 +31,7 @@ function download() {
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
           fs.writeFileSync(OUTPUT_PATH, data);
-          console.log(`  ✓ Saved hyperElement.min.js (${data.length} bytes)`);
+          console.log(`  Saved hyperElement.min.js (${data.length} bytes)`);
           resolve();
         });
       }).on('error', reject);
@@ -42,6 +42,6 @@ function download() {
 }
 
 download().catch(err => {
-  console.error(`  ✗ Failed: ${err.message}`);
+  console.error(`  Failed: ${err.message}`);
   process.exit(1);
 });

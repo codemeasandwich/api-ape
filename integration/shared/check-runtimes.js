@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * Check which runtimes are available on the system
+ * @fileoverview Lightweight runtime probe for Developer Experience scripts
+ *
+ * Prints whether Node (required), Bun, and Deno binaries respond on stdout.
  */
 
 const { execSync } = require('child_process');
@@ -19,9 +21,9 @@ let allRequiredAvailable = true;
 for (const runtime of runtimes) {
     try {
         const version = execSync(runtime.cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
-        console.log(`✓ ${runtime.name}: ${version.split('\n')[0]}`);
+        console.log(`${runtime.name}: ${version.split('\n')[0]}`);
     } catch {
-        const status = runtime.required ? '✗' : '○';
+        const status = runtime.required ? 'X' : '-';
         console.log(`${status} ${runtime.name}: not available`);
         if (runtime.required) {
             allRequiredAvailable = false;
@@ -32,8 +34,8 @@ for (const runtime of runtimes) {
 console.log('═'.repeat(40));
 
 if (!allRequiredAvailable) {
-    console.log('\n⚠ Some required runtimes are missing');
+    console.log('\nWarning: Some required runtimes are missing');
     process.exit(1);
 }
 
-console.log('\n✓ All required runtimes available');
+console.log('\nAll required runtimes available');

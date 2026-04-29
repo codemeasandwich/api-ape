@@ -25,7 +25,7 @@ app.prepare().then(() => {
     server.listen(port, () => {
         console.log(`
 ╔═══════════════════════════════════════════════════════╗
-║       🦍 api-ape NextJS Demo                          ║
+║       api-ape NextJS Demo                             ║
 ╠═══════════════════════════════════════════════════════╣
 ║  HTTP:      http://localhost:${port}/                  ║
 ║  WebSocket: ws://localhost:${port}/api/ape             ║

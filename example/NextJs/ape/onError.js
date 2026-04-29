@@ -3,7 +3,7 @@
  */
 
 function onError(clientID, errStr) {
-    console.error(`🦍 Error [${clientID}]:`, errStr)
+    console.error(`Error [${clientID}]:`, errStr)
 }
 
 module.exports = { onError }

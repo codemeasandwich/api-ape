@@ -196,9 +196,9 @@ async function downloadIcon(localName, itshoverName) {
 
     const outputPath = path.join(ICONS_DIR, `${localName}.svg`);
     fs.writeFileSync(outputPath, svg);
-    console.log(`  ✓ Saved ${localName}.svg`);
+    console.log(`  Saved ${localName}.svg`);
   } catch (error) {
-    console.error(`  ✗ Failed to download ${itshoverName}: ${error.message}`);
+    console.error(`  Failed to download ${itshoverName}: ${error.message}`);
   }
 }
 

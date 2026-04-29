@@ -216,7 +216,10 @@ function initNodeServer(server, options, core) {
    * This allows manual handling of upgrade requests.
    * @type {WebSocketServer}
    */
-  const wss = new WebSocketServer({ noServer: true });
+  // Cap inbound WebSocket frames at 1 MB.  The ws library will
+  // cleanly close the connection with a 1009 (Message Too Big) code
+  // instead of buffering unbounded payloads into memory and crashing.
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 1 * 1024 * 1024 });
 
   /**
    * Schema endpoint path and handler for IntelliSense support.

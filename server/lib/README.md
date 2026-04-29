@@ -20,7 +20,7 @@ This module is the engine that powers the "drop a file, get an endpoint" develop
 
 ## See Also
 
-- [`../README.md`](../README.md) — Server overview and API reference
+- [`../README.md`](../README.md) — Server overview and API reference (includes [framework logging](../README.md#framework-logging))
 - [`runtimes/README.md`](./runtimes/README.md) — Runtime-specific integrations
 - [`ws/README.md`](./ws/README.md) — WebSocket polyfill documentation
 - [`longPolling/README.md`](./longPolling/README.md) — HTTP fallback handlers

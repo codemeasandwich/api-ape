@@ -51,7 +51,7 @@ async function initClient() {
     // Enable auto-reconnect
     connectSocket.autoReconnect()
 
-    console.log('🦍 api-ape client initialized')
+    console.log('api-ape client initialized')
 
     return { sender, setOnReceiver, onConnectionChange, connectSocket }
 }

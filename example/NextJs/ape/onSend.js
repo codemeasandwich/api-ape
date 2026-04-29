@@ -3,11 +3,11 @@
  */
 
 function onSend(clientID, payload, type) {
-    console.log(`📤 [${clientID}] ${type}`)
+    console.log(`[${clientID}] ${type}`)
 
     return (err, result) => {
         if (err) {
-            console.error(`❌ [${clientID}] Send failed:`, err.message)
+            console.error(`[${clientID}] Send failed:`, err.message)
         }
     }
 }

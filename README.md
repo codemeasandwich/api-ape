@@ -51,7 +51,8 @@ export default defineConfig({
   plugins: [
     apiApe({
       where: 'api',
-      onConnect: './ape/onConnect'  // Optional: path to connection handler
+      onConnect: './ape/onConnect',  // Optional: path to connection handler
+      logging: false,                 // Optional: silence api-ape dev-server framework logs
     })
   ]
 })
@@ -113,6 +114,7 @@ await api.message({ text: 'Hello' })                   // RPC call
 * **[JSS Encoding](server/README.md#troubleshooting--faq)** — Supports Date, RegExp, Error, Set, Map over the wire
 * **[🌲 Forest](server/README.md#-forest-distributed-mesh)** — Distributed mesh for horizontal scaling
 * **[🔐 Authentication](server/README.md#authentication)** — OPAQUE/PAKE auth with tiered access control
+* **[Framework logging](server/README.md#framework-logging)** — Silence or redirect internal api-ape diagnostics (`logging` / `configureApeLogging`)
 
 ---
 

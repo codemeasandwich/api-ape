@@ -18,6 +18,36 @@ The client provides the same proxy-based API as the browser client (`api.users.l
 
 > **Contributing?** See [`files.md`](./files.md) for directory structure and file descriptions.
 
+## Framework logging
+
+Outbound **Node.js** clients share the same internal logger as the server. WebSocket error diagnostics, reconnection summaries, and related messages honor `configureApeLogging`.
+
+The default `require('api-ape')` export is the RPC **proxy**; `configureLogging` is a **named** export on the same package (not a property of the proxy). Use either the root package or this module:
+
+```js
+const { configureApeLogging } = require('api-ape')
+const { connect } = require('api-ape/server/client')
+
+configureApeLogging(false)
+connect('other-host', 3000)
+
+// Or pass logging only for this connect:
+connect('other-host', 3000, { logging: false })
+```
+
+Equivalent when you already load the server client entry:
+
+```js
+const { connect, configureLogging } = require('api-ape/server/client')
+
+configureLogging(false)
+connect('other-host', 3000)
+```
+
+Process-wide (before `ape()` or `connect()`): `require('api-ape').configureApeLogging(false)` works because it is attached to the CommonJS exports object.
+
+See [Server README: Framework logging](../README.md#framework-logging) and [Browser client](../../client/README.md#framework-logging).
+
 ## Usage
 
 ```js

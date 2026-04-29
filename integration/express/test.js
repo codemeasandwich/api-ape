@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Express Integration Tests
+ * @fileoverview Express integration harness — verifies api-ape mounted alongside customary Express routes
  *
- * Tests api-ape integrated with Express.js framework.
+ * Spawns `/health`, JSON APIs, attaches `ape` on a shared HTTP server, then runs shared WebSocket RPC scenarios from `integration/shared/scenarios`.
  */
 
 const express = require('express');
@@ -18,6 +18,11 @@ const { runScenarios } = require('../shared/test-runner');
 
 const PORT = 9103;
 
+/**
+ * Builds Express app, attaches api-ape, listens, executes scenarios, then exits.
+ *
+ * @returns {Promise<void>}
+ */
 async function main() {
     console.log(`Express integration test`);
     console.log(`Node.js version: ${process.version}`);
@@ -90,12 +95,12 @@ async function main() {
         const healthRes = await fetch(`http://localhost:${PORT}/health`);
         const health = await healthRes.json();
         if (health.status === 'ok') {
-            console.log('  ✓ Express /health route works');
+            console.log('  OK Express /health route works');
         } else {
-            console.log('  ✗ Express /health route failed');
+            console.log('  FAIL Express /health route failed');
         }
     } catch (err) {
-        console.log(`  ✗ Express routes error: ${err.message}`);
+        console.log(`  FAIL Express routes error: ${err.message}`);
     }
 
     // Run WebSocket tests

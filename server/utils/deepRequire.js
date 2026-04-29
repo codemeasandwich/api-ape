@@ -51,6 +51,7 @@ if (!global.process) {
 
 var fs = require("fs");
 var path = require("path");
+const { apeLog } = require("../../utils/apeLogger");
 
 /**
  * Recursively collects all files with specified extensions from a directory.
@@ -277,7 +278,7 @@ module.exports = function (dirname, selector) {
       delete require.cache[require.resolve(filePath)];
       const isNew = !packages[endpoint];
       packages[endpoint] = require(filePath);
-      console.log(`🦍 ${isNew ? "Hot-loaded" : "Reloaded"}: ${endpoint}`);
+      apeLog.log(`${isNew ? "Hot-loaded" : "Reloaded"}: ${endpoint}`);
     });
   }
 

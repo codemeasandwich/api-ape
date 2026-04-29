@@ -15,6 +15,7 @@ This module provides shared serialization and hashing utilities used by both cli
 
 ```
 utils/
+├── apeLogger.js             # Centralized configurable framework logging (see configureApeLogging)
 ├── jss.js                   # JSS main entry point (encode/decode/stringify/parse)
 ├── jss.test.js              # JSS test suite
 ├── messageHash.js           # Jenkins hash with Crockford Base32 encoding
@@ -24,6 +25,10 @@ utils/
 ```
 
 ## Files
+
+### `apeLogger.js`
+
+Internal logging facade for api-ape on both browser and Node. Exports `configureApeLogging()`, `resetApeLoggingForTesting()`, and `apeLog` (log/warn/error/info/debug) so callers can silence or reroute diagnostics without patching `console`.
 
 ### `jss.js`
 

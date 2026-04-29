@@ -396,7 +396,7 @@
         "title": "The 6 Connection States",
         "type": "concept",
         "content": "api-ape tracks 6 distinct connection states:\n\n- **offline**: No network connection (navigator.onLine = false)\n- **walled**: Behind a captive portal (hotel/airport WiFi)\n- **disconnected**: Has network but not connected to server\n- **connecting**: Establishing WebSocket connection\n- **connected**: Active connection, ready for API calls\n- **closing**: Connection shutting down",
-        "codeExample": "// Get current state\nconst state = api.state; // 'connected', 'disconnected', etc.\n\n// Listen for state changes\napi.onStateChange((newState, oldState) => {\n  console.log(`State changed: ${oldState} → ${newState}`);\n});"
+        "codeExample": "// Get current state\nconst state = api.state; // 'connected', 'disconnected', etc.\n\n// Listen for state changes\napi.onStateChange((newState, oldState) => {\n  console.log(`State changed: ${oldState} -> ${newState}`);\n});"
       },
       {
         "id": "special-states",

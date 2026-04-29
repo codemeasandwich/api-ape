@@ -241,6 +241,10 @@ function parseKeyWithTags(key) {
   return [key, undefined];
 }
 
+// Guard against stack overflow on pathologically nested structures.
+// Normal RPC payloads are < 20 levels deep; 500 is very generous.
+const MAX_DECODE_DEPTH = 500;
+
 /**
  * Recursively decode a value based on its tag
  *
@@ -254,6 +258,7 @@ function parseKeyWithTags(key) {
  * @param {any} val - The value to decode
  * @param {string|undefined} tag - Type tag (D, R, E, U, M, S, P, or array format)
  * @param {string[]} [path=[]] - Current path for circular reference tracking
+ * @param {number} [depth=0] - Internal recursion guard (paired with MAX_DECODE_DEPTH)
  * @returns {any} The decoded value with original JavaScript type
  * @private
  *
@@ -272,7 +277,15 @@ function parseKeyWithTags(key) {
  * decodeValue([1704067200000, 1704153600000], '[D,D]')
  * // Returns: [Date, Date]
  */
-function decodeValue(val, tag, path = []) {
+
+function decodeValue(val, tag, path = [], depth = 0) {
+  if (depth > MAX_DECODE_DEPTH) {
+    throw new Error(
+      `JSS decode depth limit exceeded at depth ${depth}, path: ...${path.slice(-3).join('.')}. ` +
+      `Fix: Reduce object nesting depth below ${MAX_DECODE_DEPTH}. The structure may contain unintended recursion.`
+    );
+  }
+
   // If we have a known tag, use the appropriate decoder
   if (tag in tagLookup) {
     return tagLookup[tag](val, path);
@@ -293,7 +306,7 @@ function decodeValue(val, tag, path = []) {
     const typeTags = isTaggedArray ? tag.slice(1, -1).split(",") : [];
 
     for (let i = 0; i < val.length; i++) {
-      res.push(decodeValue(val[i], typeTags[i], [...path, i]));
+      res.push(decodeValue(val[i], typeTags[i], [...path, i], depth + 1));
     }
 
     return res;
@@ -305,7 +318,7 @@ function decodeValue(val, tag, path = []) {
 
     for (const key in val) {
       const [name, t] = parseKeyWithTags(key);
-      res[name] = decodeValue(val[key], t, [...path, name]);
+      res[name] = decodeValue(val[key], t, [...path, name], depth + 1);
     }
 
     return res;

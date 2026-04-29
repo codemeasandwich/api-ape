@@ -175,6 +175,15 @@
  *     await pool.end()
  * })
  */
+const { apeLog } = require("../../utils/apeLogger");
+
+/**
+ * Builds a replicated pub/sub adapter backed by Postgres tables.
+ *
+ * @param {*} pool - Connected `pg` pool
+ * @param {{ serverId: string, namespace?: string }} options - Cluster identity namespace
+ * @returns {Promise<object>} Ready adapter facade
+ */
 async function createPostgresAdapter(pool, { serverId, namespace = "ape" }) {
   if (!serverId) throw new Error("serverId required");
 
@@ -307,15 +316,15 @@ async function createPostgresAdapter(pool, { serverId, namespace = "ape" }) {
             }
           }
         } catch (e) {
-          console.error(
-            "📛 Postgres adapter: failed to parse notification",
+          apeLog.error(
+            "Postgres adapter: failed to parse notification",
             e.message,
           );
         }
       });
 
       state = "JOINED";
-      console.log(`✅ Postgres adapter: joined as ${sid}`);
+      apeLog.log(`Postgres adapter: joined as ${sid}`);
     },
 
     /**
@@ -342,8 +351,8 @@ async function createPostgresAdapter(pool, { serverId, namespace = "ape" }) {
       if (state !== "JOINED") return;
       state = "LEFT";
 
-      console.log(
-        `🔴 Postgres adapter: leaving, cleaning up ${ownedClients.size} clients`,
+      apeLog.log(
+        `Postgres adapter: leaving, cleaning up ${ownedClients.size} clients`,
       );
 
       // Unlisten and release client
@@ -397,8 +406,8 @@ async function createPostgresAdapter(pool, { serverId, namespace = "ape" }) {
           [clientId, serverId],
         );
         ownedClients.add(clientId);
-        console.log(
-          `📍 Postgres adapter: registered client ${clientId} -> ${serverId}`,
+        apeLog.log(
+          `Postgres adapter: registered client ${clientId} -> ${serverId}`,
         );
       },
 
@@ -447,7 +456,7 @@ async function createPostgresAdapter(pool, { serverId, namespace = "ape" }) {
           clientId,
         ]);
         ownedClients.delete(clientId);
-        console.log(`🗑️ Postgres adapter: removed client ${clientId}`);
+        apeLog.log(`Postgres adapter: removed client ${clientId}`);
       },
     },
 
@@ -495,19 +504,19 @@ async function createPostgresAdapter(pool, { serverId, namespace = "ape" }) {
 
         // NOTIFY has ~8000 byte limit - warn for large payloads
         if (payload.length > 7500) {
-          console.warn(
-            "⚠️ Postgres adapter: payload too large for NOTIFY, consider using smaller messages",
+          apeLog.warn(
+            "Postgres adapter: payload too large for NOTIFY, consider using smaller messages",
           );
         }
 
         await pool.query(`SELECT pg_notify($1, $2)`, [eventsChannel, payload]);
 
         if (targetServerId) {
-          console.log(
-            `📤 Postgres adapter: pushed to server ${targetServerId}`,
+          apeLog.log(
+            `Postgres adapter: pushed to server ${targetServerId}`,
           );
         } else {
-          console.log(`📢 Postgres adapter: broadcast to all servers`);
+          apeLog.log(`Postgres adapter: broadcast to all servers`);
         }
       },
 

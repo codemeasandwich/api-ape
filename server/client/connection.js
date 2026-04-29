@@ -35,10 +35,16 @@
  * })
  */
 
+const {
+  apeLog,
+  configureApeLogging,
+} = require("../../utils/apeLogger");
 const jss = require("../../utils/jss");
 const messageHash = require("../../utils/messageHash");
 const { WebSocket: WsPolyfill } = require("../lib/ws");
 const receivers = require("./connection-receivers");
+const reconnect = require("./connection-reconnect");
+const { createSend } = require("./connection-send");
 
 /**
  * WebSocket constructor - uses native if available, falls back to polyfill.
@@ -146,6 +152,14 @@ const connectTimeout = 5000;
  */
 const totalRequestTimeout = parseInt(process.env.APE_REQUEST_TIMEOUT, 10) || 120000;
 
+const send = createSend({
+  jss,
+  messageHash,
+  waitingOn,
+  getWs: () => ws,
+  totalRequestTimeout,
+});
+
 /* ========== RECEIVER MODULE BINDING ========== */
 
 /**
@@ -160,82 +174,6 @@ receivers.bindConnection({
   getWs: () => ws,
   triggerConnect: () => connect(),
 });
-
-/* ========== INTERNAL FUNCTIONS ========== */
-
-/**
- * Sends a message over the WebSocket and returns a promise for the response.
- *
- * The message is assigned a unique query ID that correlates the request
- * with the server's response. A timeout ensures the promise doesn't hang
- * indefinitely if the server doesn't respond.
- *
- * @private
- * @function send
- * @param {string} type - The message type (API path)
- * @param {*} data - The request payload
- * @param {number} [createdAt=Date.now()] - Timestamp for timeout calculation
- * @returns {Promise<*>} Promise resolving to the server's response data
- * @throws {Error} If the request times out
- *
- * @example
- * const result = await send('/users/list', { limit: 10 })
- */
-function send(type, data, createdAt = Date.now()) {
-  // Serialize the message without a queryId — the server computes the
-  // queryId by hashing the raw message string (Jenkins one-at-a-time).
-  // The client hashes the same string so both sides agree on the queryId
-  // for request/response correlation.
-  const message = jss.stringify({ type, data, createdAt });
-  const queryId = messageHash(message);
-
-  return new Promise((resolve, reject) => {
-    // Mutable timer ref — keepalive signals from the server reset this
-    // timer to prevent long-running RPC calls from timing out.
-    const timerRef = {};
-    /**
-     * Start (or restart) the response timeout timer.
-     * Resets on each keepalive signal from the server so long-running
-     * RPCs don't time out while the server is actively processing.
-     * Rejects the promise with a diagnostic error if no response arrives.
-     */
-    const startTimer = () => {
-      clearTimeout(timerRef.id);
-      timerRef.id = setTimeout(() => {
-        delete waitingOn[queryId];
-        // Diagnostic timeout error message containing What, Why, and How to prevent it.
-        reject(new Error(
-          `Failed to receive response for request '${type}'. ` +
-          `The server did not respond within the ${totalRequestTimeout}ms timeout limit. ` +
-          `To fix this, check if the server is overloaded, verify the route for '${type}' is fully implemented and returning a value, or increase the timeout limit via the APE_REQUEST_TIMEOUT environment variable (currently ${totalRequestTimeout}ms).`
-        ));
-      }, totalRequestTimeout);
-    };
-    startTimer();
-
-    // Register callback for when response arrives.
-    // The _keepalive flag is set when the server sends a heartbeat
-    // to indicate the request is still being processed. In that case,
-    // we reset the timer but do NOT resolve the promise.
-    waitingOn[queryId] = (err, result, _keepalive) => {
-      if (_keepalive) {
-        startTimer();
-        return;
-      }
-      clearTimeout(timerRef.id);
-      if (err) {
-        // Wrap a remote string error with context indicating it originated remotely
-        reject(typeof err === "string" ? new Error(`Remote RPC error on '${type}': ${err}`) : err);
-      } else {
-        resolve(result);
-      }
-    };
-
-    // Send the pre-serialized message
-    ws.send(message);
-  });
-}
-
 
 /* ========== PUBLIC FUNCTIONS ========== */
 
@@ -253,6 +191,8 @@ function send(type, data, createdAt = Date.now()) {
  * @function connect
  * @param {string} [host] - Server hostname (e.g., 'localhost')
  * @param {number} [port] - Server port (e.g., 3000)
+ * @param {Object} [options] - Optional settings
+ * @param {boolean|Object} [options.logging] - `configureApeLogging` option (`false` silences framework diagnostics)
  *
  * @example
  * // Connect with explicit host and port
@@ -263,15 +203,29 @@ function send(type, data, createdAt = Date.now()) {
  * process.env.APE_SERVER = 'ws://api.example.com/api/ape'
  * connect()
  */
-function connect(host, port) {
+function connect(host, port, options) {
+  if (options && typeof options === "object" && "logging" in options) {
+    configureApeLogging(options.logging);
+  }
+
   // Build URL from arguments if provided
   if (typeof host === "string" && typeof port === "number") {
     serverUrl = `ws://${host}:${port}/api/ape`;
+    // Explicit connection request with new target — cancel any
+    // pending backoff so we connect to the new address immediately.
+    reconnect.cancelReconnect(reconnectTimer);
+    reconnectTimer = null;
   }
   if (!serverUrl) return;
 
   // Don't create duplicate connections
   if (ws && ws.readyState !== WebSocket.CLOSED) return;
+
+  // If a backoff reconnect is already scheduled, don't bypass it.
+  // Without this guard, every queueOrSend() call during an outage
+  // triggers an immediate connect() that defeats the exponential
+  // backoff, flooding the terminal with 1-per-second error spam.
+  if (reconnectTimer) return;
 
   receivers.notifyConnectionChange(ConnectionState.Connecting);
   ws = new WebSocket(serverUrl);
@@ -282,6 +236,7 @@ function connect(host, port) {
    */
   ws.onopen = () => {
     ready = true;
+    reconnect.resetBackoff();
     receivers.notifyConnectionChange(ConnectionState.Connected);
 
     // Register any receivers that were added while disconnected
@@ -337,15 +292,22 @@ function connect(host, port) {
     // throwing in the error handler if it's somehow malformed.
     let hostPort = 'unknown';
     try { const u = new URL(serverUrl); hostPort = `${u.hostname}:${u.port}`; } catch (_) {}
-    console.error(
-      `🦍 [api-ape client] WebSocket connection to ${serverUrl || 'unknown'} failed. ` +
-      `${pendingCount} pending RPC request(s) will be rejected on close. ` +
-      `Detail: ${detail}. ` +
-      `Fix: 1) Verify the server is running: curl http://${hostPort}/health ` +
-      `2) Check server logs for crashes or port conflicts. ` +
-      `3) If the server is running, check for firewall or proxy issues on ${hostPort}. ` +
-      `4) Increase APE_REQUEST_TIMEOUT (currently ${totalRequestTimeout}ms) if the server is slow to respond.`
-    );
+    // Throttle error logs during sustained outages to prevent
+    // terminal flooding. First error logs immediately, then
+    // suppressed for 30s windows with count on resume.
+    const { log: shouldLog, suppressed } = reconnect.shouldLogError();
+    if (shouldLog) {
+      const suppressedNote = suppressed > 0 ? ` (${suppressed} similar error(s) suppressed) ` : ' ';
+      apeLog.error(
+        `[api-ape client] WebSocket connection to ${serverUrl || 'unknown'} failed.${suppressedNote}` +
+        `${pendingCount} pending RPC request(s) will be rejected on close. ` +
+        `Detail: ${detail}. ` +
+        `Fix: 1) Verify the server is running: curl http://${hostPort}/health ` +
+        `2) Check server logs for crashes or port conflicts. ` +
+        `3) If the server is running, check for firewall or proxy issues on ${hostPort}. ` +
+        `4) Increase APE_REQUEST_TIMEOUT (currently ${totalRequestTimeout}ms) if the server is slow to respond.`
+      );
+    }
   };
 
   /**
@@ -386,9 +348,17 @@ function connect(host, port) {
     ws = null;
     receivers.notifyConnectionChange(ConnectionState.Disconnected);
 
-    // Auto-reconnect after 1 second if not explicitly closed
+    // Auto-reconnect with exponential backoff if not explicitly
+    // closed. Delay increases from 1s to 30s cap with jitter to
+    // prevent terminal flooding and thundering-herd reconnection.
     if (reconnectEnabled && serverUrl) {
-      reconnectTimer = setTimeout(() => connect(), 1000);
+      reconnectTimer = reconnect.scheduleReconnect(() => {
+        // Clear the timer ref before calling connect() so the
+        // backoff guard inside connect() doesn't block this
+        // scheduled reconnection attempt.
+        reconnectTimer = null;
+        connect();
+      });
     }
   };
 }
@@ -410,10 +380,8 @@ function connect(host, port) {
  */
 function close() {
   reconnectEnabled = false;
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
+  reconnect.cancelReconnect(reconnectTimer);
+  reconnectTimer = null;
   if (ws) {
     receivers.notifyConnectionChange(ConnectionState.Closing);
     ws.close();
@@ -474,6 +442,8 @@ function queueOrSend(type, data) {
 module.exports = {
   /** Connection state enumeration */
   ConnectionState,
+  /** Configure api-ape internal logging before or after connect */
+  configureApeLogging,
   /** Establish connection to server */
   connect,
   /** Close connection and disable auto-reconnect */

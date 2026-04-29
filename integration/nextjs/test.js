@@ -85,12 +85,12 @@ async function main() {
         const healthRes = await fetch(`http://localhost:${PORT}/api/health`);
         const health = await healthRes.json();
         if (health.status === 'ok') {
-            console.log('  ✓ Custom /api/health route works');
+            console.log('  OK Custom /api/health route works');
         } else {
-            console.log('  ✗ Custom /api/health route failed');
+            console.log('  FAIL Custom /api/health route failed');
         }
     } catch (err) {
-        console.log(`  ✗ Custom routes error: ${err.message}`);
+        console.log(`  FAIL Custom routes error: ${err.message}`);
     }
 
     // Run WebSocket tests

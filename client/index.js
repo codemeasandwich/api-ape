@@ -56,6 +56,8 @@
  * }
  */
 
+import { configureApeLogging } from "../utils/apeLogger.js";
+
 // Only run this in browser environments
 const isBrowser =
   typeof window !== "undefined" && typeof document !== "undefined";
@@ -202,6 +204,7 @@ const senderProxy = new Proxy(
     get(target, prop) {
       // Reserved properties
       if (prop === "onConnectionChange") return onConnectionChange;
+      if (prop === "configureLogging") return configureApeLogging;
       if (prop === "transport") return resolvedClient?.transport || null;
       if (prop === "then" || prop === "catch") return undefined; // Not a Promise
 
@@ -238,19 +241,19 @@ const senderProxy = new Proxy(
  * const unsubscribe = api.onConnectionChange((state) => {
  *   switch (state) {
  *     case 'connected':
- *       console.log('✅ Connected to server')
+ *       console.log('Connected to server')
  *       break
  *     case 'disconnected':
- *       console.log('❌ Disconnected from server')
+ *       console.log('Disconnected from server')
  *       break
  *     case 'connecting':
- *       console.log('⏳ Connecting...')
+ *       console.log('Connecting...')
  *       break
  *     case 'offline':
- *       console.log('📵 Browser is offline')
+ *       console.log('Browser is offline')
  *       break
  *     case 'walled':
- *       console.log('🚧 Captive portal detected')
+ *       console.log('Captive portal detected')
  *       break
  *   }
  * })
@@ -324,4 +327,4 @@ export default senderProxy;
  * @example
  * import { onConnectionChange, getClient } from 'api-ape'
  */
-export { onConnectionChange, getClient };
+export { onConnectionChange, getClient, configureApeLogging };

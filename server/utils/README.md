@@ -9,6 +9,7 @@ Server-side utility functions used throughout the api-ape server implementation.
 - **Controller loading** — Recursively load JavaScript modules and map file paths to API endpoints
 - **ID generation** — Generate unique, URL-safe identifiers using Crockford Base32 encoding
 - **User-Agent parsing** — Zero-dependency parsing for browser, OS, device, and bot detection
+- **Framework logging** — [`../../utils/apeLogger.js`](../../utils/apeLogger.js) centralizes internal `log` / `warn` / `error` / `info` / `debug` for server and client; configured via `ape(..., { logging })` or `configureApeLogging()` (see [Server README](../README.md#framework-logging))
 
 > **Contributing?** See [`files.md`](./files.md) for directory structure and file descriptions.
 

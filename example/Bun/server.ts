@@ -57,7 +57,7 @@ const server = Bun.serve({
 
 console.log(`
 ╔═══════════════════════════════════════════════════════╗
-║       🦍 api-ape Bun Example (Native WebSocket)       ║
+║       api-ape Bun Example (Native WebSocket)            ║
 ╠═══════════════════════════════════════════════════════╣
 ║  HTTP:      http://localhost:${port}/                  ║
 ║  WebSocket: ws://localhost:${port}/api/ape             ║

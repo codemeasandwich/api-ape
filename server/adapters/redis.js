@@ -163,6 +163,15 @@
  *     await client.quit()
  * })
  */
+const { apeLog } = require("../../utils/apeLogger");
+
+/**
+ * Builds a replicated pub/sub adapter backed by Redis streams / keys.
+ *
+ * @param {*} redis - Connected Redis client (`ioredis` / node-redis)
+ * @param {{ serverId: string, namespace?: string }} options - Cluster identity namespace
+ * @returns {Promise<object>} Ready adapter facade
+ */
 async function createRedisAdapter(redis, { serverId, namespace = "ape" }) {
   if (!serverId) throw new Error("serverId required");
 
@@ -255,7 +264,7 @@ async function createRedisAdapter(redis, { serverId, namespace = "ape" }) {
           }
         }
       } catch (e) {
-        console.error("📛 Redis adapter: failed to parse message", e.message);
+        apeLog.error("Redis adapter: failed to parse message", e.message);
       }
     });
   }
@@ -301,7 +310,7 @@ async function createRedisAdapter(redis, { serverId, namespace = "ape" }) {
       await sub.subscribe(key.channel(""));
 
       state = "JOINED";
-      console.log(`✅ Redis adapter: joined as ${sid}`);
+      apeLog.log(`Redis adapter: joined as ${sid}`);
     },
 
     /**
@@ -328,8 +337,8 @@ async function createRedisAdapter(redis, { serverId, namespace = "ape" }) {
       if (state !== "JOINED") return;
       state = "LEFT";
 
-      console.log(
-        `🔴 Redis adapter: leaving, cleaning up ${ownedClients.size} clients`,
+      apeLog.log(
+        `Redis adapter: leaving, cleaning up ${ownedClients.size} clients`,
       );
 
       // Remove all owned client mappings
@@ -337,8 +346,8 @@ async function createRedisAdapter(redis, { serverId, namespace = "ape" }) {
         try {
           await pub.del(key.client(clientId));
         } catch (e) {
-          console.error(
-            `📛 Redis adapter: failed to remove client ${clientId}`,
+          apeLog.error(
+            `Redis adapter: failed to remove client ${clientId}`,
             e.message,
           );
         }
@@ -378,8 +387,8 @@ async function createRedisAdapter(redis, { serverId, namespace = "ape" }) {
       async add(clientId) {
         await pub.set(key.client(clientId), serverId);
         ownedClients.add(clientId);
-        console.log(
-          `📍 Redis adapter: registered client ${clientId} -> ${serverId}`,
+        apeLog.log(
+          `Redis adapter: registered client ${clientId} -> ${serverId}`,
         );
       },
 
@@ -423,7 +432,7 @@ async function createRedisAdapter(redis, { serverId, namespace = "ape" }) {
         }
         await pub.del(key.client(clientId));
         ownedClients.delete(clientId);
-        console.log(`🗑️ Redis adapter: removed client ${clientId}`);
+        apeLog.log(`Redis adapter: removed client ${clientId}`);
       },
     },
 
@@ -468,9 +477,9 @@ async function createRedisAdapter(redis, { serverId, namespace = "ape" }) {
         await pub.publish(channel, payload);
 
         if (targetServerId) {
-          console.log(`📤 Redis adapter: pushed to server ${targetServerId}`);
+          apeLog.log(`Redis adapter: pushed to server ${targetServerId}`);
         } else {
-          console.log(`📢 Redis adapter: broadcast to all servers`);
+          apeLog.log(`Redis adapter: broadcast to all servers`);
         }
       },
 

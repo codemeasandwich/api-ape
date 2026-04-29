@@ -38,7 +38,7 @@ onMounted(async () => {
 
   // Store the sender Proxy
   api = client.sender
-  console.log('🦍 api-ape client connected')
+  console.log('api-ape client connected')
 
   // Subscribe to connection state changes
   client.onConnectionChange((state: string) => {
@@ -49,7 +49,7 @@ onMounted(async () => {
   client.setOnReceiver('init', ({ data }: { data: { history: Message[], users: number } }) => {
     messages.value = data.history || []
     userCount.value = data.users || 0
-    console.log('🦍 Initialized with', data.history?.length || 0, 'messages')
+    console.log('Initialized with', data.history?.length || 0, 'messages')
   })
 
   client.setOnReceiver('message', ({ data }: { data: { message: Message } }) => {

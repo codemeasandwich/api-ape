@@ -65,6 +65,7 @@
  * transport.close()
  */
 
+import { apeLog } from "../../utils/apeLogger.js";
 import jss from "../../utils/jss";
 import { parseStreamBuffer } from "./streamParser";
 
@@ -334,7 +335,7 @@ function createStreamingTransport() {
             // Ignore abort errors (from close())
             if (readErr.name === "AbortError") return;
 
-            console.error("🦍 Stream read error:", readErr);
+            apeLog.error("Stream read error:", readErr);
             scheduleReconnect();
             return;
           }
@@ -347,7 +348,7 @@ function createStreamingTransport() {
       // Ignore abort errors (from close())
       if (err.name === "AbortError") return;
 
-      console.error("🦍 Stream connection error:", err);
+      apeLog.error("Stream connection error:", err);
       onError(err);
       scheduleReconnect();
     }

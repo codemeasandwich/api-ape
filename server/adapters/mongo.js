@@ -182,6 +182,15 @@
  *     await client.close()
  * })
  */
+const { apeLog } = require("../../utils/apeLogger");
+
+/**
+ * Builds a replicated pub/sub adapter backed by MongoDB collections.
+ *
+ * @param {*} mongoClient - Connected `MongoClient` instance
+ * @param {{ serverId: string, namespace?: string }} options - Cluster identity namespace
+ * @returns {Promise<object>} Ready adapter facade
+ */
 async function createMongoAdapter(
   mongoClient,
   { serverId, namespace = "ape" },
@@ -333,17 +342,17 @@ async function createMongoAdapter(
         });
 
         changeStream.on("error", (err) => {
-          console.error("📛 Mongo adapter: change stream error", err.message);
+          apeLog.error("Mongo adapter: change stream error", err.message);
         });
       } catch (e) {
-        console.warn(
-          "⚠️ Mongo adapter: Change streams not available (requires replica set). Falling back to polling.",
+        apeLog.warn(
+          "Mongo adapter: Change streams not available (requires replica set). Falling back to polling.",
         );
         // Could implement polling fallback here
       }
 
       state = "JOINED";
-      console.log(`✅ Mongo adapter: joined as ${sid}`);
+      apeLog.log(`Mongo adapter: joined as ${sid}`);
     },
 
     /**
@@ -369,8 +378,8 @@ async function createMongoAdapter(
       if (state !== "JOINED") return;
       state = "LEFT";
 
-      console.log(
-        `🔴 Mongo adapter: leaving, cleaning up ${ownedClients.size} clients`,
+      apeLog.log(
+        `Mongo adapter: leaving, cleaning up ${ownedClients.size} clients`,
       );
 
       // Close change stream
@@ -415,8 +424,8 @@ async function createMongoAdapter(
           { upsert: true },
         );
         ownedClients.add(clientId);
-        console.log(
-          `📍 Mongo adapter: registered client ${clientId} -> ${serverId}`,
+        apeLog.log(
+          `Mongo adapter: registered client ${clientId} -> ${serverId}`,
         );
       },
 
@@ -460,7 +469,7 @@ async function createMongoAdapter(
         }
         await clientsCol.deleteOne({ clientId });
         ownedClients.delete(clientId);
-        console.log(`🗑️ Mongo adapter: removed client ${clientId}`);
+        apeLog.log(`Mongo adapter: removed client ${clientId}`);
       },
     },
 
@@ -503,9 +512,9 @@ async function createMongoAdapter(
         });
 
         if (targetServerId) {
-          console.log(`📤 Mongo adapter: pushed to server ${targetServerId}`);
+          apeLog.log(`Mongo adapter: pushed to server ${targetServerId}`);
         } else {
-          console.log(`📢 Mongo adapter: broadcast to all servers`);
+          apeLog.log(`Mongo adapter: broadcast to all servers`);
         }
       },
 

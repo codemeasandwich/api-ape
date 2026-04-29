@@ -7,6 +7,7 @@
  * @see {@link module:server/lib/broadcast} for the main broadcast module
  */
 
+const { apeLog } = require("../../../utils/apeLogger");
 const { _clients } = require("./clients");
 
 /**
@@ -77,7 +78,7 @@ function subscribe(clientId, channel) {
   }
   _clientSubscriptions.get(clientId).add(channel);
 
-  console.log(`📥 Client ${clientId} subscribed to "${channel}"`);
+  apeLog.log(`Client ${clientId} subscribed to "${channel}"`);
 
   if (_lastMessages.has(channel)) {
     return { channel, lastMessage: _lastMessages.get(channel) };
@@ -108,7 +109,7 @@ function unsubscribe(clientId, channel) {
     }
   }
 
-  console.log(`📤 Client ${clientId} unsubscribed from "${channel}"`);
+  apeLog.log(`Client ${clientId} unsubscribed from "${channel}"`);
 }
 
 /**
@@ -123,13 +124,13 @@ function publish(channel, data) {
   const subscribers = _subscriptions.get(channel);
   if (!subscribers || subscribers.size === 0) {
     if (isPublishLoggingEnabled()) {
-      console.log(`📣 Published to "${channel}" (0 subscribers)`);
+      apeLog.log(`Published to "${channel}" (0 subscribers)`);
     }
     return;
   }
 
   if (isPublishLoggingEnabled()) {
-    console.log(`📣 Publishing to "${channel}" (${subscribers.size} subscribers)`);
+    apeLog.log(`Publishing to "${channel}" (${subscribers.size} subscribers)`);
   }
 
   subscribers.forEach((clientId) => {

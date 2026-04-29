@@ -37,6 +37,7 @@
  * })
  */
 
+const { apeLog } = require("../../../utils/apeLogger");
 const { addClient, removeClient, updateClientEmbed } = require("../broadcast");
 const makeid = require("../../utils/genId");
 const jss = require("../../../utils/jss");
@@ -330,7 +331,7 @@ function createGetHandler(streamClients, onConnect, options = {}) {
             }
           }
         })
-        .catch((err) => console.error("onConnect error:", err));
+        .catch((err) => apeLog.error("onConnect error:", err));
     }
 
     // Close connection after 25 seconds to recycle

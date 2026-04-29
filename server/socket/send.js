@@ -80,6 +80,7 @@
  * // Client fetches: GET /api/ape/data/abc123
  */
 
+const { apeLog } = require("../../utils/apeLogger");
 const jss = require("../../utils/jss");
 const { FileTransferManager } = require("../lib/fileTransfer");
 const { processPluginSend } = require("./pluginHooks");
@@ -392,7 +393,18 @@ module.exports = function sendHandler({
    * @throws {Error} If neither type nor queryId is provided
    * @throws {Error} If neither data nor err is provided
    */
-  return function send(queryId, type, data, err) {
+  return function send(queryId, type, data, err, _keepalive) {
+    // Keepalive signals: send a minimal message that resets the
+    // client's RPC timeout timer without resolving the promise.
+    // Used by long-running controllers (e.g., sessions/message)
+    // to prevent legitimate slow operations from timing out.
+    if (_keepalive && queryId) {
+      try {
+        checkSocketState(socket);
+        socket.send(jss.stringify({ queryId, _keepalive: true }));
+      } catch (_) { /* socket may be closed */ }
+      return;
+    }
     // NOTE: Validation commented out - internal callers always provide valid args.
     // These checks protect against external API misuse but can never trigger internally.
     // if (!type && !queryId) {
@@ -428,7 +440,7 @@ module.exports = function sendHandler({
       } else if (queryId) {
         throw err;
       } else {
-        console.error(err);
+        apeLog.error(err);
       }
       return;
     }
@@ -451,8 +463,8 @@ module.exports = function sendHandler({
         processedData = processed;
 
         if (binaryCount > 0) {
-          console.log(
-            `📦 Registered ${binaryCount} binary download(s) for ${queryId || type}`,
+          apeLog.log(
+            `Registered ${binaryCount} binary download(s) for ${queryId || type}`,
           );
         }
       } else {
@@ -466,8 +478,8 @@ module.exports = function sendHandler({
         processedData = processed;
 
         if (binaryEntries.length > 0) {
-          console.log(
-            `📦 Registered ${binaryEntries.length} binary download(s) for ${queryId || type}`,
+          apeLog.log(
+            `Registered ${binaryEntries.length} binary download(s) for ${queryId || type}`,
           );
         }
       }

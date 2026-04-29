@@ -178,6 +178,15 @@
  *     await adapter.leave()
  * })
  */
+const { apeLog } = require("../../utils/apeLogger");
+
+/**
+ * Builds a replicated pub/sub adapter on Firebase Realtime Database.
+ *
+ * @param {*} database - Connected Firebase realtime database reference
+ * @param {{ serverId: string, namespace?: string }} options - Cluster identity namespace
+ * @returns {Promise<object>} Ready adapter facade (channels, leave, …)
+ */
 async function createFirebaseAdapter(
   database,
   { serverId, namespace = "ape" },
@@ -341,7 +350,7 @@ async function createFirebaseAdapter(
       );
 
       state = "JOINED";
-      console.log(`✅ Firebase adapter: joined as ${sid}`);
+      apeLog.log(`Firebase adapter: joined as ${sid}`);
     },
 
     /**
@@ -366,8 +375,8 @@ async function createFirebaseAdapter(
       if (state !== "JOINED") return;
       state = "LEFT";
 
-      console.log(
-        `🔴 Firebase adapter: leaving, cleaning up ${ownedClients.size} clients`,
+      apeLog.log(
+        `Firebase adapter: leaving, cleaning up ${ownedClients.size} clients`,
       );
 
       // Unsubscribe all listeners
@@ -381,7 +390,7 @@ async function createFirebaseAdapter(
         try {
           await ref(paths.client(clientId)).remove();
         } catch (e) {
-          console.error(
+          apeLog.error(
             `Firebase: failed to remove client ${clientId}`,
             e.message,
           );
@@ -416,8 +425,8 @@ async function createFirebaseAdapter(
           updatedAt: Date.now(),
         });
         ownedClients.add(clientId);
-        console.log(
-          `📍 Firebase adapter: registered client ${clientId} -> ${serverId}`,
+        apeLog.log(
+          `Firebase adapter: registered client ${clientId} -> ${serverId}`,
         );
       },
 
@@ -462,7 +471,7 @@ async function createFirebaseAdapter(
         }
         await ref(paths.client(clientId)).remove();
         ownedClients.delete(clientId);
-        console.log(`🗑️ Firebase adapter: removed client ${clientId}`);
+        apeLog.log(`Firebase adapter: removed client ${clientId}`);
       },
     },
 
@@ -505,11 +514,11 @@ async function createFirebaseAdapter(
         });
 
         if (targetServerId) {
-          console.log(
-            `📤 Firebase adapter: pushed to server ${targetServerId}`,
+          apeLog.log(
+            `Firebase adapter: pushed to server ${targetServerId}`,
           );
         } else {
-          console.log(`📢 Firebase adapter: broadcast to all servers`);
+          apeLog.log(`Firebase adapter: broadcast to all servers`);
         }
       },
 

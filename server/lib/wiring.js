@@ -137,6 +137,7 @@
  * })
  */
 
+const { apeLog } = require("../../utils/apeLogger");
 const replySecurity = require("../security/reply");
 const socketOpen = require("../socket/open");
 const socketReceive = require("../socket/receive");
@@ -203,7 +204,7 @@ function defaultEvents(events = {}) {
      * Default onError - logs to console
      * @param {string} errSt - Error message
      */
-    onError: (errSt) => console.error(errSt),
+    onError: (errSt) => apeLog.error(errSt),
 
     /**
      * Default onDisconnect - no-op
@@ -418,8 +419,8 @@ module.exports = function wiring(controllers, onConnect, fileTransfer, options =
     socket.on("error", (err) => {
       const detail = err.message || String(err);
       const code = err.code || 'UNKNOWN';
-      console.error(
-        `🦍 [api-ape server] Socket error for client ${clientId} (code: ${code}): ${detail}. ` +
+      apeLog.error(
+        `[api-ape server] Socket error for client ${clientId} (code: ${code}): ${detail}. ` +
         `The client connection will be closed and cleaned up automatically. ` +
         `Fix: 1) If '${code}' is ECONNRESET or EPIPE — the client disconnected abruptly; check client-side logs for crashes or network issues. ` +
         `2) If repeated for the same client — the client may be in a reconnect loop; check client-side onerror/onclose handlers. ` +

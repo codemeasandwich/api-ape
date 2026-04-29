@@ -42,6 +42,7 @@
  * })
  */
 
+import { apeLog } from "../../utils/apeLogger.js";
 import jss from "../../utils/jss";
 
 /**
@@ -178,7 +179,7 @@ export function parseStreamBuffer(buffer) {
           // Parse with JSS to handle extended types (Date, RegExp, etc.)
           messages.push(jss.parse(jsonStr));
         } catch (e) {
-          console.error("🦍 Failed to parse stream message:", e);
+          apeLog.error("Failed to parse stream message:", e);
         }
 
         start = -1; // Reset for next object

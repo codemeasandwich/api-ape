@@ -54,6 +54,7 @@
  */
 
 const { randomBytes } = require("crypto");
+const { apeLog } = require("../../utils/apeLogger");
 
 /**
  * Crockford Base32 alphabet for generating short, URL-safe IDs.
@@ -282,7 +283,7 @@ async function createAdapter(client, opts = {}) {
     );
   }
 
-  console.log(`🔌 APE: Detected ${type} adapter (serverId: ${serverId})`);
+  apeLog.log(`APE: Detected ${type} adapter (serverId: ${serverId})`);
 
   switch (type) {
     case "custom":

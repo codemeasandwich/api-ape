@@ -35,6 +35,7 @@
  * const wsUrl = getSocketUrl() // 'wss://example.com/api/ape'
  */
 
+import { apeLog } from "../../utils/apeLogger.js";
 import { ConnectionState, notifyConnectionChange } from "./state";
 
 /**
@@ -161,7 +162,7 @@ export async function checkCaptivePortal() {
 
     if (!response.ok) {
       if (isDevMode()) {
-        console.error("🦍 [DEV] Ping failed: HTTP", response.status);
+        apeLog.error("[DEV] Ping failed: HTTP", response.status);
       }
       return "walled";
     }
@@ -171,7 +172,7 @@ export async function checkCaptivePortal() {
     // Verify response is genuine (not a captive portal redirect page)
     if (data?.ok !== true) {
       if (isDevMode()) {
-        console.error("🦍 [DEV] Ping failed: invalid response", data);
+        apeLog.error("[DEV] Ping failed: invalid response", data);
       }
       return "walled";
     }
@@ -184,8 +185,8 @@ export async function checkCaptivePortal() {
         if (isDevMode()) {
           const direction =
             now > data.ts ? "Server time is behind" : "Server time is ahead";
-          console.error(
-            `🦍 [DEV] Ping failed: timestamp too old/stale\n` +
+          apeLog.error(
+            `[DEV] Ping failed: timestamp too old/stale\n` +
               `  Skew: ${skew}ms (~${Math.round(skew / 1000)}s)\n` +
               `  Client time: ${new Date(now).toISOString()}\n` +
               `  Server time: ${new Date(data.ts).toISOString()}\n` +
@@ -200,7 +201,7 @@ export async function checkCaptivePortal() {
     return "ok";
   } catch (err) {
     if (isDevMode()) {
-      console.error("🦍 [DEV] Ping failed:", err.message || err);
+      apeLog.error("[DEV] Ping failed:", err.message || err);
     }
     return "walled";
   }
@@ -264,12 +265,12 @@ export function setupOnlineListeners(attemptConnectionFn) {
   if (typeof window === "undefined") return;
 
   window.addEventListener("online", () => {
-    console.log("🦍 Browser went online, checking network...");
+    apeLog.log("Browser went online, checking network...");
     attemptConnectionFn();
   });
 
   window.addEventListener("offline", () => {
-    console.log("🦍 Browser went offline");
+    apeLog.log("Browser went offline");
     notifyConnectionChange(ConnectionState.Offline);
   });
 }

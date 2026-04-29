@@ -48,6 +48,7 @@
  */
 
 import jss from "../utils/jss";
+import { apeLog, configureApeLogging } from "../utils/apeLogger.js";
 import { createStreamingTransport } from "./transports/streaming";
 import {
   ConnectionState,
@@ -181,7 +182,7 @@ function flushWaitingMessages(sendFn) {
  * @private
  */
 function switchToStreaming() {
-  console.log("🦍 Switching to HTTP streaming transport");
+  apeLog.log("Switching to HTTP streaming transport");
   currentTransport = "polling";
 
   if (!streamingTransport) {
@@ -224,7 +225,7 @@ function switchToStreaming() {
      * @param {Error} err - The error that occurred
      */
     streamingTransport.onError = (err) =>
-      console.error("🦍 Streaming error:", err);
+      apeLog.error("Streaming error:", err);
   }
 
   streamingTransport.connect();
@@ -419,8 +420,18 @@ const sender = createSender(
  *
  * // Check current transport
  * console.log(client.transport) // 'websocket' or 'polling'
+ *
+ * @param {Record<string, unknown>} [maybeOptions] - Optional `{ logging }` forwarded to configureApeLogging
  */
-function connectSocket() {
+function connectSocket(maybeOptions) {
+  if (
+    maybeOptions &&
+    typeof maybeOptions === "object" &&
+    "logging" in maybeOptions
+  ) {
+    configureApeLogging(maybeOptions.logging);
+  }
+
   // Return existing interface if already connected
   if (__socket && __socket.readyState !== WebSocket.CLOSED)
     return buildClientInterface();
@@ -514,6 +525,12 @@ connectSocket.autoReconnect = () => (reconnect = true);
  * })
  */
 connectSocket.ConnectionState = ConnectionState;
+
+/**
+ * Configure api-ape internal logging (call before first connection if possible).
+ * @param {boolean|Object} logging - `false` silences framework logs; object supplies custom log/warn/error handlers
+ */
+connectSocket.configureLogging = configureApeLogging;
 
 export default connectSocket;
 export { ConnectionState };

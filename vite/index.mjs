@@ -67,7 +67,7 @@ export default function apiApePlugin(options = {}) {
             const mod = await server.ssrLoadModule(modulePath);
             resolvedOnConnect = mod.onConnect || mod.default || mod;
           } catch (e) {
-            console.error(`  ❌ Failed to load onConnect from ${onConnect}:`, e.message);
+            console.error(`  Failed to load onConnect from ${onConnect}:`, e.message);
           }
         }
 
@@ -81,7 +81,7 @@ export default function apiApePlugin(options = {}) {
         const address = server.httpServer.address();
         const port = typeof address === "object" ? address.port : address;
 
-        console.log(`\n  🦍 api-ape initialized on Vite dev server`);
+        console.log(`\n  api-ape initialized on Vite dev server`);
         console.log(`     WebSocket: ws://localhost:${port}/${where}/ape`);
         console.log(`     Controllers: ./${where}/\n`);
       });

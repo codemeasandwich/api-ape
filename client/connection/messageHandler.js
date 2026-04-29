@@ -7,6 +7,7 @@
  * @module client/connection/messageHandler
  */
 
+import { apeLog } from "../../utils/apeLogger.js";
 import {
   fetchLinkedResources,
   fetchSharedFiles,
@@ -51,7 +52,7 @@ export async function processIncomingData(data, err) {
     let result = await fetchLinkedResources(data);
     return await fetchSharedFiles(result);
   } catch (e) {
-    console.error(`🦍 Failed to hydrate data:`, e);
+    apeLog.error(`Failed to hydrate data:`, e);
     return data;
   }
 }

@@ -108,6 +108,7 @@
  * ape(server, { where: 'api' })
  */
 
+const { configureApeLogging, resetApeLoggingForTesting } = require("../../utils/apeLogger");
 const loader = require("./loader");
 const wiring = require("./wiring");
 const { isBun, isDeno, getRuntime } = require("./wsProvider");
@@ -136,6 +137,7 @@ let created = false;
  */
 function _resetForTesting() {
   created = false;
+  resetApeLoggingForTesting();
 }
 
 /**
@@ -186,7 +188,12 @@ function _resetForTesting() {
  * // core.controllers = { 'users': [Function], 'chat': [Function], ... }
  * // core.wsPath = '/api/ape'
  */
-function createApeCore({ where, onConnect, fileTransferOptions, longPollingOptions }) {
+function createApeCore({
+  where,
+  onConnect,
+  fileTransferOptions,
+  longPollingOptions,
+}) {
   const path = require("path");
   const controllersDir = path.join(process.cwd(), where);
   const controllers = loader(where);
@@ -233,6 +240,7 @@ function createApeCore({ where, onConnect, fileTransferOptions, longPollingOptio
  * | `onConnect`          | Function | Called when a client connects              |
  * | `fileTransferOptions`| Object   | Binary file transfer configuration         |
  * | `transport`          | string   | Force transport: 'websocket' or 'longpolling' |
+ * | `logging`            | boolean\|Object | `false` silences api-ape internal logs; object sets custom log/warn/error sinks |
  *
  * ## onConnect Callback
  *
@@ -328,6 +336,8 @@ module.exports = function (server, options) {
     throw new Error("Api-Ape already started");
   }
   created = true;
+
+  configureApeLogging(options && options.logging);
 
   const core = createApeCore(options);
 

@@ -17,6 +17,8 @@
  * unsub()
  */
 
+import { apeLog } from "../../utils/apeLogger.js";
+
 /**
  * Map of channel to Set of callback functions
  * @type {Map<string, Set<Function>>}
@@ -113,7 +115,7 @@ export function dispatch(channel, data) {
       try {
         callback(data);
       } catch (err) {
-        console.error(`🦍 Subscription callback error for "${channel}":`, err);
+        apeLog.error(`Subscription callback error for "${channel}":`, err);
       }
     });
   }

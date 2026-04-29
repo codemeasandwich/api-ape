@@ -114,19 +114,41 @@ const handler = {
     /**
      * Creates a wrapper function that can be called or chained further.
      *
+     * Path accumulation: each level chains through the parent wrapper so
+     * that nested property access builds the full path. For example:
+     * - api.sessions.create(data) → chains "/create" through parent
+     *   which prepends "/sessions" → queueOrSend("/sessions/create", data)
+     *
      * When called with two arguments where the first is a string,
      * it appends to the path: `api.users("/123", data)` → path "/users/123"
      *
-     * When called with one argument, it uses that as the request body:
-     * `api.users.create({ name: 'Alice' })` → POST to "/users/create"
+     * When called with one function argument, it subscribes to the
+     * channel at the current path and returns an unsubscribe function.
      *
-     * @param {string|Object} [a] - Path segment or request body
+     * @param {string|Object|Function} [a] - Path segment, request body, or subscription callback
      * @param {Object} [b] - Request body (when a is a path segment)
-     * @returns {Promise} Promise resolving to the server response
+     * @returns {Promise|Function} Promise resolving to server response, or unsubscribe function
      */
     const wrapperFn = function (a, b) {
       let path = joinKey + prop,
         body;
+
+      // Single function argument: subscribe to this channel path.
+      // Returns an unsubscribe function. The subscription is registered
+      // locally via on() — the server pushes events with matching type.
+      // The unsubscribe function from on() is wired through so callers
+      // can clean up handlers and prevent memory leaks.
+      if (arguments.length === 1 && typeof a === "function") {
+        /**
+         * Strips websocket envelope — user callback receives `event.data` only.
+         *
+         * @param {{ data?: unknown }} event - Incoming message envelope from on()
+         * @returns {void}
+         */
+        const wrappedHandler = (event) => a(event.data);
+        const unsub = on(path, wrappedHandler);
+        return unsub;
+      }
 
       if (arguments.length === 2 && typeof a === "string") {
         // Two args with string first: append to path
@@ -137,6 +159,13 @@ const handler = {
         // Single arg: use as body
         // e.g., api.users.create({ name: 'Alice' })
         body = a;
+      }
+
+      // Chain through parent wrapper if target is a function (from a
+      // previous proxy level). This enables path accumulation so that
+      // api.users.create(data) sends "/users/create" not just "/create".
+      if (typeof target === "function") {
+        return target(path, body);
       }
 
       return queueOrSend(path, body);
@@ -305,6 +334,13 @@ module.exports.onConnectionChange = onConnectionChange;
  * @function
  */
 module.exports.connect = connect;
+
+/**
+ * Configure api-ape internal logging for the Node.js client (same as browser).
+ * @function
+ */
+module.exports.configureLogging =
+  require("./connection").configureApeLogging;
 
 /**
  * Close the connection

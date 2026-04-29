@@ -77,7 +77,7 @@ ape(server, {
 server.listen(port, () => {
     console.log(`
 ╔═══════════════════════════════════════════════════════╗
-║       🦍 api-ape Vite + Vue Example                   ║
+║       api-ape Vite + Vue Example                      ║
 ╠═══════════════════════════════════════════════════════╣
 ║  Backend:   http://localhost:${port}/                  ║
 ║  WebSocket: ws://localhost:${port}/api/ape             ║

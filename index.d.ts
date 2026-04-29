@@ -99,6 +99,27 @@ export type OnConnectCallback = (
 ) => ConnectionHandlers | void
 
 /**
+ * Optional sinks for api-ape internal diagnostics (merge with `console` for omitted levels).
+ */
+export interface ApeLoggingHandlers {
+    log?: (...args: any[]) => void
+    warn?: (...args: any[]) => void
+    error?: (...args: any[]) => void
+    info?: (...args: any[]) => void
+    debug?: (...args: any[]) => void
+}
+
+/**
+ * `false` silences framework logs; `true` uses `console`; an object overrides per level.
+ */
+export type ApeLoggingOption = boolean | ApeLoggingHandlers
+
+/**
+ * Set the process-wide / tab-wide api-ape log sink (browser or Node client).
+ */
+export declare function configureApeLogging(logging: ApeLoggingOption): void
+
+/**
  * Server options for ape()
  */
 export interface ApeServerOptions {
@@ -106,6 +127,10 @@ export interface ApeServerOptions {
     where: string
     /** Connection lifecycle hook */
     onConnect?: OnConnectCallback
+    /**
+     * Internal framework logging: `false` silences api-ape diagnostics; omit or `true` keeps `console`.
+     */
+    logging?: ApeLoggingOption
 }
 
 // =============================================================================
@@ -313,8 +338,10 @@ export interface ApeServerClient extends ApeSender {
     on(handler: MessageHandler): void
     /** Subscribe to connection state changes */
     onConnectionChange(handler: (state: ConnectionState) => void): () => void
+    /** Configure internal api-ape logging for this Node client */
+    configureLogging(logging: ApeLoggingOption): void
     /** Connect to a server using host and port */
-    connect(host: string, port: number): void
+    connect(host: string, port: number, options?: { logging?: ApeLoggingOption }): void
     /** Close the connection */
     close(): void
     /** Current transport type (read-only) */
@@ -354,6 +381,9 @@ export interface ApeBrowserClient extends ApeSender {
 
     /** Subscribe to connection state changes. Returns unsubscribe function. */
     onConnectionChange(handler: (state: ConnectionState) => void): () => void
+
+    /** Configure internal api-ape logging (prefer calling before first RPC) */
+    configureLogging(logging: ApeLoggingOption): void
 
     /** Current transport type (read-only) */
     readonly transport: TransportType | null
@@ -431,11 +461,13 @@ export type TransportType = 'websocket' | 'polling'
  * Connect socket function with configuration methods
  */
 export interface ConnectSocket {
-    (): ApeClient
+    (options?: { logging?: ApeLoggingOption }): ApeClient
     /** Enable auto-reconnection on disconnect */
     autoReconnect(): void
     /** Connection state enum */
     ConnectionState: typeof ConnectionState
+    /** Same as {@link configureApeLogging} */
+    configureLogging(logging: ApeLoggingOption): void
 }
 
 /**

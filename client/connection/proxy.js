@@ -61,7 +61,18 @@ const joinKey = "/";
  * @constant {Set<string>}
  * @private
  */
-const reservedKeys = new Set(["onConnectionChange", "transport"]);
+// `on` is listed alongside `onConnectionChange`/`transport` in the
+// module docstring as a reserved key, but was missing from the Set.
+// Without it, the get trap returned a synthetic path-builder wrapper
+// for `api.on(...)` even though `browser.js` defines `api.on` as a
+// non-configurable, non-writable data property on the proxy target.
+// Per the Proxy invariant, a get trap MUST return the actual value
+// for such properties — returning the wrapper triggers a TypeError
+// ("'get' on proxy: property 'on' is a read-only and non-configurable
+// data property on the proxy target but the proxy did not return its
+// actual value"). Including `on` here makes the trap short-circuit
+// to `fn.on`, which is the defined property, satisfying the invariant.
+const reservedKeys = new Set(["on", "onConnectionChange", "transport"]);
 
 /**
  * Proxy handler object that implements the path-building behavior

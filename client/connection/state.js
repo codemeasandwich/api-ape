@@ -43,9 +43,9 @@
  *
  * const unsubscribe = onConnectionChange((state) => {
  *   if (state === ConnectionState.Connected) {
- *     console.log('✅ Connected to server')
+ *     console.log('Connected to server')
  *   } else if (state === ConnectionState.Offline) {
- *     console.log('📵 Device is offline')
+ *     console.log('Device is offline')
  *   }
  * })
  *

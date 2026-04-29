@@ -30,7 +30,7 @@ for (const func of functions) {
 
 // Output results
 if (errors.length > 0) {
-  console.error(`\n📄 ${file}:`);
+  console.error(`\n${file}:`);
   for (const error of errors) {
     console.error(`   ${error}`);
   }

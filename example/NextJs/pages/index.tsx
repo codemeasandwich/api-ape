@@ -69,7 +69,7 @@ export default function Home() {
       // Server sent initial data (happens on connect)
       setMessages(data.history || [])
       setUserCount(data.users || 0)
-      console.log('🦍 Initialized with', data.history?.length || 0, 'messages')
+      console.log('Initialized with', data.history?.length || 0, 'messages')
     })
 
     api.on('message', ({ data }) => {

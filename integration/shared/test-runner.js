@@ -1,8 +1,7 @@
 /**
- * Shared Test Runner
+ * @fileoverview Executes shared integration scenarios inside any runtime subprocess
  *
- * Provides a consistent way to run integration test scenarios
- * across different runtimes.
+ * Scenarios rely on `{@link scenarios}` payloads + assert helpers to prove RPC, multicast, uploads, failures.
  */
 
 /**
@@ -26,7 +25,12 @@ async function runScenarios({ runtime, server, WebSocket, Buffer, scenarios }) {
     let passed = 0;
     let failed = 0;
 
-    // Simple assertion helper
+    /**
+     * Minimal assertion façade mirroring Jasmine matchers for `{@link scenarios}`.
+     *
+     * @param {unknown} actual - Value produced by the scenario under test
+     * @returns {{ toBe: function, toBeDefined: function, toBeTruthy: function, toEqual: function }} Match helpers
+     */
     const expect = (actual) => ({
         toBe: (expected) => {
             if (actual !== expected) {
@@ -55,12 +59,12 @@ async function runScenarios({ runtime, server, WebSocket, Buffer, scenarios }) {
         try {
             await scenario.run({ server, WebSocket, Buffer, expect });
             const duration = Date.now() - startTime;
-            console.log(`  ✓ ${scenario.name} (${duration}ms)`);
+            console.log(`  OK ${scenario.name} (${duration}ms)`);
             passed++;
             results.push({ name: scenario.name, passed: true, duration });
         } catch (error) {
             const duration = Date.now() - startTime;
-            console.log(`  ✗ ${scenario.name} (${duration}ms)`);
+            console.log(`  FAIL ${scenario.name} (${duration}ms)`);
             console.log(`    Error: ${error.message}`);
             failed++;
             results.push({ name: scenario.name, passed: false, duration, error: error.message });

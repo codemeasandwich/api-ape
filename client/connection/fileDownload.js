@@ -50,6 +50,7 @@
  * // Result: { attachment: ArrayBuffer(...), text: "Check this out!" }
  */
 
+import { apeLog } from "../../utils/apeLogger.js";
 import { getBaseUrl } from "./network";
 import { setValueAtPath, findTaggedProps, cleanTaggedKeys } from "./fileUtils";
 
@@ -124,7 +125,7 @@ export async function fetchLinkedResources(data, clientId) {
   const resources = findTaggedProps(data, "L");
   if (resources.length === 0) return data;
 
-  console.log(`🦍 Fetching ${resources.length} binary resource(s)`);
+  apeLog.log(`Fetching ${resources.length} binary resource(s)`);
   const cleanedData = cleanTaggedKeys(data, "L");
   const baseUrl = getBaseUrl();
 
@@ -139,7 +140,7 @@ export async function fetchLinkedResources(data, clientId) {
         const arrayBuffer = await response.arrayBuffer();
         setValueAtPath(cleanedData, path, arrayBuffer);
       } catch (err) {
-        console.error(`🦍 Failed to fetch binary resource at ${path}:`, err);
+        apeLog.error(`Failed to fetch binary resource at ${path}:`, err);
         setValueAtPath(cleanedData, path, null);
       }
     }),
@@ -211,7 +212,7 @@ export async function fetchSharedFiles(data, maxRetries = 5) {
   const files = findTaggedProps(data, "F");
   if (files.length === 0) return data;
 
-  console.log(`🦍 Fetching ${files.length} shared file(s)`);
+  apeLog.log(`Fetching ${files.length} shared file(s)`);
   const cleanedData = cleanTaggedKeys(data, "F");
   const baseUrl = getBaseUrl();
 
@@ -241,7 +242,7 @@ export async function fetchSharedFiles(data, maxRetries = 5) {
           break;
         } catch (err) {
           if (retries >= maxRetries - 1) {
-            console.error(`🦍 Failed to fetch shared file at ${path}:`, err);
+            apeLog.error(`Failed to fetch shared file at ${path}:`, err);
             setValueAtPath(cleanedData, path, null);
           }
           retries++;
