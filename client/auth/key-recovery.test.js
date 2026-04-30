@@ -11,16 +11,32 @@ const { indexedDB, IDBKeyRange } = require('fake-indexeddb');
 global.indexedDB = indexedDB;
 global.IDBKeyRange = IDBKeyRange;
 
-// Mock Web Crypto API
+// Mock Web Crypto API — Node 19+ exposes read-only global.crypto; replace or patch safely.
 const nodeCrypto = require('crypto');
-global.crypto = {
-  getRandomValues: (arr) => {
+const mockCrypto = {
+  getRandomValues(arr) {
     const bytes = nodeCrypto.randomBytes(arr.length);
     arr.set(bytes);
     return arr;
   },
-  subtle: nodeCrypto.webcrypto.subtle
+  subtle: nodeCrypto.webcrypto.subtle,
 };
+try {
+  Object.defineProperty(globalThis, 'crypto', {
+    value: mockCrypto,
+    writable: true,
+    configurable: true,
+  });
+} catch {
+  try {
+    globalThis.crypto = mockCrypto;
+  } catch {
+    globalThis.crypto.getRandomValues = mockCrypto.getRandomValues;
+    if (!globalThis.crypto.subtle) {
+      globalThis.crypto.subtle = mockCrypto.subtle;
+    }
+  }
+}
 global.TextEncoder = require('util').TextEncoder;
 global.TextDecoder = require('util').TextDecoder;
 

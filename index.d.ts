@@ -262,7 +262,7 @@ declare namespace ape {
 
     /**
      * Read-only Map of connected clients
-     * Each ClientWrapper provides: clientId, sessionId, embed, agent, send(type, data)
+     * Each ClientWrapper provides: clientId, sessionId (Phase 1 pairing scope — often minted server-side), embed, agent, send(type, data)
      */
     export const clients: ReadonlyMap<string, ClientWrapper>
 
@@ -502,7 +502,10 @@ export interface ClientSendFunction {
 export interface ClientWrapper {
     /** Unique client identifier */
     readonly clientId: string
-    /** Session ID from cookie (set by outer framework) */
+    /**
+     * Parent session scope for Phase 1 `(sessionId, clientId)` pairing.
+     * From cookie/header when provided; WebSocket and LP handlers otherwise mint an id and echo it in `__connected__` — often non-null even without app-set cookies.
+     */
     readonly sessionId: string | null
     /** Embedded values from onConnect */
     readonly embed: Record<string, any>

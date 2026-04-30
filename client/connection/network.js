@@ -33,6 +33,7 @@
  *
  * // Get WebSocket URL
  * const wsUrl = getSocketUrl() // 'wss://example.com/api/ape'
+ * const resumed = getSocketUrl(priorClientId) // adds ?resume=… when reconnecting
  */
 
 import { apeLog } from "../../utils/apeLogger.js";
@@ -322,7 +323,11 @@ export function getBaseUrl() {
  * For local development servers (localhost, 127.0.0.1, [::1]),
  * defaults to port 9010 if no port is specified.
  *
- * @returns {string} WebSocket URL (ws:// or wss://)
+ * @param {string|null} [resumeClientId] - Prior `clientId` from `__connected__`;
+ *   when set, appended as `?resume=` for Phase 1 logical reconnect (browser has no
+ *   custom upgrade headers).
+ *
+ * @returns {string} WebSocket URL (ws:// or wss://), with optional `?resume=` query
  *
  * @example
  * // On https://example.com
@@ -334,12 +339,11 @@ export function getBaseUrl() {
  * // On http://localhost (no port)
  * getSocketUrl() // Returns: 'ws://localhost:9010/api/ape'
  *
- * @example
  * // Usage in connection code
  * const ws = new WebSocket(getSocketUrl())
  * ws.onopen = () => console.log('Connected!')
  */
-export function getSocketUrl() {
+export function getSocketUrl(resumeClientId) {
   const hostname = window.location.hostname;
   const localServers = ["localhost", "127.0.0.1", "[::1]"];
   const isLocal = localServers.includes(hostname);
@@ -347,5 +351,9 @@ export function getSocketUrl() {
   const port = window.location.port || (isLocal ? 9010 : isHttps ? 443 : 80);
   const protocol = isHttps ? "wss" : "ws";
   const portSuffix = port !== 80 && port !== 443 ? `:${port}` : "";
-  return `${protocol}://${hostname}${portSuffix}/api/ape`;
+  let url = `${protocol}://${hostname}${portSuffix}/api/ape`;
+  if (resumeClientId) {
+    url += `?resume=${encodeURIComponent(resumeClientId)}`;
+  }
+  return url;
 }

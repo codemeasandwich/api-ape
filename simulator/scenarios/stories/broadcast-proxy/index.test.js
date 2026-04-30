@@ -113,8 +113,9 @@ describe('Broadcast Proxy User Stories', () => {
             const result = await client.call('broadcast-test', { action: 'sessionId' });
 
             expect(result.success).toBe(true);
-            // sessionId is null when no session cookie is set
-            expect(result.sessionId).toBeNull();
+            // Phase 1: server mints session scope when no cookie is sent (`__connected__` echoes it).
+            expect(typeof result.sessionId).toBe('string');
+            expect(result.sessionId.length).toBeGreaterThan(0);
         });
 
         test('can access client agent', async () => {

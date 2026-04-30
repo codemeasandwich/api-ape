@@ -76,6 +76,20 @@ api.onConnectionChange((state) => {
 
 **No async setup needed!** The client auto-initializes and buffers calls until connected.
 
+## Transient network & logical reconnect (Phase 1)
+
+WebSocket disconnects are expected in production (Wi‑Fi handoffs, laptop sleep, deploys). api-ape handles **queued but unsent** RPC by buffering until the transport is ready again; subscriptions are **re-sent** on connect (`resubscribeAll`).
+
+**Stable logical client id (`clientId`)** — After `__connected__`, the browser keeps the server-issued `clientId` in memory and sends **`wss://…/api/ape?resume=<clientId>`** on the next WebSocket open so the server can re-bind the same logical row **within a short TTL** after disconnect. The server also sends **`sessionId`** in `__connected__`; the browser stores it as a **non-HttpOnly** `sessionId` cookie so upgrades carry a **second factor**. Reattach succeeds only when **`(sessionId, clientId)`** matches the row recorded at disconnect — a captured URL alone is not enough.
+
+**Node (`server/client`)** — Handshake **`Cookie: sessionId=…`** (after the first `__connected__`) plus **`resume`** as a query parameter on the WS URL (mirrors the browser). Headers such as **`x-ape-session-id`** / **`x-ape-resume`** are accepted where cookies or query strings are awkward.
+
+**Backoff** — Browser reconnect delay matches the Node client pattern (exponential cap 30s with jitter). Tune resume grace with **`APE_RESUME_TTL_MS`** (milliseconds; default 120000).
+
+**In-flight RPC** — Responses for requests already **sent** may still be lost on disconnect (Phase 2 mailbox covers deeper guarantees). Pending browser RPC callbacks are **rejected on socket close** so callers fail fast instead of hanging.
+
+**Dual transport (WebSocket vs HTTP fallback)** — While **polling/streaming** mode uses its own **`apeClientId`** cookie lifecycle, **logical WS resume** (`clientId` + `sessionId` pairing) applies when the active transport is WebSocket. Switching between transports does not automatically unify those identifiers; treat LP + WS as separate attachment surfaces until an explicit alignment ships.
+
 ## Framework logging
 
 The browser client emits **internal** diagnostics in some cases (for example streaming fallback, dev-only ping checks on `localhost`, subscription callback errors, binary fetch progress). Application code you write is unaffected.

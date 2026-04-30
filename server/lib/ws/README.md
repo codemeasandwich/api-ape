@@ -13,7 +13,7 @@ The ws module provides a zero-dependency, RFC 6455 compliant WebSocket implement
 - **Control frames** — Proper handling of ping, pong, and close frames
 - **Runtime adapters** — Adapters for Bun and Deno native WebSocket implementations
 
-The polyfill is automatically selected by `wsProvider.js` when running on Node.js versions prior to 24 (which introduced native WebSocket support) and when native runtime adapters are unavailable.
+The polyfill is automatically selected by `wsProvider.js` when native implementations are unavailable — including Node.js releases before 24, Bun/Deno adapter load failures, and Node 24+ runtimes without the `node:ws` built-in.
 
 > **Contributing?** See [`files.md`](./files.md) for directory structure and file descriptions.
 
@@ -25,7 +25,7 @@ The polyfill is automatically selected by `wsProvider.js` when:
 |-----------|------------------------|
 | Deno runtime | Native `Deno.upgradeWebSocket()` |
 | Bun runtime | Native Bun WebSocket |
-| Node.js 24+ | Native `node:ws` module |
+| Node.js 24+ | Native `node:ws` when available; otherwise **this polyfill** |
 | Node.js < 24 | **This polyfill** |
 
 ## See Also

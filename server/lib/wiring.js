@@ -142,7 +142,6 @@ const replySecurity = require("../security/reply");
 const socketOpen = require("../socket/open");
 const socketReceive = require("../socket/receive");
 const socketSend = require("../socket/send");
-const makeid = require("../utils/genId");
 const parseUserAgent = require("../utils/parseUserAgent");
 const {
   addClient,
@@ -151,6 +150,9 @@ const {
   updateClientSend,
   updateClientAuth,
 } = require("./broadcast");
+const { _clients } = require("./broadcast/clients");
+const { registerPendingResume } = require("./wiring/resumeRegistry");
+const { resolveWsClientId } = require("./wiring/upgradeResume");
 
 /**
  * Merge user-provided event handlers with default no-op handlers
@@ -348,30 +350,28 @@ module.exports = function wiring(controllers, onConnect, fileTransfer, options =
     };
 
     /**
-     * Generate unique client identifier
-     * Uses 20-character Crockford Base32 string for uniqueness
+     * Logical client id + parent session for Phase 1 resume.
+     * `resolveWsClientId` may reclaim a pending `(sessionId, clientId)` pair or
+     * supersede a stale live socket when session matches.
+     *
+     * @type {{ clientId: string, effectiveSessionId: string }}
+     */
+    const { clientId, effectiveSessionId } = resolveWsClientId(req, {
+      _clients,
+      removeClient,
+    });
+
+    /**
+     * Session used for broadcast/embed pairing (always non-null — minted if absent).
      * @type {string}
      */
-    const clientId = makeid(20);
+    const sessionId = effectiveSessionId;
 
     /**
      * Parse user-agent header for browser/OS/device detection
      * @type {Object}
      */
     const agent = parseUserAgent(req.headers["user-agent"]);
-
-    /**
-     * Extract sessionId from cookies
-     *
-     * Looks for a cookie named 'sessionId' which may be set by
-     * the outer web framework (Express, Koa, etc.)
-     *
-     * @type {string|null}
-     */
-    const sessionIdMatch = (req.headers.cookie || "").match(
-      /(?:^|;\s*)sessionId=([^;]*)/,
-    );
-    const sessionId = sessionIdMatch ? sessionIdMatch[1] : null;
 
     /**
      * Shared values accessible in onConnect callback
@@ -397,15 +397,29 @@ module.exports = function wiring(controllers, onConnect, fileTransfer, options =
      * when the onConnect callback executes and potentially sends
      * initial messages.
      */
-    addClient({ clientId, sessionId, agent, send: null, embed: null });
+    addClient({
+      clientId,
+      sessionId,
+      agent,
+      send: null,
+      embed: null,
+      socket,
+    });
 
     /**
      * Set up disconnect handler early
      *
-     * This will properly clean up the client even if onConnect
-     * fails or the connection closes during setup.
+     * Removes the registry row only if this socket instance still owns `clientId`
+     * (prevents a superseded socket's `close` from deleting the replacement row).
+     * Registers a short TTL resume slot unless the socket was superseded.
      */
     socket.on("close", () => {
+      const row = _clients.get(clientId);
+      const raw = row && row._raw;
+      if (!raw || raw.socket !== socket) return;
+      if (!socket.__apeSkipResumePending) {
+        registerPendingResume(clientId, sessionId);
+      }
       removeClient(clientId);
     });
 
@@ -544,7 +558,7 @@ module.exports = function wiring(controllers, onConnect, fileTransfer, options =
          * This allows WebSocket clients to know their clientId for use
          * in HTTP requests (e.g., binary file uploads via PUT).
          */
-        send(null, "__connected__", { clientId }, null);
+        send(null, "__connected__", { clientId, sessionId }, null);
 
         /**
          * Flush any messages that were buffered during setup

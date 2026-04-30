@@ -16,6 +16,7 @@ client/
 ├── index.js              # Unified entry — auto-initializing client with call buffering
 ├── browser.js            # Browser entry point — exposes window.api
 ├── connectSocket.js      # WebSocket client with auto-reconnect and JSS encoding
+├── connectSocket-tryWs.js # Browser tryWebSocket lifecycle extracted from connectSocket
 ├── connectSocket.test.js # WebSocket client test suite
 ├── connection/           # Connection management modules
 └── transports/           # Transport layer implementations (HTTP streaming fallback)
@@ -34,11 +35,16 @@ Browser-specific entry point served at `/api/ape.js`. Exposes `window.api` globa
 ### `connectSocket.js`
 
 Core WebSocket client implementation with:
-- Auto-reconnection with exponential backoff
+- Auto-reconnection with exponential backoff and jitter (aligned with Node **`server/client/connection-reconnect.js`**)
+- Phase 1 logical reconnect: **`lastResumeClientId`** → **`getSocketUrl(clientId)`** adds **`?resume=`**; **`sessionId`** cookie from **`__connected__`** for pairing
 - JSS encoding/decoding for extended types
 - Event emission for messages and connection state
 - Request/response correlation via queryId
 - Pub/sub channel subscriptions via `api.send({ subscribe: '/channel' })`
+
+### `connectSocket-tryWs.js`
+
+Internal helper wired by `connectSocket.js` — owns `tryWebSocket()` handlers (open / message / error / close) for repository line-count policy.
 
 ### `connectSocket.test.js`
 

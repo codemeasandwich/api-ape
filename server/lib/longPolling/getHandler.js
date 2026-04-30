@@ -42,6 +42,9 @@ const { addClient, removeClient, updateClientEmbed } = require("../broadcast");
 const makeid = require("../../utils/genId");
 const jss = require("../../../utils/jss");
 const parseUserAgent = require("../../utils/parseUserAgent");
+const {
+  effectiveSessionIdForRequest,
+} = require("../sessionIdentity");
 
 /**
  * Ensures a client has a unique identifier, creating one if necessary.
@@ -297,10 +300,7 @@ function createGetHandler(streamClients, onConnect, options = {}) {
     }, heartbeatInterval);
 
     // Parse user agent for client info
-    const sessionIdMatch = (req.headers.cookie || "").match(
-      /(?:^|;\s*)sessionId=([^;]*)/,
-    );
-    const sessionId = sessionIdMatch ? sessionIdMatch[1] : null;
+    const sessionId = effectiveSessionIdForRequest(req);
     const agent = parseUserAgent(req.headers["user-agent"]);
 
     // Register client with the broadcast system
@@ -311,7 +311,7 @@ function createGetHandler(streamClients, onConnect, options = {}) {
 
     // Send connection acknowledgment immediately
     // This is required for HTTP clients to know the stream is ready
-    send(null, "__connected__", { clientId }, null);
+    send(null, "__connected__", { clientId, sessionId }, null);
 
     // Call onConnect callback if provided
     /* istanbul ignore next 17 - onConnect callback handlers for long polling */

@@ -33,6 +33,17 @@
  * on('message', data => {
  *     console.log('Received:', data)
  * })
+ *
+ * ## Phase 1 notes (Node outbound client)
+ *
+ * - buildWsConnectUrl helper adds resume query when apeLogicalClientId is set from __connected__
+ * - Cookie sessionId mirrors browser pairing when apeLogicalSessionId is available
+ * - connection-reconnect backs off timers after outages
+ * - connection-send correlates waitingOn futures with server queryId responses
+ * - connection-receivers buffers subscriptions until ready flips true
+ * - totalRequestTimeout honors APE_REQUEST_TIMEOUT for long-running RPC
+ * - bindConnection avoids circular imports via lazy getters
+ *
  */
 
 const {
@@ -45,7 +56,8 @@ const { WebSocket: WsPolyfill } = require("../lib/ws");
 const receivers = require("./connection-receivers");
 const reconnect = require("./connection-reconnect");
 const { createSend } = require("./connection-send");
-
+const { buildWsConnectUrl: buildWsConnectUrlWithResume } = require("./connection-ws-url");
+const { queueOrSend: queueOrSendImpl } = require("./connection-queue-send");
 /**
  * WebSocket constructor - uses native if available, falls back to polyfill.
  * @private
@@ -134,6 +146,20 @@ let reconnectTimer = null;
  */
 let serverUrl = process.env.APE_SERVER || null;
 
+/**
+ * Phase 1 logical session id echoed by `__connected__` — sent as Cookie on reconnect.
+ * @private
+ * @type {string|null}
+ */
+let apeLogicalSessionId = null;
+
+/**
+ * Phase 1 logical client id — appended as `resume` query on reconnect.
+ * @private
+ * @type {string|null}
+ */
+let apeLogicalClientId = null;
+
 /* ========== CONFIGURATION CONSTANTS ========== */
 
 /**
@@ -175,6 +201,12 @@ receivers.bindConnection({
   triggerConnect: () => connect(),
 });
 
+/**
+ * Build WS URL with optional `resume` query (Phase 1 logical reconnect).
+ *
+ * @returns {string|null}
+ * @private
+ */
 /* ========== PUBLIC FUNCTIONS ========== */
 
 /**
@@ -187,6 +219,13 @@ receivers.bindConnection({
  * - Auto-reconnects on disconnection (unless close() was called)
  * - Processes buffered receivers and queued requests on connect
  * - Parses incoming messages with JSS and routes to handlers
+ *
+ * ## Phase 1 logical reconnect (Node client)
+ *
+ * __connected__ stores apeLogicalSessionId and apeLogicalClientId for subsequent upgrades.
+ * Resume URL assembly lives in connection-ws-url helper module.
+ * Cookie header carries sessionId on reconnect when the logical session id exists.
+ * connection-reconnect backs off after failures instead of hammering the server.
  *
  * @function connect
  * @param {string} [host] - Server hostname (e.g., 'localhost')
@@ -211,6 +250,8 @@ function connect(host, port, options) {
   // Build URL from arguments if provided
   if (typeof host === "string" && typeof port === "number") {
     serverUrl = `ws://${host}:${port}/api/ape`;
+    apeLogicalSessionId = null;
+    apeLogicalClientId = null;
     // Explicit connection request with new target — cancel any
     // pending backoff so we connect to the new address immediately.
     reconnect.cancelReconnect(reconnectTimer);
@@ -228,7 +269,12 @@ function connect(host, port, options) {
   if (reconnectTimer) return;
 
   receivers.notifyConnectionChange(ConnectionState.Connecting);
-  ws = new WebSocket(serverUrl);
+  const wsTarget = buildWsConnectUrlWithResume(serverUrl, apeLogicalClientId);
+  ws = apeLogicalSessionId
+    ? new WebSocket(wsTarget, {
+        headers: { Cookie: `sessionId=${apeLogicalSessionId}` },
+      })
+    : new WebSocket(wsTarget);
 
   /**
    * Handle successful connection.
@@ -261,6 +307,11 @@ function connect(host, port, options) {
       typeof event.data === "string" ? event.data : event.data.toString(),
     );
     const { err, type, queryId, data, _keepalive } = msg;
+
+    if (type === "__connected__" && data && typeof data === "object") {
+      if (data.sessionId) apeLogicalSessionId = data.sessionId;
+      if (data.clientId) apeLogicalClientId = data.clientId;
+    }
 
     // If this is a response to a pending request, invoke the callback.
     // Keepalive signals reset the timer without resolving the promise.
@@ -382,10 +433,9 @@ function close() {
   reconnectEnabled = false;
   reconnect.cancelReconnect(reconnectTimer);
   reconnectTimer = null;
-  if (ws) {
-    receivers.notifyConnectionChange(ConnectionState.Closing);
-    ws.close();
-  }
+  if (!ws) return;
+  receivers.notifyConnectionChange(ConnectionState.Closing);
+  ws.close();
 }
 
 /**
@@ -406,35 +456,20 @@ function close() {
  * const users = await queueOrSend('/users/list', { limit: 10 })
  */
 function queueOrSend(type, data) {
-  // If connected, send immediately
-  if (ready && ws && ws.readyState === WebSocket.OPEN) {
-    return send(type, data);
-  }
-
-  // Otherwise, queue for later
-  return new Promise((resolve, reject) => {
-    const createdAt = Date.now();
-
-    // Set up connection timeout
-    const timer = setTimeout(() => {
-      const idx = bufferedCalls.findIndex((m) => m.createdAt === createdAt);
-      if (idx > -1) bufferedCalls.splice(idx, 1);
-      // Diagnostic timeout error message indicating host failure
-      reject(new Error(
-        `Failed to queue and send request '${type}'. ` +
-        `The WebSocket connection to '${serverUrl || "unknown host"}' could not be established within the ${connectTimeout}ms limit. ` +
-        `To fix this, ensure the api-ape server is currently running on the target host and port, and check for network or firewall blockage.`
-      ));
-    }, connectTimeout);
-
-    // Add to queue
-    bufferedCalls.push({ type, data, resolve, reject, createdAt, timer });
-
-    // Trigger connection if not already connecting
-    if (!ws && serverUrl) {
-      connect();
-    }
-  });
+  return queueOrSendImpl(
+    {
+      getReady: () => ready,
+      getWs: () => ws,
+      WebSocketCtor: WebSocket,
+      send,
+      bufferedCalls,
+      connectTimeoutMs: connectTimeout,
+      getServerUrl: () => serverUrl,
+      triggerConnect: () => connect(),
+    },
+    type,
+    data,
+  );
 }
 
 /* ========== EXPORTS ========== */

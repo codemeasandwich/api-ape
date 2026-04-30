@@ -36,11 +36,20 @@ describe('Runtime Detection User Stories', () => {
 
             const result = await client.call('runtime', {});
 
+            // Align with server/lib/wsProvider: Node 24+ stable sets isNode24, but `node:ws`
+            // is not bundled on all Node builds — provider then falls back to polyfill.
+            const wsProvider = require('../../../../server/lib/wsProvider');
+            const expectsNode24 = wsProvider.isNode24Stable();
+
             expect(result.runtime).toBe('node');
             expect(result.isDeno).toBe(false);
             expect(result.isBun).toBe(false);
-            expect(result.isNode24).toBe(false); // We're on Node < 24
-            expect(result.provider.type).toBe('polyfill');
+            expect(result.isNode24).toBe(expectsNode24);
+            if (result.isNode24) {
+                expect(['node-native', 'polyfill']).toContain(result.provider.type);
+            } else {
+                expect(result.provider.type).toBe('polyfill');
+            }
             expect(result.provider.hasWebSocketServer).toBe(true);
         });
 

@@ -45,6 +45,23 @@
  * client.onConnectionChange((state) => {
  *   console.log('Connection state:', state)
  * })
+ *
+ * ## Phase 1 logical reconnect (browser transport)
+ *
+ * - **`__connected__`** carries **`clientId`** (resume hint) and **`sessionId`** (cookie pairing).
+ * - **Backoff** delays reconnect attempts via **`reconnectBackoff`** integration.
+ * - **`waitingOn`** rejects in-flight RPC when the socket closes unexpectedly.
+ * - **Streaming fallback** still flushes **`aWaitingSend`** once the polling transport opens.
+ * - **Offline / captive portal** flows defer **`attemptConnection`** instead of tight looping.
+ * - **Transport auto mode** applies **`WS_FALLBACK_TIMEOUT`** before switching to HTTP streaming.
+ * - **Polling send path** preserves **`setSendFn`** + **`resubscribeAll`** parity after transport swaps.
+ * - **RPC hydration** uses **`processIncomingData`** for linked binary/file payloads on both transports.
+ * - **Subscription proxy** keeps **`wrap(sender)`** stable while transports churn underneath.
+ * - **Logging** honors **`configureApeLogging`** when diagnostics are enabled from **`connectSocket(options)`**.
+ * - **Network retries** delegate to **`scheduleNetworkRetry`** when browsers report offline/walled states.
+ * - **Same-site session cookie** attributes balance local dev ergonomics with baseline CSRF posture (`SameSite=Lax`).
+ * - **Queued RPC flush** runs through **`flushWaitingMessages`** whenever **`ready`** transitions true.
+ *
  */
 
 import jss from "../utils/jss";
@@ -62,6 +79,7 @@ import {
   setupOnlineListeners,
   WS_RETRY_INTERVAL,
 } from "./connection/network";
+import { reconnectDelayMs } from "./connection/reconnectBackoff.js";
 import { wrap } from "./connection/proxy";
 import { createWsSend, createSender } from "./connection/sender";
 import { setSendFn, resubscribeAll } from "./connection/subscriptions";
@@ -70,6 +88,33 @@ import {
   dispatchMessage,
   setOnReceiver,
 } from "./connection/messageHandler";
+
+/**
+ * Phase 1 companion notes (browser transport split across modules below).
+ *
+ * - **`getSocketUrl(lastResumeClientId)`** centralizes WS URL construction including **`resume=`**.
+ * - **`createWsSend`** binds **`waitingOn`** so RPC rejects track socket lifetime accurately.
+ * - **`createSender`** owns **`aWaitingSend`** queue semantics mirrored by streaming fallback.
+ * - **`processIncomingData`** hydrates binary payloads before **`dispatchMessage`** fans out events.
+ * - **`wrap`** ensures **`client.sender.*`** RPC mirrors remain ergonomic for apps/tests.
+ * - **`notifyConnectionChange`** surfaces **`ConnectionState`** transitions to UI layers consistently.
+ * - **`setupOnlineListeners`** bridges browser connectivity APIs into **`attemptConnection`** retries.
+ * - **`checkCaptivePortal`** avoids useless WS storms on hotel/airport captive portals.
+ * - **`scheduleNetworkRetry`** staggers retries after **`ConnectionState.Walled`** detections.
+ * - **`WS_RETRY_INTERVAL`** bounds polling-mode upgrade attempts while streaming is active.
+ * - **`createStreamingTransport`** encapsulates HTTP streaming handshake distinct from WS RFC6455 flow.
+ * - **`setSendFn` / `resubscribeAll`** keep subscription routing coherent across transport swaps.
+ * - **`ConnectionState.Offline/Walled`** branch **`attemptConnection`** early without socket churn.
+ * - **`tryWebSocket`** owns fallback timer cancellation paths when polling succeeds later.
+ * - **`switchToStreaming`** lazily constructs streaming transport handlers once per client lifetime.
+ * - **`startWsRetry`** schedules periodic WS attempts without starving the event loop.
+ * - **`configureApeLogging`** allows silent CI runs while preserving optional verbose diagnostics.
+ * - **`apeLog`** namespaces browser/client logs separately from server diagnostics for readability.
+ * - **`buildClientInterface`** remains the stable façade returned to application authors/tests.
+ * - **`connectSocket.autoReconnect`** toggles user-controlled reconnect policy without hidden globals.
+ *
+ * @private
+ */
 
 /**
  * Configured transport mode
@@ -142,6 +187,27 @@ let aWaitingSend = [];
 let reconnect = false;
 
 /**
+ * Last server `clientId` from `__connected__` — appended as `?resume=` on reconnect.
+ * @type {string|null}
+ * @private
+ */
+let lastResumeClientId = null;
+
+/**
+ * Browser reconnect backoff attempt counter (mirrors Node `connection-reconnect`).
+ * @type {number}
+ * @private
+ */
+let reconnectBackoffAttempt = 0;
+
+/**
+ * Timer id for scheduled reconnect after backoff.
+ * @type {ReturnType<typeof setTimeout>|null}
+ * @private
+ */
+let reconnectBackoffTimer = null;
+
+/**
  * WebSocket send function bound to current socket
  * @type {function(string, any, number, boolean=): Promise<any>}
  * @private
@@ -154,12 +220,35 @@ if (typeof window !== "undefined") {
 }
 
 /**
- * Flush all queued messages through the provided send function
+ * Persist Phase 1 handshake fields for logical reconnect (`resume` + session cookie).
  *
- * Called when connection becomes ready to send pending messages
- * that were queued while disconnected.
+ * @param {{ clientId?: string, sessionId?: string }} data - `__connected__` payload
+ * @private
+ */
+function applyConnectedHandshake(data) {
+  if (data.clientId) lastResumeClientId = data.clientId;
+  if (typeof document !== "undefined" && data.sessionId) {
+    const maxAgeSec = 60 * 60 * 24 * 30;
+    document.cookie = `sessionId=${encodeURIComponent(data.sessionId)}; Path=/; SameSite=Lax; Max-Age=${maxAgeSec}`;
+  }
+}
+
+/**
+ * Cancel pending reconnect backoff timer (transport switch or successful open).
+ * @private
+ */
+function clearReconnectBackoffTimer() {
+  if (reconnectBackoffTimer != null) {
+    clearTimeout(reconnectBackoffTimer);
+    reconnectBackoffTimer = null;
+  }
+}
+
+/**
+ * Flush queued RPC/send entries through the active transport once `ready` flips true.
  *
- * @param {function(string, any, number): Promise<any>} sendFn - Send function to use
+ * @param {function(string, *, number): Promise<*>} sendFn - Bound sender (`wsSend` or streaming `send`)
+ * @returns {void}
  * @private
  */
 function flushWaitingMessages(sendFn) {
@@ -256,107 +345,53 @@ function startWsRetry() {
   }, WS_RETRY_INTERVAL);
 }
 
-/**
- * Attempt to establish a WebSocket connection
- *
- * @param {boolean} [isRetry=false] - Whether this is a retry attempt from HTTP streaming mode
- * @private
- *
- * @description
- * Connection flow:
- * 1. Creates WebSocket to server's /api/ape endpoint
- * 2. Sets up fallback timer (only on initial connection with auto transport)
- * 3. On success: marks ready, flushes queued messages
- * 4. On failure: falls back to HTTP streaming (if auto mode)
- * 5. On close: schedules reconnection if auto-reconnect enabled
- */
-function tryWebSocket(isRetry = false) {
-  const ws = new WebSocket(getSocketUrl());
-  let fallbackTimer = null;
-
-  // Set up fallback to HTTP streaming if WebSocket doesn't connect in time
-  if (!isRetry && configuredTransport === "auto") {
-    fallbackTimer = setTimeout(() => {
-      if (ws.readyState !== WebSocket.OPEN) {
-        ws.close();
-        switchToStreaming();
-      }
-    }, WS_FALLBACK_TIMEOUT);
-  }
-
-  /**
-   * Handle WebSocket connection opened
-   */
-  ws.onopen = () => {
-    if (fallbackTimer) clearTimeout(fallbackTimer);
-
-    // If retrying from polling mode, close the streaming transport
-    if (isRetry && currentTransport === "polling") {
-      if (streamingTransport) streamingTransport.close();
-      if (wsRetryTimer) {
-        clearInterval(wsRetryTimer);
-        wsRetryTimer = null;
-      }
-    }
-
-    currentTransport = "websocket";
-    __socket = ws;
-    ready = true;
-
-    // Set up subscription send function and re-subscribe to all channels
-    setSendFn((msg) => ws.send(jss.stringify(msg)));
-    resubscribeAll();
-
-    notifyConnectionChange(ConnectionState.Connected);
-    flushWaitingMessages(wsSend);
-  };
-
-  /**
-   * Handle incoming WebSocket messages
-   * @param {MessageEvent} event - WebSocket message event
-   */
-  ws.onmessage = async (event) => {
-    const { err, type, queryId, data } = jss.parse(event.data);
-
-    // Check if this is a response to a pending request
-    if (queryId && waitingOn[queryId]) {
-      const hydratedData = await processIncomingData(data, err);
-      waitingOn[queryId](err, hydratedData);
-      delete waitingOn[queryId];
-      return;
-    }
-
-    // Otherwise dispatch as a broadcast/push message
-    const processed = await processIncomingData(data, err);
-    dispatchMessage(type, err, processed);
-  };
-
-  /**
-   * Handle WebSocket errors
-   * @param {Event} err - Error event
-   */
-  ws.onerror = (err) => {
-    if (fallbackTimer) clearTimeout(fallbackTimer);
-    // Fall back to streaming on initial connection failure
-    if (!isRetry && configuredTransport === "auto" && !ready)
-      switchToStreaming();
-  };
-
-  /**
-   * Handle WebSocket connection closed
-   */
-  ws.onclose = () => {
-    if (fallbackTimer) clearTimeout(fallbackTimer);
-    __socket = false;
-    ready = false;
-
-    // Only handle reconnection if we were using WebSocket transport
-    if (currentTransport === "websocket") {
-      notifyConnectionChange(ConnectionState.Disconnected);
-      setTimeout(() => reconnect && connectSocket(), 500);
-    }
-  };
-}
+const tryWebSocket = require("./connectSocket-tryWs.js").createTryWebSocket({
+  clearReconnectBackoffTimer,
+  getSocketUrl,
+  getLastResumeClientId: () => lastResumeClientId,
+  WebSocketCtor: WebSocket,
+  wsFallbackTimeoutMs: WS_FALLBACK_TIMEOUT,
+  getConfiguredTransport: () => configuredTransport,
+  switchToStreaming,
+  getReconnectBackoffAttempt: () => reconnectBackoffAttempt,
+  setReconnectBackoffAttempt: (v) => {
+    reconnectBackoffAttempt = v;
+  },
+  getCurrentTransport: () => currentTransport,
+  setCurrentTransport: (v) => {
+    currentTransport = v;
+  },
+  getStreamingTransport: () => streamingTransport,
+  getWsRetryTimer: () => wsRetryTimer,
+  setWsRetryTimer: (v) => {
+    wsRetryTimer = v;
+  },
+  setSocketRef: (v) => {
+    __socket = v;
+  },
+  setReady: (v) => {
+    ready = v;
+  },
+  getReadySnapshot: () => ready,
+  setSendFn,
+  resubscribeAll,
+  notifyConnectionChange,
+  ConnectionState,
+  flushWaitingMessages,
+  wsSend,
+  jss,
+  applyConnectedHandshake,
+  waitingOn,
+  processIncomingData,
+  dispatchMessage,
+  getReconnectFlag: () => reconnect,
+  reconnectDelayMs,
+  getReconnectBackoffTimer: () => reconnectBackoffTimer,
+  setReconnectBackoffTimer: (v) => {
+    reconnectBackoffTimer = v;
+  },
+  connectSocketRoot: () => connectSocket(),
+});
 
 /**
  * Attempt to establish a connection to the server
@@ -370,6 +405,8 @@ function tryWebSocket(isRetry = false) {
  * @private
  */
 async function attemptConnection() {
+  clearReconnectBackoffTimer();
+
   // Check browser online status first
   if (typeof navigator !== "undefined" && !navigator.onLine) {
     notifyConnectionChange(ConnectionState.Offline);

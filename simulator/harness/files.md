@@ -15,7 +15,12 @@ This module provides the core infrastructure for end-to-end testing of api-ape. 
 ```
 harness/
 ├── index.js              # Main entry point, Harness class, orchestration helpers
-├── client-manager.js     # WebSocket client lifecycle management
+├── client-manager.js     # ClientManager factory (tracks simulated clients)
+├── client-instance.js    # ClientInstance class wiring + constructor
+├── client-instance-connect-proto.js    # Transport URLs + WS/polling connect methods
+├── client-instance-messaging-proto.js  # Incoming message dispatch + raw send
+├── client-instance-rpc-proto.js        # call / binary helpers / uploads
+├── client-instance-lifecycle-proto.js # on / waitFor / disconnect helpers
 ├── server-manager.js     # api-ape server lifecycle management
 ├── fake-browser.js       # Browser environment simulation for Node.js
 └── fake-db.js            # In-memory database adapter for cluster testing
@@ -33,12 +38,27 @@ Main entry point that ties together all harness components. Exports:
 
 ### `client-manager.js`
 
-Manages simulated browser clients for testing:
+Tracks simulated browser clients (`ClientManager`) and delegates per-connection behavior to `client-instance.js`.
 
-- `ClientManager` — Creates and tracks multiple client instances
-- `ClientInstance` — Wrapper around WebSocket connection with api-ape protocol support
-- Implements JSS encoding/decoding, queryId correlation, broadcast message buffering
-- Supports both WebSocket and HTTP polling transports
+### `client-instance.js`
+
+Defines `ClientInstance` (constructor + prototype merges from `client-instance-*-proto.js` modules). Keeps each file under repository line-count limits.
+
+### `client-instance-connect-proto.js`
+
+URL helpers and WebSocket / long-polling transport setup for harness clients.
+
+### `client-instance-messaging-proto.js`
+
+Parses inbound JSS frames, routes RPC replies, buffers broadcasts.
+
+### `client-instance-rpc-proto.js`
+
+`call`, binary upload helpers, HTTP PUT side-channel for `<!B>` / `<!A>` flows.
+
+### `client-instance-lifecycle-proto.js`
+
+Event handlers, `waitFor`, disconnect cleanup.
 
 ### `server-manager.js`
 

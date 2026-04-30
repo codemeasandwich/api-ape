@@ -10,6 +10,7 @@ The server client module enables api-ape servers to act as WebSocket clients, co
 - **Proxy-based API** — Same `api.users.list()` syntax as the browser client
 - **Auto-reconnection** — Automatic reconnection with exponential backoff
 - **Message queuing** — Queues messages during disconnection periods
+- **Logical reconnect (Phase 1)** — After `__connected__`, the client remembers `clientId` and `sessionId`; reconnect URLs include **`?resume=<clientId>`** and **`Cookie: sessionId=…`** so the remote server can validate `(sessionId, clientId)` within `APE_RESUME_TTL_MS` ([Server README: Phase 1](../README.md#websocket-logical-reconnect-phase-1))
 - **Fast-fail on disconnect** — Pending RPC callbacks are rejected immediately when the socket closes, with diagnostic error messages including the server URL, pending request count, and actionable fix steps
 - **Diagnostic error logging** — WebSocket errors log the server URL, pending request count, and numbered fix steps (health check commands, log inspection, firewall diagnosis, timeout configuration)
 - **JSS encoding** — Full support for Date, Set, Map, and other extended types
@@ -47,6 +48,16 @@ connect('other-host', 3000)
 Process-wide (before `ape()` or `connect()`): `require('api-ape').configureApeLogging(false)` works because it is attached to the CommonJS exports object.
 
 See [Server README: Framework logging](../README.md#framework-logging) and [Browser client](../../client/README.md#framework-logging).
+
+## Logical reconnect (Phase 1)
+
+Outbound connections mirror the browser contract:
+
+1. First successful attach — parse **`__connected__`** and retain **`clientId`** + **`sessionId`** for subsequent upgrades.
+2. On auto-reconnect — append **`resume`** to the configured **`APE_SERVER`** / `ws://host:port/...` URL and send **`Cookie: sessionId=<value>`** (api-ape's server-side WebSocket implementation accepts handshake options including headers).
+3. Changing target host/port via **`connect(host, port)`** clears stored logical ids so you do not resume across unrelated servers.
+
+Optional handshake headers **`x-ape-session-id`** and **`x-ape-resume`** are accepted by the server when cookie/query ergonomics differ.
 
 ## Usage
 

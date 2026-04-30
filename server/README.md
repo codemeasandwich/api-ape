@@ -12,6 +12,7 @@ The server module provides the backend infrastructure for api-ape's WebSocket-ba
 - **Binary transfers** — Transparent file upload/download with streaming support
 - **HTTP fallback** — Long-polling transport when WebSocket is blocked
 - **Multi-runtime** — Works on Node.js, Bun, and Deno
+- **Logical WebSocket reconnect (Phase 1)** — Clients may reuse the same server `clientId` within `APE_RESUME_TTL_MS` when reconnecting with `?resume=` and a matching `sessionId` (see below)
 - **Zero dependencies** — Built-in RFC 6455 WebSocket implementation (or uses native when available)
 - **🌲 Forest** — Distributed mesh for horizontal scaling across multiple servers
 
@@ -54,6 +55,28 @@ ape(server, {
 
 server.listen(3000)
 ```
+
+## WebSocket logical reconnect (Phase 1)
+
+Transient disconnects should not always imply a brand-new logical client. After the server sends `__connected__` with `{ clientId, sessionId }`, well-behaved clients remember **`clientId` in memory** and send **`?resume=<clientId>`** on the next WebSocket upgrade when reconnecting. The handshake must still carry **`sessionId`** (cookie `sessionId` or header **`x-ape-session-id`**); if the browser sent neither, the server **mints** `sessionId` once per connection and echoes it in `__connected__` so clients can persist it for later upgrades.
+
+**Resume rules (single-process scope today):**
+
+| Input | Behavior |
+|-------|----------|
+| Valid `(sessionId, clientId)` within TTL after disconnect | Same `clientId`; superseded socket closed if a stale live row exists |
+| Wrong session for `clientId`, expired TTL, or bad hint | Fresh `clientId` minted |
+| Node outbound clients | Same pairing via **`resume`** query on the WS URL + **`Cookie: sessionId=…`** after first `__connected__`; optional **`x-ape-resume`** / **`resume`** headers |
+
+**Environment:**
+
+| Variable | Meaning |
+|----------|---------|
+| `APE_RESUME_TTL_MS` | How long (ms) a disconnected logical id stays resumable after socket close (default **120000**) |
+
+Multi-node deployments without sticky routing need shared session storage (Phase 2 — see **`todo/resilient-transport-phase2.md`**). Browser HTTP streaming fallback still keys **`apeClientId`** separately from WebSocket resume; pairing LP with WS logical identity is optional follow-up.
+
+Details for browser and Node callers: [Browser client README](../client/README.md#transient-network--logical-reconnect-phase-1) and [Server client README](./client/README.md#logical-reconnect-phase-1).
 
 
 ## Server-to-Server Connection
@@ -502,8 +525,8 @@ The server automatically detects and uses the best available WebSocket implement
 
 1. **Deno**: Uses native `Deno.upgradeWebSocket()` API
 2. **Bun**: Uses native `Bun.serve()` WebSocket handlers
-3. **Node.js 24+** (stable): Uses native `node:ws` module
-4. **Earlier Node.js**: Uses built-in RFC 6455 polyfill
+3. **Node.js 24+** (stable): Attempts the native `node:ws` module when present in the runtime
+4. **Fallback**: Uses the built-in RFC 6455 polyfill (covers earlier Node versions and Node 24+ builds without `node:ws`)
 
 ```javascript
 // Automatic - no configuration needed

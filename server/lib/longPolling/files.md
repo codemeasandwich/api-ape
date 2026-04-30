@@ -5,7 +5,7 @@ This module provides HTTP-based fallback communication when WebSocket connection
 ## Guidelines
 
 - **Mirror WebSocket behavior** — Long-polling clients must receive the same events and controller context as WebSocket clients
-- **Session via cookies** — Always use `apeClientId` cookie for client identity; never rely on request parameters
+- **Session via cookies** — Always use `apeClientId` cookie for LP transport identity; never rely on request parameters for LP routing (distinct from WebSocket **`sessionId`** logical pairing — Phase 1 WS mint/pairing lives in **`sessionIdentity.js`** / **`wiring`**)
 - **Heartbeat timing** — Send heartbeats every 20 seconds; close connections after 25 seconds to avoid proxy timeouts
 - **Streaming headers** — Set `X-Accel-Buffering: no` to disable nginx/proxy buffering
 - **JSS encoding** — Use `utils/jss` for all message parsing/serialization; match WebSocket behavior exactly
@@ -29,7 +29,8 @@ Creates the HTTP GET handler for streaming server-to-client events:
 - Sends JSON events to the response stream as they occur
 - Emits heartbeat every 20 seconds to keep connection alive
 - Closes connection after 25 seconds (client automatically reconnects)
-- Manages client identity via `apeClientId` cookie
+- Manages client identity via `apeClientId` cookie (HTTP LP channel)
+- Uses **`sessionIdentity.effectiveSessionIdForRequest`** so **`sessionId`** is never absent on the broadcast row; **`__connected__`** echoes **`{ clientId, sessionId }`** like WebSocket (cookie/header pairing for hybrid scenarios)
 - Registers clients with broadcast system for event delivery
 - Calls `onConnect` callback with lifecycle hooks
 

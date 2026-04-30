@@ -18,7 +18,8 @@ connection/
 ├── fileHandling.js    # File upload/download coordination
 ├── fileUtils.js       # File transfer utilities
 ├── messageHandler.js  # Message processing and dispatch
-├── network.js         # Network state detection
+├── network.js         # Network state detection & WebSocket URL (`getSocketUrl` / resume query)
+├── reconnectBackoff.js # Phase 1: reconnect delay math shared policy with Node client
 ├── proxy.js           # Proxy-based API generation
 ├── sender.js          # Message sending with queryId correlation
 ├── state.js           # Connection state machine
@@ -41,12 +42,18 @@ Connection state machine that tracks the current connection status. Emits state 
 
 **States:** `offline` → `connecting` → `connected` → `disconnected` → `walled`
 
+### `reconnectBackoff.js`
+
+Pure helpers implementing the same exponential cap (**30s**) and jitter (**20%**) as **`server/client/connection-reconnect.js`** so browser reconnect storms match Node timing.
+
 ### `network.js`
 
 Detects network conditions to provide accurate connection state:
 - **Offline** — Browser reports no network (`navigator.onLine`)
 - **Walled garden** — Captive portal detected (WiFi login page)
 - **Online** — Full internet connectivity confirmed
+
+Also builds the WebSocket URL (**`getSocketUrl(resumeClientId)`**) including optional **`?resume=`** for Phase 1.
 
 ### `fileDownload.js`
 

@@ -6,7 +6,7 @@
  * - Large message fragmentation
  * - Connection close handshake with codes
  * - Rapid reconnection cycles
- * - Binary data transfer
+ * - Logical reconnect (Phase 1): `?resume=` + session pairing reuses `clientId` within TTL
  *
  * @module simulator/scenarios/stories/websocket-edge-cases
  */
@@ -33,6 +33,11 @@ const concurrentReconnectionMultipleClients = require('./concurrent-reconnection
 const binaryDataBufferTransfer = require('./binary-data-buffer-transfer');
 const binaryDataLargeBuffer = require('./binary-data-large-buffer');
 
+const reconnectResumesSameClientIdWithinTtl = require('./logical-resume/reconnect-resumes-same-client-id-within-ttl');
+const reconnectWithMismatchedSessionMintsNewClientId = require('./logical-resume/reconnect-with-mismatched-session-mints-new-client-id');
+
+const { resetResumeRegistryForTesting } = require('../../../../server/lib/wiring/resumeRegistry');
+
 jest.setTimeout(15000);
 
 describe('WebSocket Edge Cases User Stories', () => {
@@ -45,6 +50,7 @@ describe('WebSocket Edge Cases User Stories', () => {
 
     afterEach(async () => {
         await harness.cleanup();
+        resetResumeRegistryForTesting();
     });
 
     describe('Ping/Pong Keepalive', () => {
@@ -84,6 +90,16 @@ describe('WebSocket Edge Cases User Stories', () => {
 
         test('concurrent reconnection from multiple clients', async () => {
             await concurrentReconnectionMultipleClients({ harness, expect });
+        });
+    });
+
+    describe('Logical reconnect (Phase 1)', () => {
+        test('resume within TTL reuses same server clientId when session matches', async () => {
+            await reconnectResumesSameClientIdWithinTtl({ harness, expect });
+        });
+
+        test('resume with mismatched session mints a new clientId', async () => {
+            await reconnectWithMismatchedSessionMintsNewClientId({ harness, expect });
         });
     });
 

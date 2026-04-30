@@ -1060,4 +1060,424 @@ describe('Internal Module Coverage Tests', () => {
             expect(result).toBe(true);
         });
     });
+
+    describe('Phase 1 wiring resume (logical reconnect)', () => {
+        let resumeRegistry;
+        let upgradeResume;
+        let sessionIdentity;
+
+        beforeEach(() => {
+            jest.resetModules();
+            resumeRegistry = require('../../../../server/lib/wiring/resumeRegistry');
+            upgradeResume = require('../../../../server/lib/wiring/upgradeResume');
+            sessionIdentity = require('../../../../server/lib/sessionIdentity');
+            resumeRegistry.resetResumeRegistryForTesting();
+        });
+
+        afterEach(() => {
+            resumeRegistry.resetResumeRegistryForTesting();
+        });
+
+        test('resumeRegistry resumeTtlMs honors APE_RESUME_TTL_MS', () => {
+            const prev = process.env.APE_RESUME_TTL_MS;
+            try {
+                process.env.APE_RESUME_TTL_MS = '999';
+                jest.resetModules();
+                const rr = require('../../../../server/lib/wiring/resumeRegistry');
+                expect(rr.resumeTtlMs()).toBe(999);
+            } finally {
+                if (prev === undefined) delete process.env.APE_RESUME_TTL_MS;
+                else process.env.APE_RESUME_TTL_MS = prev;
+                jest.resetModules();
+            }
+        });
+
+        test('resumeRegistry resumeTtlMs falls back when env invalid', () => {
+            const prev = process.env.APE_RESUME_TTL_MS;
+            try {
+                process.env.APE_RESUME_TTL_MS = 'nope';
+                jest.resetModules();
+                const rr = require('../../../../server/lib/wiring/resumeRegistry');
+                expect(rr.resumeTtlMs()).toBe(120000);
+            } finally {
+                if (prev === undefined) delete process.env.APE_RESUME_TTL_MS;
+                else process.env.APE_RESUME_TTL_MS = prev;
+                jest.resetModules();
+            }
+        });
+
+        test('resumeRegistry claim, mismatch, cancel, reset', () => {
+            resumeRegistry.registerPendingResume('cid1', 'sessA');
+            expect(resumeRegistry.claimPendingResume('cid1', 'sessA')).toBe(true);
+
+            resumeRegistry.registerPendingResume('cid2', 'sessB');
+            expect(resumeRegistry.claimPendingResume('cid2', 'wrong')).toBe(false);
+
+            resumeRegistry.registerPendingResume('cid3', 'sessC');
+            resumeRegistry.cancelPendingResume('cid3');
+            expect(resumeRegistry.claimPendingResume('cid3', 'sessC')).toBe(false);
+
+            resumeRegistry.registerPendingResume('cid4', 'sessD');
+            resumeRegistry.resetResumeRegistryForTesting();
+            expect(resumeRegistry.claimPendingResume('cid4', 'sessD')).toBe(false);
+        });
+
+        test('resumeRegistry register replaces prior slot for same client id', () => {
+            resumeRegistry.registerPendingResume('c', 's1');
+            resumeRegistry.registerPendingResume('c', 's2');
+            expect(resumeRegistry.claimPendingResume('c', 's2')).toBe(true);
+        });
+
+        test('resumeRegistry cancelPendingResume for unknown id is safe', () => {
+            expect(() => resumeRegistry.cancelPendingResume('unknown')).not.toThrow();
+        });
+
+        test('resumeRegistry tolerates setTimeout return without unref', () => {
+            const orig = global.setTimeout;
+            global.setTimeout = jest.fn(() => ({}));
+            try {
+                resumeRegistry.registerPendingResume('u', 'sess');
+            } finally {
+                global.setTimeout = orig;
+            }
+            resumeRegistry.resetResumeRegistryForTesting();
+        });
+
+        test('resumeRegistry TTL removes pending slot without claim', () => {
+            const prevTtl = process.env.APE_RESUME_TTL_MS;
+            jest.useFakeTimers();
+            try {
+                process.env.APE_RESUME_TTL_MS = '10000';
+                jest.resetModules();
+                const rr = require('../../../../server/lib/wiring/resumeRegistry');
+                rr.registerPendingResume('ttl-exp', 'sessZ');
+                jest.advanceTimersByTime(10001);
+                expect(rr.claimPendingResume('ttl-exp', 'sessZ')).toBe(false);
+                rr.resetResumeRegistryForTesting();
+            } finally {
+                jest.useRealTimers();
+                if (prevTtl === undefined) delete process.env.APE_RESUME_TTL_MS;
+                else process.env.APE_RESUME_TTL_MS = prevTtl;
+                jest.resetModules();
+            }
+        });
+
+        test('parseResumeHint uses query, headers, rejects bad charset', () => {
+            expect(
+                upgradeResume.parseResumeHint({
+                    url: '/api/ape?resume=01ABC',
+                    headers: {},
+                }),
+            ).toBe('01ABC');
+
+            expect(
+                upgradeResume.parseResumeHint({
+                    url:
+                        '/api/ape?resume=' + encodeURIComponent('12XYZ'),
+                    headers: {},
+                }),
+            ).toBe('12XYZ');
+
+            expect(
+                upgradeResume.parseResumeHint({
+                    url: '::::',
+                    headers: { 'x-ape-resume': 'QQ77' },
+                }),
+            ).toBe('QQ77');
+
+            expect(
+                upgradeResume.parseResumeHint({
+                    url: '/api/ape',
+                    headers: { 'x-ape-resume': 'AA88' },
+                }),
+            ).toBe('AA88');
+
+            expect(
+                upgradeResume.parseResumeHint({
+                    url: '/api/ape',
+                    headers: { resume: 'BB99' },
+                }),
+            ).toBe('BB99');
+
+            expect(
+                upgradeResume.parseResumeHint({
+                    url: '/api/ape?resume=bad!chars',
+                    headers: {},
+                }),
+            ).toBeNull();
+
+            expect(
+                upgradeResume.parseResumeHint({ url: '/api/ape', headers: {} }),
+            ).toBeNull();
+        });
+
+        test('parseResumeHint survives decodeURIComponent error and URL errors', () => {
+            expect(
+                upgradeResume.parseResumeHint({
+                    url: '/api/ape?resume=%',
+                    headers: { 'x-ape-resume': 'ZZ11' },
+                }),
+            ).toBe('ZZ11');
+
+            const reqBadUrl = {};
+            Object.defineProperty(reqBadUrl, 'url', {
+                get() {
+                    throw new Error('bad url');
+                },
+                configurable: true,
+            });
+            reqBadUrl.headers = { resume: 'YY22' };
+            expect(upgradeResume.parseResumeHint(reqBadUrl)).toBe('YY22');
+
+            expect(
+                upgradeResume.parseResumeHint({
+                    url: '/api/ape?resume=' + '3'.repeat(65),
+                    headers: {},
+                }),
+            ).toBeNull();
+        });
+
+        test('parseResumeHint treats empty resume query as absent and reads headers', () => {
+            expect(
+                upgradeResume.parseResumeHint({
+                    url: '/api/ape?resume=',
+                    headers: { 'x-ape-resume': 'WW55' },
+                }),
+            ).toBe('WW55');
+        });
+
+        test('parseResumeHint uses default path when req.url is missing', () => {
+            expect(
+                upgradeResume.parseResumeHint({
+                    headers: { resume: 'XX66' },
+                }),
+            ).toBe('XX66');
+        });
+
+        test('resolveWsClientId supersede live socket with matching session', () => {
+            const removeClient = jest.fn();
+            const socket = {
+                close: jest.fn(),
+                terminate: jest.fn(),
+                destroy: jest.fn(),
+            };
+            const wrapper = { _raw: { socket, sessionId: 'S1' } };
+            const _clients = new Map([['01234567890123456789', wrapper]]);
+            const req = {
+                url: '/api/ape?resume=01234567890123456789',
+                headers: { cookie: 'sessionId=S1' },
+            };
+            const out = upgradeResume.resolveWsClientId(req, {
+                _clients,
+                removeClient,
+            });
+            expect(out.clientId).toBe('01234567890123456789');
+            expect(socket.close).toHaveBeenCalled();
+            expect(removeClient).toHaveBeenCalledWith('01234567890123456789');
+        });
+
+        test('resolveWsClientId supersede close-only socket', () => {
+            const removeClient = jest.fn();
+            const socket = { close: jest.fn() };
+            const wrapper = { _raw: { socket, sessionId: 'S2' } };
+            const _clients = new Map([['12345678901234567890', wrapper]]);
+            const req = {
+                url: '/api/ape?resume=12345678901234567890',
+                headers: { cookie: 'sessionId=S2' },
+            };
+            upgradeResume.resolveWsClientId(req, { _clients, removeClient });
+            expect(socket.close).toHaveBeenCalled();
+        });
+
+        test('resolveWsClientId supersede uses terminate when close missing', () => {
+            const removeClient = jest.fn();
+            const socket = { terminate: jest.fn(), destroy: jest.fn() };
+            const wrapper = { _raw: { socket, sessionId: 'S2B' } };
+            const _clients = new Map([['45678901234567890123', wrapper]]);
+            const req = {
+                url: '/api/ape?resume=45678901234567890123',
+                headers: { cookie: 'sessionId=S2B' },
+            };
+            upgradeResume.resolveWsClientId(req, { _clients, removeClient });
+            expect(socket.terminate).toHaveBeenCalled();
+        });
+
+        test('resolveWsClientId supersede calls destroy when terminate absent', () => {
+            const removeClient = jest.fn();
+            const socket = { close: jest.fn(), destroy: jest.fn() };
+            const wrapper = { _raw: { socket, sessionId: 'S2D' } };
+            const _clients = new Map([['67890123456789012345', wrapper]]);
+            const req = {
+                url: '/api/ape?resume=67890123456789012345',
+                headers: { cookie: 'sessionId=S2D' },
+            };
+            upgradeResume.resolveWsClientId(req, { _clients, removeClient });
+            expect(socket.destroy).toHaveBeenCalled();
+        });
+
+        test('resolveWsClientId supersede tolerates missing socket on raw row', () => {
+            const removeClient = jest.fn();
+            const wrapper = { _raw: { sessionId: 'S2C' } };
+            const _clients = new Map([['56789012345678901234', wrapper]]);
+            const req = {
+                url: '/api/ape?resume=56789012345678901234',
+                headers: { cookie: 'sessionId=S2C' },
+            };
+            expect(() =>
+                upgradeResume.resolveWsClientId(req, { _clients, removeClient }),
+            ).not.toThrow();
+            expect(removeClient).toHaveBeenCalledWith('56789012345678901234');
+        });
+
+        test('resolveWsClientId evict catches close errors', () => {
+            const removeClient = jest.fn();
+            const socket = {
+                close: jest.fn(() => {
+                    throw new Error('close boom');
+                }),
+                terminate: jest.fn(),
+                destroy: jest.fn(),
+            };
+            const wrapper = { _raw: { socket, sessionId: 'S3' } };
+            const _clients = new Map([['23456789012345678901', wrapper]]);
+            const req = {
+                url: '/api/ape?resume=23456789012345678901',
+                headers: { cookie: 'sessionId=S3' },
+            };
+            expect(() =>
+                upgradeResume.resolveWsClientId(req, { _clients, removeClient }),
+            ).not.toThrow();
+        });
+
+        test('resolveWsClientId wrong session for live row mints fresh id', () => {
+            const removeClient = jest.fn();
+            const socket = {
+                close: jest.fn(),
+                terminate: jest.fn(),
+                destroy: jest.fn(),
+            };
+            const wrapper = { _raw: { socket, sessionId: 'S1' } };
+            const _clients = new Map([['01234567890123456789', wrapper]]);
+            const req = {
+                url: '/api/ape?resume=01234567890123456789',
+                headers: { cookie: 'sessionId=OTHER' },
+            };
+            const out = upgradeResume.resolveWsClientId(req, {
+                _clients,
+                removeClient,
+            });
+            expect(out.clientId).not.toBe('01234567890123456789');
+            expect(removeClient).not.toHaveBeenCalled();
+        });
+
+        test('resolveWsClientId missing raw.sessionId cannot pair with cookie session', () => {
+            const removeClient = jest.fn();
+            const socket = {
+                close: jest.fn(),
+                terminate: jest.fn(),
+                destroy: jest.fn(),
+            };
+            const wrapper = { _raw: { socket } };
+            const _clients = new Map([['01234567890123456789', wrapper]]);
+            const req = {
+                url: '/api/ape?resume=01234567890123456789',
+                headers: { cookie: 'sessionId=HASSESSION' },
+            };
+            const out = upgradeResume.resolveWsClientId(req, {
+                _clients,
+                removeClient,
+            });
+            expect(out.clientId).not.toBe('01234567890123456789');
+            expect(removeClient).not.toHaveBeenCalled();
+        });
+
+        test('resolveWsClientId null raw.sessionId cannot pair with cookie session', () => {
+            const removeClient = jest.fn();
+            const socket = {
+                close: jest.fn(),
+                terminate: jest.fn(),
+                destroy: jest.fn(),
+            };
+            const wrapper = { _raw: { socket, sessionId: null } };
+            const _clients = new Map([['01234567890123456789', wrapper]]);
+            const req = {
+                url: '/api/ape?resume=01234567890123456789',
+                headers: { cookie: 'sessionId=HASSESSION' },
+            };
+            const out = upgradeResume.resolveWsClientId(req, {
+                _clients,
+                removeClient,
+            });
+            expect(out.clientId).not.toBe('01234567890123456789');
+            expect(removeClient).not.toHaveBeenCalled();
+        });
+
+        test('resolveWsClientId pending resume with session mismatch mints fresh id', () => {
+            resumeRegistry.registerPendingResume('88888888888888888888', 'sess-a');
+            const removeClient = jest.fn();
+            const _clients = new Map();
+            const req = {
+                url: '/api/ape?resume=88888888888888888888',
+                headers: { cookie: 'sessionId=sess-b' },
+            };
+            const out = upgradeResume.resolveWsClientId(req, {
+                _clients,
+                removeClient,
+            });
+            expect(out.clientId).not.toBe('88888888888888888888');
+        });
+
+        test('resolveWsClientId claims pending resume slot', () => {
+            resumeRegistry.registerPendingResume('34567890123456789012', 'PS');
+            const removeClient = jest.fn();
+            const _clients = new Map();
+            const req = {
+                url: '/api/ape?resume=34567890123456789012',
+                headers: { cookie: 'sessionId=PS' },
+            };
+            const out = upgradeResume.resolveWsClientId(req, {
+                _clients,
+                removeClient,
+            });
+            expect(out.clientId).toBe('34567890123456789012');
+        });
+
+        test('resolveWsClientId mints without resume hint', () => {
+            const removeClient = jest.fn();
+            const _clients = new Map();
+            const req = { url: '/api/ape', headers: {} };
+            const out = upgradeResume.resolveWsClientId(req, {
+                _clients,
+                removeClient,
+            });
+            expect(out.clientId).toHaveLength(20);
+            expect(out.effectiveSessionId.length).toBeGreaterThan(10);
+        });
+
+        test('sessionIdentity parses cookie, header, URI failure fallback, mint', () => {
+            expect(
+                sessionIdentity.parseSessionIdFromReq({
+                    headers: {
+                        cookie: 'sessionId=' + encodeURIComponent('a/b'),
+                    },
+                }),
+            ).toBe('a/b');
+
+            expect(
+                sessionIdentity.parseSessionIdFromReq({
+                    headers: { cookie: 'sessionId=%' },
+                }),
+            ).toBe('%');
+
+            expect(
+                sessionIdentity.parseSessionIdFromReq({
+                    headers: { 'x-ape-session-id': '  trimmed  ' },
+                }),
+            ).toBe('trimmed');
+
+            expect(
+                sessionIdentity.effectiveSessionIdForRequest({ headers: {} }),
+            ).toMatch(/^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{24}$/);
+        });
+    });
 });

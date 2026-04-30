@@ -24,6 +24,10 @@ lib/
 ├── httpUtils.js         # Shared HTTP utilities
 ├── longPolling.js       # HTTP streaming fallback coordinator
 ├── wiring.js            # WebSocket connection lifecycle handler
+├── sessionIdentity.js   # Phase 1: session cookie/header parse + mint when absent
+├── wiring/              # Phase 1 resume helpers (TTL slots + upgrade resolution)
+│   ├── resumeRegistry.js
+│   └── upgradeResume.js
 ├── wsProvider.js        # Runtime detection & WebSocket provider selection
 ├── fileTransfer/        # File transfer sub-modules
 ├── longPolling/         # Long-polling sub-modules
@@ -80,11 +84,25 @@ Coordinates HTTP long-polling as a WebSocket fallback. Creates and manages the G
 ### `wiring.js`
 
 Sets up WebSocket connection lifecycle:
-- Generates unique client IDs
+- Resolves logical **`clientId`** via **`wiring/upgradeResume.js`** ( **`?resume=`** / **`x-ape-resume`** ) against **`(sessionId, clientId)`** pairing and **`wiring/resumeRegistry.js`** TTL slots after disconnect
+- Mints parent **`sessionId`** via **`sessionIdentity.js`** when no cookie/header is present; echoes **`sessionId`** in **`__connected__`** alongside **`clientId`**
+- Stores **`socket`** on the broadcast raw row so **`close`** cleanup only removes the row owned by that socket (supersede-safe)
 - Parses User-Agent for client info
 - Registers clients in broadcast system
 - Invokes `onConnect` callback with lifecycle hooks
 - Routes messages to controllers via `socket/receive.js`
+
+### `sessionIdentity.js`
+
+Shared helper for WebSocket and long-polling handlers: reads **`sessionId`** from the **`sessionId`** cookie or **`x-ape-session-id`** header; otherwise generates a new scope id so **`__connected__`** always carries a pairable parent session.
+
+### `wiring/resumeRegistry.js`
+
+In-memory disconnected-but-resumable registry keyed by **`clientId`**, TTL **`APE_RESUME_TTL_MS`** (evaluated when registering). Test helper **`resetResumeRegistryForTesting`** clears timers between simulator cases.
+
+### `wiring/upgradeResume.js`
+
+Parses resume hints from the upgrade URL and headers, validates pairing against live **`_clients`** or **`resumeRegistry`**, evicts superseded sockets when sessions match, returns **`{ clientId, effectiveSessionId }`** for **`wiring.js`**.
 
 ### `wsProvider.js`
 

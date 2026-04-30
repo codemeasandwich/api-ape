@@ -92,8 +92,35 @@
       "!server/adapters/**",
       "!server/lib/ws/adapters/**",
       "!server/lib/bun.js",
-      "!server/lib/runtimes/bun.js"
+      "!server/lib/runtimes/bun.js",
+      "!server/lib/schema/typescript-extractor.js"
     ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 78,
+        "functions": 90,
+        "lines": 89,
+        "statements": 88
+      },
+      "./server/lib/wiring/resumeRegistry.js": {
+        "branches": 100,
+        "functions": 100,
+        "lines": 100,
+        "statements": 100
+      },
+      "./server/lib/wiring/upgradeResume.js": {
+        "branches": 100,
+        "functions": 100,
+        "lines": 100,
+        "statements": 100
+      },
+      "./server/lib/sessionIdentity.js": {
+        "branches": 100,
+        "functions": 100,
+        "lines": 100,
+        "statements": 100
+      }
+    },
     "coveragePathIgnorePatterns": [
       "/node_modules/",
       "/example/",

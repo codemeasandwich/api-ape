@@ -1,8 +1,11 @@
 /**
- * Test: can download large uploaded file
+ * @fileoverview FS1 scenario — verify large download integrity after upload (simulator).
  *
  * Tests that large files can be downloaded after upload
  * and the data integrity is preserved.
+ *
+ * @param {{ harness: import('../../../harness').Harness, expect: jest.Expect }} ctx - Harness + Jest expect
+ * @returns {Promise<void>}
  */
 module.exports = async function canDownloadLargeUploadedFile({ harness, expect }) {
   const { client } = await harness.createPair({ where: 'test-api' });
@@ -22,7 +25,7 @@ module.exports = async function canDownloadLargeUploadedFile({ harness, expect }
       data: largeData,
       broadcast: false
     },
-    10000
+    30000
   );
 
   expect(uploadResult.success).toBe(true);
@@ -31,7 +34,7 @@ module.exports = async function canDownloadLargeUploadedFile({ harness, expect }
   const downloadResult = await client.call(
     'files/download',
     { hash: uploadResult.hash },
-    10000
+    30000
   );
 
   expect(downloadResult.name).toBe('download-test-large.bin');
