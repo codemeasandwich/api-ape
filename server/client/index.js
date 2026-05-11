@@ -75,11 +75,10 @@ const joinKey = "/";
 /**
  * Proxy handler for the api-ape client.
  *
- * This handler intercepts property access and function calls to build
- * API paths dynamically. For example:
- * - `api.users` returns a new proxy with path "/users"
- * - `api.users.list()` calls the "/users/list" endpoint
- * - `api.users("/123").profile()` calls the "/users/123/profile" endpoint
+ * Each `get` extends an accumulated `_path` stored on the wrapper. The
+ * call itself takes one argument only — a callback to subscribe, or a
+ * payload to RPC. Dynamic segments are expressed via bracket access
+ * (`api.users[id](body)`), never as a string argument to the call.
  *
  * @private
  * @type {ProxyHandler}
@@ -88,12 +87,13 @@ const handler = {
   /**
    * Intercepts property access on the proxy.
    *
-   * - Reserved properties (`on`, `onConnectionChange`, `transport`, `connect`, `close`)
-   *   return their actual implementations
+   * - Reserved properties (`on`, `onConnectionChange`, `transport`,
+   *   `connect`, `close`) return their actual implementations
    * - `then` and `catch` return undefined to prevent promise coercion
-   * - All other properties return a new proxy function that extends the path
+   * - All other properties return a wrapper function whose `_path`
+   *   extends the parent's `_path` by the new segment
    *
-   * @param {Object} target - The proxy target
+   * @param {Object} target - The proxy target (root object or prior wrapper)
    * @param {string} prop - The property being accessed
    * @returns {*} The property value or a new proxy
    */
@@ -111,65 +111,44 @@ const handler = {
     // Prevent promise coercion (don't let proxy be awaited directly)
     if (prop === "then" || prop === "catch") return undefined;
 
-    /**
-     * Creates a wrapper function that can be called or chained further.
-     *
-     * Path accumulation: each level chains through the parent wrapper so
-     * that nested property access builds the full path. For example:
-     * - api.sessions.create(data) → chains "/create" through parent
-     *   which prepends "/sessions" → queueOrSend("/sessions/create", data)
-     *
-     * When called with two arguments where the first is a string,
-     * it appends to the path: `api.users("/123", data)` → path "/users/123"
-     *
-     * When called with one function argument, it subscribes to the
-     * channel at the current path and returns an unsubscribe function.
-     *
-     * @param {string|Object|Function} [a] - Path segment, request body, or subscription callback
-     * @param {Object} [b] - Request body (when a is a path segment)
-     * @returns {Promise|Function} Promise resolving to server response, or unsubscribe function
-     */
-    const wrapperFn = function (a, b) {
-      let path = joinKey + prop,
-        body;
+    // Symbols and other non-strings must not extend the path. Returning
+    // the raw target property keeps the proxy compatible with iteration
+    // and the thenable protocol.
+    if (typeof prop !== "string") return target[prop];
 
-      // Single function argument: subscribe to this channel path.
-      // Returns an unsubscribe function. The subscription is registered
-      // locally via on() — the server pushes events with matching type.
-      // The unsubscribe function from on() is wired through so callers
-      // can clean up handlers and prevent memory leaks.
-      if (arguments.length === 1 && typeof a === "function") {
+    // Accumulate path on this wrapper. The root target has no `_path`
+    // so its first child segment starts at "/<prop>".
+    const path = (target._path || "") + joinKey + prop;
+
+    /**
+     * Dispatch function for the wrapped node.
+     *
+     * - With a single function argument → subscribe to `path` via on(),
+     *   stripping the websocket envelope so callers see `event.data` only.
+     * - Otherwise → send an RPC at `path` with the argument as body
+     *   (which may be undefined).
+     *
+     * @param {Object|Function} [payload] - RPC body or subscription callback
+     * @returns {Promise|Function} Promise of the response, or unsubscribe function
+     */
+    const wrapperFn = function (payload) {
+      if (typeof payload === "function") {
         /**
-         * Strips websocket envelope — user callback receives `event.data` only.
+         * Adapter that strips the websocket envelope so the user callback
+         * receives only the message payload, not the `{ data }` wrapper
+         * emitted by the underlying `on()` subscription.
          *
-         * @param {{ data?: unknown }} event - Incoming message envelope from on()
+         * @param {{ data?: unknown }} event - Incoming envelope from on()
          * @returns {void}
          */
-        const wrappedHandler = (event) => a(event.data);
-        const unsub = on(path, wrappedHandler);
-        return unsub;
+        const wrappedHandler = (event) => payload(event.data);
+        return on(path, wrappedHandler);
       }
-
-      if (arguments.length === 2 && typeof a === "string") {
-        // Two args with string first: append to path
-        // e.g., api.users("/123", { name: 'Bob' })
-        path += a;
-        body = b;
-      } else {
-        // Single arg: use as body
-        // e.g., api.users.create({ name: 'Alice' })
-        body = a;
-      }
-
-      // Chain through parent wrapper if target is a function (from a
-      // previous proxy level). This enables path accumulation so that
-      // api.users.create(data) sends "/users/create" not just "/create".
-      if (typeof target === "function") {
-        return target(path, body);
-      }
-
-      return queueOrSend(path, body);
+      return queueOrSend(path, payload);
     };
+
+    // Store accumulated path so the next `get` can extend it.
+    wrapperFn._path = path;
 
     // Return a new proxy wrapping the function, allowing further chaining
     return new Proxy(wrapperFn, handler);

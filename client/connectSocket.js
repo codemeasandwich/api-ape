@@ -503,8 +503,8 @@ function buildClientInterface() {
      * // Calls /chat endpoint
      * sender.chat({ message: 'Hi' })
      *
-     * // Calls /users/123 endpoint
-     * sender.users('/123', { action: 'get' })
+     * // Calls /users/123 endpoint — dynamic segment via bracket access
+     * sender.users[123]({ action: 'get' })
      *
      * @type {Proxy}
      */

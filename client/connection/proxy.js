@@ -1,46 +1,42 @@
 /**
  * @fileoverview API Proxy Wrapper for Path-Building Syntax
  *
- * This module provides the Proxy wrapper that enables api-ape's fluent
- * path-building API syntax. It intercepts property access to construct
- * endpoint paths dynamically.
+ * Builds endpoint paths from property access only. Dynamic segments use
+ * bracket notation; the call itself takes a single payload (or a single
+ * callback to subscribe). Path stitching from string arguments is not
+ * supported — segments live on the proxy chain, never inside the call.
  *
  * ## How It Works
  *
- * The proxy intercepts property access and returns new proxy-wrapped functions.
- * Each property access adds a segment to the path, and calling the function
- * sends the request.
- *
  * ```
- * api.users           → wraps path "/users"
- * api.users.create    → wraps path "/users/create"
- * api.users({ ... })  → calls "/users" with data
- * api.users('/123')   → calls "/users/123"
+ * api.users                 → path "/users"
+ * api.users.create          → path "/users/create"
+ * api.users.create({...})   → RPC to "/users/create" with payload
+ * api.users[id]({...})      → RPC to "/users/<id>" (dynamic segment)
+ * api.users[id].profile()   → RPC to "/users/<id>/profile"
+ * api.news.banking(cb)      → subscribe to "/news/banking"
+ * api.stock[ticker](cb)     → subscribe to "/stock/<ticker>"
  * ```
  *
  * ## Reserved Keys
  *
  * Certain properties are reserved and bypass proxy interception:
- * - `on` - Subscribe to broadcasts
+ * - `on` - Subscribe to broadcasts (legacy receiver)
  * - `onConnectionChange` - Subscribe to connection state
  * - `transport` - Get current transport type
  *
+ * ## Path Accumulation Invariant
+ *
+ * Each wrapper stores its accumulated path on `_path`. The next `get`
+ * trap appends the new key to that `_path` rather than recursing through
+ * a parent function. Subscribe and RPC both read the same `_path`, so
+ * chained subscribes (`api.x.y(cb)`) accumulate identically to chained
+ * RPCs (`api.x.y(body)`). The previous implementation only accumulated
+ * via the RPC recursion path, so `api.x.y(cb)` subscribed to `/y`
+ * instead of `/x/y` — see proxy.test.js for the regression cover.
+ *
  * @module client/connection/proxy
  * @see {@link module:client/connectSocket} for usage context
- *
- * @example
- * import { wrap } from './proxy'
- *
- * // Wrap a sender function
- * const api = wrap((path, data) => {
- *   console.log(`Calling ${path} with`, data)
- *   return fetch(path, { body: JSON.stringify(data) })
- * })
- *
- * // Now use fluent API
- * api.users({ name: 'Alice' })        // Calls "/users"
- * api.users.profile({ id: 1 })        // Calls "/users/profile"
- * api.chat.messages('/room1', {...})  // Calls "/chat/messages/room1"
  */
 
 import { subscribe } from "./subscriptions.js";
@@ -53,192 +49,115 @@ import { subscribe } from "./subscriptions.js";
 const joinKey = "/";
 
 /**
- * Set of property names that should not be intercepted by the proxy
+ * Set of property names that should not be intercepted by the proxy.
  *
  * These properties are accessed directly on the wrapped function/object
  * rather than being treated as path segments.
  *
+ * Per the Proxy invariant, the `get` trap must return the actual value
+ * for non-configurable, non-writable data properties (e.g. `api.on`
+ * defined on the proxy target in browser.js). Returning a synthetic
+ * wrapper for those triggers a TypeError. Listing them here makes the
+ * trap short-circuit and satisfy the invariant.
+ *
  * @constant {Set<string>}
  * @private
  */
-// `on` is listed alongside `onConnectionChange`/`transport` in the
-// module docstring as a reserved key, but was missing from the Set.
-// Without it, the get trap returned a synthetic path-builder wrapper
-// for `api.on(...)` even though `browser.js` defines `api.on` as a
-// non-configurable, non-writable data property on the proxy target.
-// Per the Proxy invariant, a get trap MUST return the actual value
-// for such properties — returning the wrapper triggers a TypeError
-// ("'get' on proxy: property 'on' is a read-only and non-configurable
-// data property on the proxy target but the proxy did not return its
-// actual value"). Including `on` here makes the trap short-circuit
-// to `fn.on`, which is the defined property, satisfying the invariant.
 const reservedKeys = new Set(["on", "onConnectionChange", "transport"]);
 
 /**
- * Proxy handler object that implements the path-building behavior
+ * Wrap an API sender function in a Proxy for path-building syntax.
  *
- * The `get` trap intercepts property access to either:
- * 1. Return the actual property if it's a reserved key
- * 2. Return a new wrapped function that extends the path
+ * The returned proxy intercepts every property access to extend an
+ * accumulated path (`_path`). Calling any wrapped node dispatches:
+ * - `wrapped(callback)`  → `subscribe(_path, callback)` and returns the unsubscribe fn
+ * - `wrapped(payload)`   → `api(_path, payload)` and returns the sender's Promise
+ * - `wrapped()`          → `api(_path, undefined)` (no payload)
  *
- * @type {ProxyHandler<Function>}
- * @private
+ * Dynamic path segments are expressed with bracket access — e.g.
+ * `api.users[userId](body)` — so the call itself always receives the
+ * payload (or callback) only. There is no two-argument form.
  *
- * @example
- * // When you access api.users:
- * // 1. handler.get is called with key="users"
- * // 2. Returns a new function that prepends "/users" to the path
- * // 3. That function is also wrapped in a Proxy for chaining
- */
-const handler = {
-  /**
-   * Proxy get trap - intercepts property access
-   *
-   * @param {Function} fn - The wrapped sender function
-   * @param {string|symbol} key - The property name being accessed
-   * @returns {Function|any} Either the reserved property value or a new wrapped function
-   *
-   * @description
-   * For non-reserved keys, returns a wrapper function that:
-   * - Takes 0, 1, or 2 arguments
-   * - With 2 args: first is path suffix, second is data
-   * - With 1 arg: it's the data (no path suffix)
-   * - Prepends the key as a path segment
-   * - Returns a Promise from the underlying sender
-   *
-   * @example
-   * // api.users.create({ name: 'Bob' })
-   * // → handler.get(fn, 'users') returns wrappedUsers
-   * // → handler.get(wrappedUsers, 'create') returns wrappedCreate
-   * // → wrappedCreate({ name: 'Bob' }) calls fn('/users/create', { name: 'Bob' })
-   */
-  get(fn, key) {
-    // Skip proxy interception for reserved keys - return actual property
-    if (reservedKeys.has(key)) {
-      return fn[key];
-    }
-
-    /**
-     * Wrapper function that builds the path and forwards to the sender
-     *
-     * @param {string|any|Function} a - Either a path suffix (if 2 args), data payload, or subscription callback
-     * @param {any} [b] - The data payload (if 2 args)
-     * @returns {Promise<any>|Function} Promise resolving to server response, or unsubscribe function for subscriptions
-     *
-     * @example
-     * // Single argument - data only (RPC call)
-     * api.users({ name: 'Alice' })
-     * // → path="/users", body={ name: 'Alice' }
-     *
-     * @example
-     * // Single argument - function (subscription)
-     * api.news.banking(data => console.log(data))
-     * // → subscribes to "/news/banking", returns unsubscribe function
-     *
-     * @example
-     * // Two arguments - path suffix + data
-     * api.users('/123', { name: 'Alice' })
-     * // → path="/users/123", body={ name: 'Alice' }
-     *
-     * @example
-     * // Two arguments - nested path + data
-     * api.users('/123/profile', { avatar: 'new.png' })
-     * // → path="/users/123/profile", body={ avatar: 'new.png' }
-     */
-    const wrapperFn = function (a, b) {
-      let path = joinKey + key,
-        body;
-
-      // If single argument is a function, this is a subscription
-      if (arguments.length === 1 && typeof a === "function") {
-        return subscribe(path, a);
-      }
-
-      if (2 === arguments.length) {
-        // Two arguments: first is path suffix, second is body
-        path += a;
-        body = b;
-      } else {
-        // One or zero arguments: first arg is the body (or undefined)
-        body = a;
-      }
-
-      return fn(path, body);
-    };
-
-    // Wrap the new function in another Proxy to allow continued chaining
-    return new Proxy(wrapperFn, handler);
-  },
-};
-
-/**
- * Wrap an API sender function in a Proxy for path-building syntax
- *
- * This is the main export of the module. It takes a sender function
- * (which accepts path and data) and returns a Proxy that enables
- * the fluent api-ape syntax.
- *
- * @param {Function} api - The sender function to wrap
- * @param {string} api.path - First parameter: the endpoint path
- * @param {any} api.data - Second parameter: the request data/body
- * @returns {Proxy} Proxied API object with path-building capability
+ * @param {Function} api - The sender function. Signature: `(path, data) => Promise`.
+ * @returns {Proxy} Proxied API root.
  *
  * @example
- * // Basic wrapping
- * const sender = (path, data) => {
- *   return fetch(`/api${path}`, {
- *     method: 'POST',
- *     body: JSON.stringify(data)
- *   })
- * }
- *
+ * const sender = (path, data) => fetch(`/api${path}`, { method: 'POST', body: JSON.stringify(data) })
  * const api = wrap(sender)
  *
- * @example
- * // Using the wrapped API
+ * // Simple endpoint
+ * api.ping()                                  // → sender('/ping', undefined)
  *
- * // Simple endpoint call
- * api.ping()                    // → sender('/ping', undefined)
+ * // RPC with payload
+ * api.users.create({ name: 'Alice' })         // → sender('/users/create', { name: 'Alice' })
  *
- * // With data
- * api.users({ name: 'Alice' })  // → sender('/users', { name: 'Alice' })
+ * // Dynamic segment via bracket access
+ * api.users[123]()                            // → sender('/users/123', undefined)
+ * api.users[123]({ name: 'Alice' })           // → sender('/users/123', { name: 'Alice' })
+ * api.users[id].profile({ avatar: 'a.png' })  // → sender('/users/<id>/profile', ...)
  *
- * // Nested paths
- * api.users.list()              // → sender('/users/list', undefined)
- * api.users.create({ ... })     // → sender('/users/create', { ... })
+ * // Subscription (single function argument)
+ * const unsub = api.news.banking(data => console.log(data))
+ * const unsub2 = api.stock[ticker](data => console.log(data))
  *
- * // With path parameters
- * api.users('/123')             // → sender('/users/123', undefined)
- * api.users('/123', { ... })    // → sender('/users/123', { ... })
- *
- * // Complex chaining
- * api.chat.rooms('/abc').messages({ text: 'Hi' })
- * // → sender('/chat/rooms/abc', undefined) — first call
- * // Note: Each call is independent; chaining creates separate calls
- *
- * @example
- * // With reserved properties preserved
- * const api = wrap(sender)
- *
- * // These bypass the proxy:
- * api.on('event', handler)           // Calls sender.on()
- * api.onConnectionChange(handler)    // Calls sender.onConnectionChange()
- * console.log(api.transport)         // Accesses sender.transport
- *
- * @example
- * // Real-world usage in api-ape client
- * import { wrap } from './proxy'
- * import { createSender } from './sender'
- *
- * const sender = createSender(/* ... *\/)
- * const client = {
- *   sender: wrap(sender),
- *   // ... other properties
- * }
- *
- * // User code:
- * client.sender.messages({ text: 'Hello!' })
+ * // Reserved properties are pass-through
+ * api.on('event', handler)
+ * api.onConnectionChange(handler)
+ * console.log(api.transport)
  */
 export function wrap(api) {
+  // Handler closes over `api` so every wrapper dispatches to the same
+  // root sender. No parent-wrapper recursion: path lives on `_path`.
+  const handler = {
+    /**
+     * Proxy `get` trap. Builds the accumulated path for the next chain
+     * step or, for reserved/Symbol/`then` keys, returns the raw target
+     * property so the proxy stays compatible with the Proxy invariant,
+     * iteration, and the thenable protocol.
+     *
+     * @param {Function|Object} target - The wrapped function or root sender
+     * @param {string|symbol} key - The property being accessed
+     * @returns {Function|any} Either the reserved/raw value or a new
+     *   proxy-wrapped dispatcher whose `_path` extends `target._path`.
+     */
+    get(target, key) {
+      // Reserved keys bypass interception. Returning the synthetic
+      // wrapper for a non-configurable property would violate the
+      // Proxy invariant.
+      if (reservedKeys.has(key)) {
+        return target[key];
+      }
+
+      // Non-string keys (Symbols like Symbol.toPrimitive, Symbol.iterator,
+      // or "then" probing during Promise resolution) must not extend the
+      // path. Returning the raw target property keeps the proxy compatible
+      // with stringification, iteration, and the await/thenable protocols.
+      if (typeof key !== "string" || key === "then") {
+        return target[key];
+      }
+
+      // Accumulate the path on this wrapper. Read parent's `_path`
+      // (empty string on the root) so each chain step appends one
+      // segment regardless of dispatch mode (RPC vs subscribe).
+      const path = (target._path || "") + joinKey + key;
+
+      // Dispatch function: single argument is either a subscription
+      // callback or an RPC payload. No second argument is accepted —
+      // dynamic segments belong on the proxy chain via bracket access.
+      const wrapper = function (payload) {
+        if (typeof payload === "function") {
+          return subscribe(path, payload);
+        }
+        return api(path, payload);
+      };
+
+      // Store the path so the next `get` can extend it.
+      wrapper._path = path;
+
+      // Wrap for continued chaining.
+      return new Proxy(wrapper, handler);
+    },
+  };
+
   return new Proxy(api, handler);
 }

@@ -325,7 +325,8 @@ Object.defineProperty(api, "ape", {
  * // These are equivalent:
  * api.users({ action: 'list' })     // Calls /users
  * api.users.profile({ id: 1 })      // Calls /users/profile
- * api.chat('/room1', { msg: 'Hi' }) // Calls /chat/room1
+ * api.chat.room1({ msg: 'Hi' })     // Calls /chat/room1
+ * api.chat[roomId]({ msg: 'Hi' })   // Calls /chat/<roomId> (dynamic segment)
  */
 module.exports = api;
 

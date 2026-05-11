@@ -28,8 +28,8 @@
  * // RPC call - passing data
  * api.message({ user: 'Bob', text: 'Hello!' })
  *
- * // With path parameters
- * api.users('/123', { name: 'Updated Name' })
+ * // Dynamic path segments — bracket access on the proxy chain
+ * api.users[123]({ name: 'Updated Name' })
  *
  * // Subscribe to channels - passing a callback function
  * const unsub = api.news.banking(data => {
@@ -309,8 +309,8 @@ if (isBrowser) {
  * // Make API calls (RPC)
  * const result = await api.users({ name: 'John' })
  *
- * // With path segments
- * const user = await api.users('/123')
+ * // Dynamic path segments via bracket access
+ * const user = await api.users[123]()
  *
  * // Subscribe to channels (pass a callback function)
  * const unsub = api.news.banking(data => {

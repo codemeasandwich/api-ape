@@ -480,8 +480,8 @@ api.users.profile({ userId: '123' })
 // Deep nesting
 api.admin.users.permissions({ userId: '123' })
 
-// With path parameters (not currently typed)
-api.users('/123', { name: 'Alice' })
+// Dynamic path segments via bracket access (not currently typed)
+api.users[123]({ name: 'Alice' })
 ```
 
 ### Detection Regex

@@ -69,10 +69,14 @@ When `window` / `document` are missing (Next.js server render, etc.), the defaul
 | --------------------------------------- | ------------------------------------------ | ----------------------------- |
 | `api.foo(data)`                         | RPC to `/foo` with body `data`             | `Promise<response>`           |
 | `api.foo.bar(data)`                     | RPC to `/foo/bar`                          | `Promise<response>`           |
-| `api.foo('/123', data)`                 | RPC to `/foo/123` (two-arg path-suffix)    | `Promise<response>`           |
+| `api.foo[123](data)`                    | RPC to `/foo/123` (dynamic segment)        | `Promise<response>`           |
+| `api.foo[id].bar(data)`                 | RPC to `/foo/<id>/bar`                     | `Promise<response>`           |
 | `api.foo()`                             | RPC to `/foo` with no body                 | `Promise<response>`           |
 | `api.foo(callback)` *(arg is fn)*       | **Subscribe** to channel `/foo`            | `() => void` (unsubscribe)    |
 | `api.foo.bar(callback)`                 | **Subscribe** to `/foo/bar`                | `() => void`                  |
+| `api.stock[ticker](callback)`           | **Subscribe** to `/stock/<ticker>`         | `() => void`                  |
+
+The call itself always takes **one argument** — either a payload or a subscription callback. Dynamic path segments are expressed via bracket access on the proxy chain; they never live inside the call.
 
 ### Reserved keys (these don't build paths)
 
@@ -589,13 +593,13 @@ api.presence.heartbeat({ at: Date.now() })     // periodic RPC
 
 ### Room-scoped subscriptions
 
-Use the two-arg path-suffix form so a single endpoint name covers many rooms:
+Use bracket access on the proxy chain so a single endpoint name covers many rooms:
 
 ```js
-const off = api.rooms(`/${roomId}/messages`, msg => …)
+const off = api.rooms[roomId].messages(msg => …)
 ```
 
-(Yes — channel subscriptions support the suffix form too. Anything that returns an `ApeSender` does.)
+Each bracket segment is just another property on the proxy — chained subscribes accumulate the full path (`/rooms/<roomId>/messages`) the same way chained RPCs do.
 
 ### Debounced server search
 
@@ -650,7 +654,7 @@ Centralize this — subscribe once at the bridge layer to `onConnectionChange`, 
 ## 16. Tips & tricks
 
 - **Mirror your folder structure in endpoint names.** If your server controllers live at `controllers/users/create.js`, the client call is `api.users.create(…)`. This makes greps trivial.
-- **Use the two-arg path suffix for resource IDs**:  `api.users('/'+id)` is cleaner than building strings inside a path segment.
+- **Use bracket access for resource IDs**:  `api.users[id]()` keeps the path entirely on the proxy chain — no string-stitching inside the call.
 - **Surface "degraded mode"** when `api.transport === 'polling'` — a small "Slow mode" badge prevents support tickets.
 - **Captive-portal banner**: when `state === 'walled'`, show a button that opens `http://neverssl.com` (or your own portal-trigger URL) in a new tab — most OSes will pop the captive-portal sign-in.
 - **Drain logs in production**: `api.configureLogging({ log: () => {}, warn: console.warn, error: Sentry.captureException })`.
@@ -668,12 +672,12 @@ import api from 'api-ape'
 
 // RPC
 const r = await api.path.nested(payload)             // /path/nested
-const r = await api.users('/'+id)                    // /users/{id}
-const r = await api.users('/'+id, payload)           // /users/{id} + body
+const r = await api.users[id]()                      // /users/{id}
+const r = await api.users[id](payload)               // /users/{id} + body
 
 // Subscriptions  (single function arg)
 const off = api.channel.name(data => …)              // returns unsubscribe
-const off = api.rooms('/'+id, msg => …)              // path suffix works too
+const off = api.rooms[id](msg => …)                  // dynamic segment via bracket
 
 // Type-filtered receiver
 api.on('init',    ({err, type, data}) => …)

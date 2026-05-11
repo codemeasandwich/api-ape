@@ -425,9 +425,8 @@ npx vsce package
 
 ## Known Issues
 
-1. **Path parameters not typed**: `api.users('/123')` doesn't provide parameter typing
+1. **Path parameters not typed**: bracket-access segments (`api.users[id]()`) don't provide parameter typing yet
 2. **Subscription callbacks**: Return type for subscriptions is generic
-3. **Chained calls**: `api.users('/123').profile()` pattern not fully supported
 
 ## Release Notes
 
