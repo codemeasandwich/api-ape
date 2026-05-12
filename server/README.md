@@ -112,7 +112,8 @@ This enables server-side microservice patterns while keeping the familiar api-ap
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `where` | `string` | Directory containing controller files |
+| `where` | `string` | Directory containing controller files. Relative paths (e.g. `'api'`) are resolved against `process.cwd()` captured at module-load time. Absolute paths (e.g. `'/srv/myapp/api'`) are used verbatim — pass an absolute path when the calling process cannot guarantee a stable `cwd` (embedded servers, multi-tenant runners, test harnesses spawned from arbitrary directories). |
+| `urlPrefix` | `string` | _Optional._ Public URL segment for api-ape routes (`/${urlPrefix}/ape`, `/${urlPrefix}/ape.js`, etc.). Defaults to `where` when `where` is relative (preserving the historical `/api/ape` shape), or to `path.basename(where)` when `where` is absolute. Override when the on-disk controller path and the public URL segment must differ. |
 | `onConnect` | `function` | Connection lifecycle hook |
 | `fileTransferOptions` | `object` | Binary transfer settings (see below) |
 | `authFramework` | `object` | Authentication framework instance (see below) |

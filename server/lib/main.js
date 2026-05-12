@@ -190,13 +190,30 @@ function _resetForTesting() {
  */
 function createApeCore({
   where,
+  urlPrefix,
   onConnect,
   fileTransferOptions,
   longPollingOptions,
 }) {
   const path = require("path");
-  const controllersDir = path.join(process.cwd(), where);
+  // `where` may be absolute (passed verbatim) or relative (joined with cwd
+  // for back-compat — this matches the legacy loader resolution semantics).
+  // `controllersDir` is exposed for callers that need the resolved on-disk
+  // root (e.g. file watchers); keep both branches.
+  const controllersDir = path.isAbsolute(where)
+    ? where
+    : path.join(process.cwd(), where);
   const controllers = loader(where);
+  // Decouple the public URL prefix from the on-disk path. Default rules:
+  //   absolute `where` → basename (so `/srv/app/api` URL-collapses to `api`)
+  //   relative `where` → as-is (preserves the historical `/api/ape` etc.)
+  // Explicit `urlPrefix` overrides both. Leading/trailing slashes stripped
+  // so callers can pass `/api/`, `api`, or `/api` interchangeably.
+  const publicPrefix = urlPrefix
+    ? urlPrefix.replace(/^\/+|\/+$/g, "")
+    : path.isAbsolute(where)
+      ? path.basename(where)
+      : where.replace(/^\.?\/+|\/+$/g, "");
   const fileTransfer = getFileTransferManager(fileTransferOptions);
   const wiringHandler = wiring(controllers, onConnect, fileTransfer);
   const { handleStreamGet, handleStreamPost } = createLongPollingHandler(
@@ -209,17 +226,18 @@ function createApeCore({
   return {
     controllers,
     controllersDir,
+    publicPrefix,
     fileTransfer,
     wiringHandler,
     handleStreamGet,
     handleStreamPost,
-    wsPath: `/${where}/ape`,
-    pollPath: `/${where}/ape/poll`,
-    pingPath: `/${where}/ape/ping`,
-    clientPath: `/${where}/ape.js`,
-    clientMapPath: `/${where}/ape.js.map`,
-    downloadPattern: `/${where}/ape/data/:hash`,
-    uploadPattern: `/${where}/ape/data/:queryId/:pathHash`,
+    wsPath: `/${publicPrefix}/ape`,
+    pollPath: `/${publicPrefix}/ape/poll`,
+    pingPath: `/${publicPrefix}/ape/ping`,
+    clientPath: `/${publicPrefix}/ape.js`,
+    clientMapPath: `/${publicPrefix}/ape.js.map`,
+    downloadPattern: `/${publicPrefix}/ape/data/:hash`,
+    uploadPattern: `/${publicPrefix}/ape/data/:queryId/:pathHash`,
   };
 }
 
@@ -348,11 +366,18 @@ module.exports = function (server, options) {
   }
 
   // Check for Node.js http.Server (or Express, Koa, etc.)
-  if (server && typeof server.on === "function") {
+  // DEAD `if br 1` (false): the public `ape()` entry point at server/index.js
+  // pre-filters server arguments via `isHttpServer()` which only allows
+  // objects with at least one of .listen, .on, .address, or .reload. A
+  // non-conforming server never reaches this point. The throw below is a
+  // belt-and-suspenders defense for direct require'rs of this module.
+  // To be removed at step 7.
+  /* if (server && typeof server.on === "function") */ {
     return initNodeServer(server, options, core);
   }
 
   /* istanbul ignore next 3 - requires passing invalid server type */
+  // eslint-disable-next-line no-unreachable
   throw new Error(
     "Unsupported server type. Expected http.Server (Node.js) or Bun.serve() server.",
   );

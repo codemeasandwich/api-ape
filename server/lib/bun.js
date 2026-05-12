@@ -163,12 +163,29 @@ const { BunWebSocket, BunWebSocketServer } = require("./ws/adapters/bun");
  *     }
  * })
  */
-function apeBun({ where, onConnect, fileTransferOptions }) {
+function apeBun({ where, urlPrefix, onConnect, fileTransferOptions }) {
   /**
-   * Load controllers from the specified directory.
+   * Load controllers from the specified directory. Absolute paths are passed
+   * verbatim; relative paths resolve against the loader's cached cwd.
    * @type {Object<string, Function>}
    */
   const controllers = loader(where);
+
+  /**
+   * Public URL prefix for the api-ape routes. Decoupled from `where` so a
+   * caller can pass an absolute filesystem path in `where` (for cwd-stable
+   * controller loading) without leaking the absolute path into URLs. The
+   * default derives from `where`: an absolute path collapses to its
+   * basename (`/srv/app/api` → `api`); a relative path is used verbatim
+   * (`'api'` → `'api'`, `'src/api'` → `'src/api'`). Override explicitly
+   * with `urlPrefix` when neither default fits.
+   * @type {string}
+   */
+  const publicPrefix = urlPrefix
+    ? urlPrefix.replace(/^\/+|\/+$/g, "")
+    : path.isAbsolute(where)
+      ? path.basename(where)
+      : where.replace(/^\.?\/+|\/+$/g, "");
 
   /**
    * File transfer manager for handling binary uploads/downloads.
@@ -186,7 +203,7 @@ function apeBun({ where, onConnect, fileTransferOptions }) {
    * WebSocket path for api-ape connections.
    * @type {string}
    */
-  const wsPath = `/${where}/ape`;
+  const wsPath = `/${publicPrefix}/ape`;
 
   /**
    * Wiring handler that processes WebSocket connections and messages.
@@ -239,7 +256,7 @@ function apeBun({ where, onConnect, fileTransferOptions }) {
     }
 
     // Serve the client JavaScript bundle
-    if (pathname === `/${where}/ape.js`) {
+    if (pathname === `/${publicPrefix}/ape.js`) {
       try {
         const filePath = path.join(__dirname, "../../dist/ape.js");
         const data = fs.readFileSync(filePath);
@@ -252,7 +269,7 @@ function apeBun({ where, onConnect, fileTransferOptions }) {
     }
 
     // Health check / captive portal detection endpoint
-    if (pathname === `/${where}/ape/ping` && req.method === "GET") {
+    if (pathname === `/${publicPrefix}/ape/ping` && req.method === "GET") {
       return new Response(JSON.stringify({ ok: true, ts: Date.now() }), {
         headers: { "Content-Type": "application/json" },
       });

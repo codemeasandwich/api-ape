@@ -129,8 +129,11 @@ const path = require("path");
 /**
  * Current working directory where Node.js was started
  *
- * This ensures that the 'where' folder path is resolved relative to
- * the application root, not relative to this module's location.
+ * This ensures that a *relative* 'where' folder path is resolved relative to
+ * the application root, not relative to this module's location. Callers that
+ * cannot rely on process.cwd() being stable (e.g. embedded inside a larger
+ * server entry that is invoked from arbitrary working directories) must pass
+ * an absolute path — see the loader signature below.
  *
  * @constant {string}
  * @private
@@ -161,15 +164,27 @@ const currentDir = process.cwd();
  * - Throws if duplicate endpoints are detected (e.g., `users.js` and `users/index.js`)
  * - Throws if a controller file has syntax errors
  *
- * @param {string} dirname - Directory name relative to current working directory
- *                           (e.g., 'api', 'controllers', 'src/api')
+ * @param {string} dirname - Directory containing controllers. Two forms are
+ *                           accepted:
+ *                           - **Relative** (e.g. `'api'`, `'src/api'`): resolved
+ *                             against `process.cwd()` captured at module-load
+ *                             time. Existing callers behave unchanged.
+ *                           - **Absolute** (e.g. `'/srv/myapp/api'`): used
+ *                             as-is. Callers whose `process.cwd()` is unstable
+ *                             (embedded server entries, multi-tenant runners)
+ *                             pass absolute paths so cwd no longer matters.
+ *                             Detected via `path.isAbsolute(dirname)`.
  * @param {string[]} [selector=['js']] - File extensions to include (without dots)
  * @returns {Object.<string, Function>} Object mapping endpoint paths to controller functions
  * @throws {Error} If directory doesn't exist or contains duplicate endpoints
  *
  * @example
- * // Load from ./api directory
+ * // Load from ./api directory (relative — cwd-resolved at load time)
  * const controllers = loader('api')
+ *
+ * @example
+ * // Load from absolute path (cwd-independent)
+ * const controllers = loader('/srv/myapp/api')
  *
  * @example
  * // Load from nested directory
@@ -207,5 +222,15 @@ const currentDir = process.cwd();
  * }
  */
 module.exports = function (dirname, selector) {
-  return deeprequire(path.join(currentDir, dirname), selector);
+  // Absolute paths bypass the cached `currentDir` entirely so cwd at call
+  // time has no effect on resolution. This is the only way for callers
+  // running inside multi-process servers (or test harnesses spawning from
+  // arbitrary directories) to load controllers deterministically. Relative
+  // paths preserve the historical behaviour for back-compat.
+  // [MERGE-CRITICAL] Preserve: the relative-path branch must continue to use
+  // the module-load-captured `currentDir`, not a fresh `process.cwd()` call.
+  // Existing callers depend on the snapshot semantics — re-reading cwd here
+  // would break apps that chdir after loader import.
+  const resolved = path.isAbsolute(dirname) ? dirname : path.join(currentDir, dirname);
+  return deeprequire(resolved, selector);
 };
