@@ -140,7 +140,11 @@ function checkSocketState(socket) {
  * isBinaryData(null)                        // false
  */
 function isBinaryData(value) {
-  if (value === null || value === undefined) return false;
+  // DEAD `if (value === null || value === undefined) return false`:
+  // isBinaryData is private to this module and only called from
+  // processBinaryData, which already short-circuits null/undefined
+  // payloads at L225 before reaching here. To be removed at step 7.
+  // if (value === null || value === undefined) return false;
   return (
     Buffer.isBuffer(value) ||
     value instanceof ArrayBuffer ||

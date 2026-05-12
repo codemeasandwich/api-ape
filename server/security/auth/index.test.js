@@ -1333,4 +1333,77 @@ describe("Auth Framework Integration", () => {
       socket3.cleanup();
     });
   });
+
+  // ============================================================================
+  // Real-world configuration scenarios for the framework factory.
+  // ============================================================================
+  describe("Framework construction edge cases", () => {
+    // Scenario: createAuthFramework() called with no config — defaults engage.
+    test("createAuthFramework() with no arguments uses all defaults", () => {
+      const fw = createAuthFramework();
+      expect(fw.isAuthRequired()).toBe(false);
+      expect(fw.getStats().totalSockets).toBe(0);
+    });
+
+    test("samlConfig truthy registers a SAML adapter", () => {
+      const fw = createAuthFramework({
+        saml: { entryPoint: "https://idp.example/sso" },
+      });
+      expect(fw.getAdapter("saml")).toBeDefined();
+    });
+
+    test("oauth2Config truthy registers an OAuth2 adapter", () => {
+      const fw = createAuthFramework({
+        oauth2: { clientId: "client-x", clientSecret: "secret-y" },
+      });
+      expect(fw.getAdapter("oauth2")).toBeDefined();
+    });
+
+    test("getAdapter returns null for an unknown adapter name", () => {
+      const fw = createAuthFramework();
+      expect(fw.getAdapter("unknown")).toBeNull();
+    });
+
+// Scenario: a socket reaches HIGH_SECURITY (Tier 3). The stats counter's
+    // `if (tier >= HIGH_SECURITY)` true branch engages.
+    // Scenario: framework is constructed WITHOUT onKeyRecoverySuccess — the
+    // factory's default `() => {}` arrow is wired into the callback bundle.
+    // A real key-recovery completion through the socket dispatcher invokes
+    // the default arrow (no observable effect — that's the point).
+    test("default onKeyRecoverySuccess no-op runs when caller omits the callback", async () => {
+      const fw = createAuthFramework({ requireAuth: false });
+      const sm = fw.createSocketAuth("kr-client");
+      const inner = fw.getClientAuth("kr-client");
+      inner.startAuth("opaque");
+      inner.completeAuth({ userId: "kr-user", roles: [] });
+      inner.startMFA(["webauthn"]);
+      inner.completeMFA("webauthn");
+      // Dispatch key_recovery_start + key_recovery_complete through the socket
+      // dispatcher — this is the real surface that wires the default callback.
+      await sm.handleMessage("key_recovery_start", { factors: ["oauth", "webauthn", "totp"] });
+      const result = await sm.handleMessage("key_recovery_complete", {
+        proof: "P",
+        usedFactors: ["oauth", "totp"],
+      });
+      // The completion succeeds (tier elevation observable via stats) and
+      // the default callback ran without throwing.
+      expect(result).toBeDefined();
+      sm.cleanup();
+    });
+
+    test("getStats counts HIGH_SECURITY sockets after key-recovery elevation", () => {
+      const fw = createAuthFramework();
+      const sm = fw.createSocketAuth("hs-client");
+      const inner = fw.getClientAuth("hs-client");
+      inner.startAuth("opaque");
+      inner.completeAuth({ userId: "hs-user", roles: [] });
+      inner.startMFA(["webauthn"]);
+      inner.completeMFA("webauthn");
+      inner.startKeyRecovery({ factors: ["oauth", "webauthn", "totp"] });
+      inner.completeKeyRecovery({ proof: "P", usedFactors: ["oauth", "totp"] });
+      const stats = fw.getStats();
+      expect(stats.highSecurity).toBe(1);
+      sm.cleanup();
+    });
+  });
 });

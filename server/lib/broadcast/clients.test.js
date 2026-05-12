@@ -225,6 +225,14 @@ describe("Client Tracking", () => {
 
       expect(ids).toEqual(expect.arrayContaining(["iter-1", "iter-2"]));
     });
+
+    test("returns non-function intrinsic properties without binding (Symbol.toStringTag)", () => {
+      // The proxy's get-trap takes a `typeof value === "function" ? bind : value`
+      // branch. Map's well-known Symbol.toStringTag is the string "Map", which
+      // hits the non-function branch — proving the path is exercised and
+      // returns the raw value without wrapping.
+      expect(clients[Symbol.toStringTag]).toBe("Map");
+    });
   });
 
   describe("ClientWrapper send", () => {

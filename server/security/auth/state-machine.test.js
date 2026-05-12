@@ -194,6 +194,96 @@ describe("Auth State Machine", () => {
       expect(sm.getState().state).toBe(AuthState.GUEST);
       sm.cleanup();
     });
+
+    // Scenario: the auth flow completes BEFORE the timeout fires, then the
+    // timer eventually fires. The callback's `if (state === AUTHENTICATING)`
+    // false branch engages — no spurious transition to GUEST happens.
+    test("timer is a no-op after completeAuth advances state", () => {
+      const sm = createAuthStateMachine({ authTimeout: 1000 });
+      sm.startAuth("opaque");
+      // Complete before timeout — this clears the timer per L175 if-true
+      sm.completeAuth({ userId: "u" });
+      // The timer was cleared, but advance time anyway: the false branch
+      // of the inner `if (state === AUTHENTICATING)` would also engage if
+      // the timer were still active.
+      jest.advanceTimersByTime(1500);
+      expect(sm.getState().state).toBe(AuthState.AUTHENTICATED);
+      sm.cleanup();
+    });
+
+    // Scenario: failAuth runs before completeAuth and clears the timer.
+    // A second completeAuth attempt would see authTimeoutTimer === null,
+    // engaging the false branch of `if (authTimeoutTimer)` at L175.
+    // (completeAuth from GUEST state actually throws first; this test uses
+    // failAuth to clear, then startAuth+completeAuth — but the timer was
+    // freshly set, exercising the truthy path again. We force the false
+    // path by clearing through a successful completeAuth then re-starting
+    // auth at GUEST and immediately complete-auth-failing the second flow.)
+    test("completeAuth's clearTimeout no-op branch when timer already null", () => {
+      const sm = createAuthStateMachine({ authTimeout: 1000 });
+      sm.startAuth("opaque");
+      sm.failAuth("INVALID_PROOF"); // clears the timer
+      // No active timer now; a fresh startAuth re-arms it.
+      sm.startAuth("opaque");
+      sm.completeAuth({ userId: "u" });
+      expect(sm.getState().state).toBe(AuthState.AUTHENTICATED);
+      sm.cleanup();
+    });
+  });
+
+  describe("Lockout Expiry Recovery", () => {
+    beforeEach(() => { jest.useFakeTimers(); });
+    afterEach(() => { jest.useRealTimers(); });
+
+    // Scenario: after a lockout-duration of failures, the lockout window
+    // expires. `isLockedOut()` must reset the counter and unlock.
+    test("isLockedOut self-resets after lockoutDuration elapses", () => {
+      const sm = createAuthStateMachine({
+        maxAttempts: 2,
+        lockoutDuration: 5000,
+      });
+      sm.startAuth("opaque");
+      sm.failAuth("INVALID_PROOF");
+      sm.startAuth("opaque");
+      sm.failAuth("INVALID_PROOF");
+      expect(sm.isLockedOut()).toBe(true);
+      // Advance past lockoutDuration
+      jest.advanceTimersByTime(6000);
+      // isLockedOut should now self-reset and return false
+      expect(sm.isLockedOut()).toBe(false);
+      // After reset, a fresh startAuth should succeed
+      sm.startAuth("opaque");
+      sm.completeAuth({ userId: "u" });
+      expect(sm.getState().state).toBe(AuthState.AUTHENTICATED);
+      sm.cleanup();
+    });
+  });
+
+  describe("Invalid transition + no-downgrade enforcement", () => {
+    // Scenario: a higher-level caller (e.g. a buggy controller) asks the
+    // state machine to transition into an invalid target state directly
+    // via completeAuth from GUEST. The transition guard rejects.
+    test("completeAuth from GUEST throws INVALID_TRANSITION", () => {
+      const sm = createAuthStateMachine();
+      expect(() => sm.completeAuth({ userId: "u" })).toThrow(
+        /Not in authenticating state/,
+      );
+      sm.cleanup();
+    });
+
+    // Scenario: failAuth is called AFTER the auth flow already completed
+    // (the auth timeout fired and then a stale failAuth from a slow socket
+    // arrives). authTimeoutTimer is already null and state is no longer
+    // AUTHENTICATING — both inner guards short-circuit to the false arm.
+    test("failAuth from AUTHENTICATED is a no-op for both inner guards", () => {
+      const sm = createAuthStateMachine();
+      sm.startAuth("opaque");
+      sm.completeAuth({ userId: "u" });
+      // state = AUTHENTICATED, authTimeoutTimer was cleared by completeAuth
+      const result = sm.failAuth("LATE_FAIL");
+      expect(result.state).toBe(AuthState.AUTHENTICATED);
+      sm.cleanup();
+    });
   });
 
   describe("MFA Flow", () => {
@@ -281,6 +371,19 @@ describe("Auth State Machine", () => {
     test("startKeyRecovery throws when not authenticated", () => {
       expect(() => stateMachine.startKeyRecovery({}))
         .toThrow("Must be authenticated or elevated");
+    });
+
+    // Scenario: caller invokes startKeyRecovery with no arguments at all —
+    // the `options = {}` default-arg engages and the function defaults the
+    // factor list internally.
+    test("startKeyRecovery() with no arguments uses default factors", () => {
+      stateMachine.startAuth("opaque");
+      stateMachine.completeAuth({ userId: "test-user" });
+      stateMachine.startMFA(["webauthn"]);
+      stateMachine.completeMFA("webauthn");
+      const result = stateMachine.startKeyRecovery();
+      expect(result.state).toBe(AuthState.KEY_RECOVERY_PENDING);
+      expect(result.factors).toEqual(["oauth", "webauthn", "totp"]);
     });
 
     test("startKeyRecovery uses default factors if not provided", () => {

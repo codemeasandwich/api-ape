@@ -42,7 +42,11 @@ function split(secret, threshold, totalShares) {
   let secretBuffer;
   if (typeof secret === "string") secretBuffer = Buffer.from(secret, "utf8");
   else if (secret instanceof Uint8Array) secretBuffer = Buffer.from(secret);
-  else if (Buffer.isBuffer(secret)) secretBuffer = secret;
+  // DEAD: in modern Node, every Buffer is also a Uint8Array, so the
+  // `secret instanceof Uint8Array` check above always matches Buffers
+  // first — `Buffer.isBuffer(secret) && !(instanceof Uint8Array)` can't
+  // happen. To be removed at step 7.
+  // else if (Buffer.isBuffer(secret)) secretBuffer = secret;
   else {
     const err = new Error("Secret must be a Buffer, Uint8Array, or string");
     err.code = SSSError.INVALID_SECRET;

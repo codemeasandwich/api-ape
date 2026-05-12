@@ -633,4 +633,47 @@ describe("SSS Utilities", () => {
       expect(partial.equals(secret)).toBe(false);
     });
   });
+
+  // ============================================================================
+  // Real-world type-compatibility: SSS clients may pass a Uint8Array directly
+  // from Web Crypto (browser) or libraries that produce typed arrays instead
+  // of Node Buffers.
+  // ============================================================================
+  describe("split accepts Uint8Array secrets", () => {
+    test("Uint8Array secret produces valid shares that combine back", () => {
+      const secret = new Uint8Array([0x10, 0x20, 0x30, 0x40, 0x50]);
+      const shares = split(secret, 2, 3);
+      expect(shares).toHaveLength(3);
+      const reconstructed = combine(shares.slice(0, 2));
+      expect(reconstructed.equals(Buffer.from(secret))).toBe(true);
+    });
+  });
+
+  // Scenario: deserializeShare receives base64url with first byte 0 (zero
+  // index). The validator must reject — share indices are 1-based for SSS.
+  describe("deserializeShare rejects index 0", () => {
+    test("first byte 0 throws INVALID_SHARE_FORMAT", () => {
+      // Build a base64url with 5 bytes, first byte = 0 (invalid index)
+      const buf = Buffer.from([0, 1, 2, 3, 4]);
+      const encoded = buf.toString("base64url");
+      expect(() => deserializeShare(encoded)).toThrow(/Invalid share index/);
+    });
+  });
+
+  // Scenario: a malformed share has its `data` field as a plain Array (not
+  // a Buffer or Uint8Array). The combine() validator rejects with
+  // INVALID_SHARE_FORMAT.
+  describe("combine rejects malformed share data type", () => {
+    test("plain-array share.data rejected with INVALID_SHARE_FORMAT", () => {
+      const secret = Buffer.from("hello");
+      const shares = split(secret, 2, 3);
+      const corrupted = [
+        shares[0],
+        { index: shares[1].index, data: Array.from(shares[1].data) },
+      ];
+      expect(() => combine(corrupted)).toThrow(
+        /must be a Buffer or Uint8Array/,
+      );
+    });
+  });
 });

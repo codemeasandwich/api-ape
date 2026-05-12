@@ -266,7 +266,9 @@ function parseUserAgent(ua) {
     const match = ua.match(pattern);
     if (match) {
       result.engine.name = name;
-      result.engine.version = match[1] || null;
+      // DEAD `|| null`: every ENGINE pattern includes a required `([\d.]+)`
+      // capture group, so match[1] is always truthy. To be removed at step 7.
+      result.engine.version = match[1] /* || null */;
       break;
     }
   }

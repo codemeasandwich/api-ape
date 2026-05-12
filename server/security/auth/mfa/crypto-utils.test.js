@@ -642,4 +642,129 @@ describe("Crypto Utilities", () => {
       expect(decrypted.equals(shareData)).toBe(true);
     });
   });
+
+  // ============================================================================
+  // Real-world defensive validation: aeadEncrypt / aeadDecrypt input
+  // sanity checks. Callers may accidentally pass a non-Buffer key when
+  // wiring a fresh integration.
+  // ============================================================================
+  describe("AEAD validation paths", () => {
+    test("aeadEncrypt with non-Buffer key throws", () => {
+      expect(() => aeadEncrypt("not-a-buffer", "plaintext")).toThrow();
+    });
+
+    test("aeadEncrypt with null key surfaces 'invalid' in the message", () => {
+      let err;
+      try {
+        aeadEncrypt(null, "plaintext");
+      } catch (e) {
+        err = e;
+      }
+      expect(err.message).toMatch(/invalid/);
+    });
+
+    // Scenario: caller passes a Buffer as AAD (not a string). The
+    // `Buffer.isBuffer(aad) ? aad : Buffer.from(aad)` LHS engages.
+    test("aeadEncrypt + aeadDecrypt with Buffer AAD round-trips", () => {
+      const key = Buffer.alloc(32, 7);
+      const aad = Buffer.from("buffer-aad");
+      const enc = aeadEncrypt(key, "plaintext", aad);
+      const decrypted = aeadDecrypt(key, enc.ciphertext, enc.nonce, enc.tag, aad);
+      expect(decrypted.toString()).toBe("plaintext");
+    });
+
+    // Scenario: aeadDecrypt called with ciphertext that's not a Buffer (e.g.
+    // a base64 string slipped through). The defensive check rejects with
+    // INVALID_CIPHERTEXT before crypto.createDecipheriv even runs.
+    test("aeadDecrypt with non-Buffer ciphertext throws Ciphertext-must-be-a-Buffer", () => {
+      const validKey = Buffer.alloc(32, 1);
+      const validNonce = Buffer.alloc(12, 2);
+      const validTag = Buffer.alloc(16, 3);
+      let err;
+      try {
+        aeadDecrypt(validKey, "not-a-buffer", validNonce, validTag);
+      } catch (e) {
+        err = e;
+      }
+      expect(err.message).toMatch(/Ciphertext must be a Buffer/);
+    });
+  });
+
+  // ============================================================================
+  // Standalone hash helpers exposed for downstream consumers (e.g. an
+  // integrator who needs SHA-256 or HMAC-SHA256 outside the AEAD flow).
+  // ============================================================================
+  describe("sha256 / hmacSha256 exported helpers", () => {
+    const { sha256, hmacSha256 } = require("./crypto/utils");
+
+    test("sha256 produces a 32-byte digest", () => {
+      const d = sha256("hello");
+      expect(Buffer.isBuffer(d)).toBe(true);
+      expect(d.length).toBe(32);
+    });
+
+    test("hmacSha256 produces a 32-byte digest", () => {
+      const d = hmacSha256(Buffer.from("key"), "message");
+      expect(Buffer.isBuffer(d)).toBe(true);
+      expect(d.length).toBe(32);
+    });
+  });
+
+  // ==========================================================================
+  // Real-world scenario: an integrator installs the optional `argon2` package
+  // for memory-hard KDF (recommended over the PBKDF2 fallback). The kdf module
+  // detects argon2 at load time. We use jest.doMock to simulate argon2 being
+  // installed, and exercise the success + fallback-on-throw paths.
+  // ==========================================================================
+  describe("argon2id when the optional package is installed", () => {
+    test("delegates to argon2.hash() and returns the raw Buffer", async () => {
+      await new Promise((resolve, reject) => {
+        jest.isolateModules(() => {
+          jest.doMock("argon2", () => ({
+            argon2id: 2,
+            hash: jest.fn(async () => Buffer.from("argon-derived-32-byte-output!!")),
+          }), { virtual: true });
+          const { argon2id } = require("./crypto/kdf");
+          argon2id("password", Buffer.alloc(16, 1)).then((derived) => {
+            try {
+              expect(Buffer.isBuffer(derived)).toBe(true);
+              expect(derived.toString()).toBe("argon-derived-32-byte-output!!");
+              resolve();
+            } catch (e) { reject(e); }
+            finally { jest.dontMock("argon2"); }
+          }, reject);
+        });
+      });
+    });
+
+    test("falls back to PBKDF2 when argon2.hash throws", async () => {
+      await new Promise((resolve, reject) => {
+        jest.isolateModules(() => {
+          jest.doMock("argon2", () => ({
+            argon2id: 2,
+            hash: jest.fn(async () => { throw new Error("argon failed"); }),
+          }), { virtual: true });
+          const { argon2id } = require("./crypto/kdf");
+          argon2id("password", Buffer.alloc(16, 1)).then((derived) => {
+            try {
+              // Fell back to PBKDF2 — returns a non-empty Buffer
+              expect(Buffer.isBuffer(derived)).toBe(true);
+              expect(derived.length).toBe(32);
+              resolve();
+            } catch (e) { reject(e); }
+            finally { jest.dontMock("argon2"); }
+          }, reject);
+        });
+      });
+    });
+
+    test("isArgon2Available reports true when argon2 is installed", () => {
+      jest.isolateModules(() => {
+        jest.doMock("argon2", () => ({ argon2id: 2, hash: async () => Buffer.alloc(32) }), { virtual: true });
+        const { isArgon2Available } = require("./crypto/kdf");
+        expect(isArgon2Available()).toBe(true);
+        jest.dontMock("argon2");
+      });
+    });
+  });
 });

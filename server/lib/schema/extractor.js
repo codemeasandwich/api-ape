@@ -47,11 +47,13 @@ function extractSchema(filePath) {
   if (ext === ".js") {
     const exported = extractSchemaFromExport(filePath);
     if (exported && (exported.input || exported.output)) {
-      // Get line number from JSDoc fallback if not provided
-      if (!exported.line) {
-        const jsdoc = parseJSDoc(filePath);
-        exported.line = jsdoc.line;
-      }
+      // DEAD: extractSchemaFromExport never sets `line` on its returned
+      // object (verified at server/lib/schema/export-extractor.js — the
+      // result shape is { input, output, source, description? }). So the
+      // `!exported.line` guard is always true. Collapsed to unconditional
+      // assignment. To be removed at step 7.
+      const jsdoc = parseJSDoc(filePath);
+      exported.line = jsdoc.line;
       return exported;
     }
   }
@@ -85,7 +87,10 @@ function extractSchema(filePath) {
     input: jsdoc.input,
     output: jsdoc.output,
     description: jsdoc.description,
-    throws: jsdoc.throws || [],
+    // DEAD `|| []`: parseJSDoc always returns `throws: []` (or a populated
+    // array) — see the `defaultResult` and throws.map() paths in
+    // jsdoc-parser.js. The fallback is unreachable. To be removed at step 7.
+    throws: jsdoc.throws /* || [] */,
     line: jsdoc.line,
     source: "jsdoc",
   };

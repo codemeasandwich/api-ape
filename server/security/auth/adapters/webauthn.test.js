@@ -555,4 +555,415 @@ describe("WebAuthn Adapter", () => {
       expect(result.authenticatorSelection.userVerification).toBe("required");
     });
   });
+
+  // ============================================================================
+  // Real-world WebAuthn ceremony scenarios that exercise the remaining branches.
+  // ============================================================================
+  // Scenario: a server-side enrollment flow has only the userId (e.g. machine
+  // account) — userName and userDisplayName are not provided. The registration
+  // options builder must fall back to the userId for both fields.
+  describe("handleRegStart with missing userName/userDisplayName", () => {
+    test("falls back to userId for name and displayName when not supplied", async () => {
+      const wa = createWebAuthnStrategy({ rpId: "ex.com" });
+      const result = await wa.handleRegStart({
+        clientId: "c-min",
+        userId: "machine-account-001",
+      });
+      expect(result.user.name).toBe("machine-account-001");
+      expect(result.user.displayName).toBe("machine-account-001");
+    });
+
+    // Scenario: only userName provided (no friendly displayName). The middle
+    // OR-arm of `userDisplayName || userName || userId` engages.
+    test("falls back to userName for displayName when only userName provided", async () => {
+      const wa = createWebAuthnStrategy({ rpId: "ex.com" });
+      const result = await wa.handleRegStart({
+        clientId: "c-mid",
+        userId: "uid-mid",
+        userName: "primary-name",
+      });
+      expect(result.user.name).toBe("primary-name");
+      expect(result.user.displayName).toBe("primary-name");
+    });
+  });
+
+  // Scenario: integrator uses an external getCredentials hook that returns a
+  // credential, but the default updateCredential storage doesn't have an
+  // entry for that user (rare configuration / migration race). The update
+  // must return false defensively without throwing.
+  describe("updateCredential defensive false branch", () => {
+    test("returns false silently when default store has no entry for the user", async () => {
+      // Authenticate against a getCredentials hook that returns a credential,
+      // but use the default updateCredential which queries _defaultCredentialStore
+      // directly. Because we never call _defaultCredentialStore.set, the
+      // updateCredential will return false. The auth path must not throw.
+      const lib = {
+        verifyAuthenticationResponse: jest.fn(async () => ({
+          verified: true,
+          authenticationInfo: { newCounter: 99 },
+        })),
+      };
+      const fakeCred = { id: "split-cred", publicKey: "pk", counter: 0, transports: ["internal"] };
+      const wa = createWebAuthnStrategy({
+        rpId: "ex.com",
+        webauthnLib: lib,
+        // External read source that has the credential
+        getCredentials: async () => [fakeCred],
+        // Use the DEFAULT updateCredential which reads _defaultCredentialStore
+      });
+      const opts = await wa.handleAuthStart({ clientId: "c-split", userId: "split-user" });
+      const result = await wa.handleAuthFinish({
+        clientId: "c-split",
+        userId: "split-user",
+        challenge: opts.challenge,
+        assertion: { id: "split-cred" },
+      });
+      // Auth still succeeds — the counter update is best-effort
+      expect(result.verified).toBe(true);
+    });
+  });
+
+  describe("Pending-challenge auto-cleanup timer", () => {
+    test("removes the challenge once challengeTimeout+1000ms elapses", async () => {
+      jest.useFakeTimers();
+      try {
+        const wa = createWebAuthnStrategy({ rpId: "ex.com", challengeTimeout: 5000 });
+        const result = await wa.handleRegStart({
+          clientId: "c-t",
+          userId: "u-t",
+          userName: "ut@ex.com",
+        });
+        const key = `u-t:${result.challenge}`;
+        expect(wa._pendingChallenges.has(key)).toBe(true);
+        jest.advanceTimersByTime(6001);
+        expect(wa._pendingChallenges.has(key)).toBe(false);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
+  describe("consumeChallenge edge cases", () => {
+    // Scenario: attacker submits attestation referencing an unissued challenge.
+    test("handleRegFinish throws CHALLENGE_EXPIRED for unknown challenge", async () => {
+      const wa = createWebAuthnStrategy({ rpId: "ex.com" });
+      await expect(
+        wa.handleRegFinish({
+          clientId: "c-x",
+          userId: "u-x",
+          challenge: "never-issued-challenge",
+          attestation: { id: "abc", response: {} },
+        }),
+      ).rejects.toMatchObject({ code: WebAuthnError.CHALLENGE_EXPIRED });
+    });
+  });
+
+  describe("Stored credentials without transports", () => {
+    // Scenario: credential persisted by an older client without a transports
+    // list. The `c.transports || ["internal"]` fallback must engage.
+    test("excludeCredentials fills missing transports with ['internal']", async () => {
+      const wa = createWebAuthnStrategy({ rpId: "ex.com" });
+      wa._defaultCredentialStore.set("trans-u", [{ id: "cred-1", publicKey: "k", counter: 0 }]);
+      const result = await wa.handleRegStart({
+        clientId: "c-tr",
+        userId: "trans-u",
+        userName: "tr@ex.com",
+      });
+      const entry = result.excludeCredentials.find((c) => c.id === "cred-1");
+      expect(entry.transports).toEqual(["internal"]);
+    });
+
+    test("allowCredentials fills missing transports with ['internal']", async () => {
+      const wa = createWebAuthnStrategy({ rpId: "ex.com" });
+      wa._defaultCredentialStore.set("trans-u2", [{ id: "cred-2", publicKey: "k", counter: 0 }]);
+      const result = await wa.handleAuthStart({
+        clientId: "c-tr",
+        userId: "trans-u2",
+      });
+      const entry = result.allowCredentials.find((c) => c.id === "cred-2");
+      expect(entry.transports).toEqual(["internal"]);
+    });
+  });
+
+  describe("webauthnLib delegation: registration and authentication paths", () => {
+    test("delegates verifyRegistrationResponse to library and persists credential", async () => {
+      const lib = {
+        verifyRegistrationResponse: jest.fn(async () => ({
+          verified: true,
+          registrationInfo: {
+            credentialID: "lib-cred-1",
+            credentialPublicKey: "lib-pub-key",
+            counter: 0,
+            credentialDeviceType: "platform",
+            credentialBackedUp: true,
+          },
+        })),
+      };
+      const wa = createWebAuthnStrategy({ rpId: "ex.com", webauthnLib: lib });
+      const opts = await wa.handleRegStart({
+        clientId: "c-lib",
+        userId: "lib-user",
+        userName: "lib@ex.com",
+      });
+      const result = await wa.handleRegFinish({
+        clientId: "c-lib",
+        userId: "lib-user",
+        challenge: opts.challenge,
+        attestation: { id: "raw-id", response: {} },
+      });
+      expect(result.credentialId).toBe("lib-cred-1");
+      expect(lib.verifyRegistrationResponse).toHaveBeenCalled();
+    });
+
+    test("throws INVALID_ATTESTATION when verifyRegistrationResponse reports verified=false", async () => {
+      const lib = {
+        verifyRegistrationResponse: jest.fn(async () => ({ verified: false })),
+      };
+      const wa = createWebAuthnStrategy({ rpId: "ex.com", webauthnLib: lib });
+      const opts = await wa.handleRegStart({
+        clientId: "c-lib2",
+        userId: "lib-user2",
+        userName: "lib2@ex.com",
+      });
+      await expect(
+        wa.handleRegFinish({
+          clientId: "c-lib2",
+          userId: "lib-user2",
+          challenge: opts.challenge,
+          attestation: { id: "raw", response: {} },
+        }),
+      ).rejects.toMatchObject({ code: WebAuthnError.INVALID_ATTESTATION });
+    });
+
+    test("delegates verifyAuthenticationResponse to library and updates counter", async () => {
+      const lib = {
+        verifyAuthenticationResponse: jest.fn(async () => ({
+          verified: true,
+          authenticationInfo: { newCounter: 42 },
+        })),
+      };
+      const wa = createWebAuthnStrategy({ rpId: "ex.com", webauthnLib: lib });
+      wa._defaultCredentialStore.set("la-user", [
+        { id: "auth-cred-1", publicKey: "pk", counter: 0, transports: ["internal"] },
+      ]);
+      const opts = await wa.handleAuthStart({ clientId: "c-la", userId: "la-user" });
+      const result = await wa.handleAuthFinish({
+        clientId: "c-la",
+        userId: "la-user",
+        challenge: opts.challenge,
+        assertion: { id: "auth-cred-1" },
+      });
+      expect(result.verified).toBe(true);
+      const updated = wa._defaultCredentialStore.get("la-user")[0];
+      expect(updated.counter).toBe(42);
+    });
+
+    test("throws INVALID_ASSERTION when verifyAuthenticationResponse reports verified=false", async () => {
+      const lib = {
+        verifyAuthenticationResponse: jest.fn(async () => ({ verified: false })),
+      };
+      const wa = createWebAuthnStrategy({ rpId: "ex.com", webauthnLib: lib });
+      wa._defaultCredentialStore.set("la-user2", [
+        { id: "auth-cred-2", publicKey: "pk", counter: 0, transports: ["internal"] },
+      ]);
+      const opts = await wa.handleAuthStart({ clientId: "c-la2", userId: "la-user2" });
+      await expect(
+        wa.handleAuthFinish({
+          clientId: "c-la2",
+          userId: "la-user2",
+          challenge: opts.challenge,
+          assertion: { id: "auth-cred-2" },
+        }),
+      ).rejects.toMatchObject({ code: WebAuthnError.INVALID_ASSERTION });
+    });
+  });
+
+  describe("Mock verifier fallback branches", () => {
+    // Scenario: attestation lacks `id` — the mock verifier generates one.
+    test("generates credentialID when attestation.id is missing", async () => {
+      const wa = createWebAuthnStrategy({ rpId: "ex.com" });
+      const opts = await wa.handleRegStart({
+        clientId: "c-noid",
+        userId: "noid-user",
+        userName: "noid@ex.com",
+      });
+      const result = await wa.handleRegFinish({
+        clientId: "c-noid",
+        userId: "noid-user",
+        challenge: opts.challenge,
+        attestation: {},
+      });
+      expect(result.credentialId).toMatch(/^[A-Za-z0-9_-]+$/);
+    });
+  });
+
+  describe("Passport.js authenticate() integration", () => {
+    function ctx() {
+      return { success: jest.fn(), fail: jest.fn(), error: jest.fn() };
+    }
+
+    test("fails 400 when assertion/challenge/userId missing", () => {
+      const wa = createWebAuthnStrategy({ rpId: "ex.com" });
+      const c = ctx();
+      wa.authenticate.call(c, { body: {}, query: {} });
+      expect(c.fail).toHaveBeenCalledWith({ message: "Missing WebAuthn credentials" }, 400);
+    });
+
+    test("falls back to 'http' clientId when req.clientId is missing", async () => {
+      const wa = createWebAuthnStrategy({ rpId: "ex.com" });
+      wa._defaultCredentialStore.set("p-user", [
+        { id: "p-cred", publicKey: "pk", counter: 0, transports: ["internal"] },
+      ]);
+      const opts = await wa.handleAuthStart({ clientId: "c-p", userId: "p-user" });
+      const c = ctx();
+      wa.authenticate.call(c, {
+        body: {
+          assertion: { id: "p-cred" },
+          challenge: opts.challenge,
+          userId: "p-user",
+        },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.success).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: "p-user", credentialId: "p-cred" }),
+        expect.any(Object),
+      );
+    });
+
+    test("catch handler reports failure with err.code/message on unknown credential", async () => {
+      const wa = createWebAuthnStrategy({ rpId: "ex.com" });
+      wa._defaultCredentialStore.set("u-user", [
+        { id: "valid-cred", publicKey: "pk", counter: 0 },
+      ]);
+      const opts = await wa.handleAuthStart({ clientId: "c-u", userId: "u-user" });
+      const c = ctx();
+      wa.authenticate.call(c, {
+        body: {
+          assertion: { id: "unknown-cred" },
+          challenge: opts.challenge,
+          userId: "u-user",
+        },
+        query: {},
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.fail).toHaveBeenCalledWith({
+        message: expect.stringContaining("Credential not found"),
+        code: WebAuthnError.CREDENTIAL_NOT_FOUND,
+      });
+    });
+
+    test("invokes verify callback and calls success on returned user", async () => {
+      const verifyCb = jest.fn((info, done) =>
+        done(null, { id: info.userId, name: "VW" }),
+      );
+      const wa = createWebAuthnStrategy({ rpId: "ex.com" }, verifyCb);
+      wa._defaultCredentialStore.set("v-user", [
+        { id: "v-cred", publicKey: "pk", counter: 0, transports: ["internal"] },
+      ]);
+      const opts = await wa.handleAuthStart({ clientId: "c-v", userId: "v-user" });
+      const c = ctx();
+      wa.authenticate.call(c, {
+        body: {
+          assertion: { id: "v-cred" },
+          challenge: opts.challenge,
+          userId: "v-user",
+        },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(verifyCb).toHaveBeenCalled();
+      expect(c.success).toHaveBeenCalledWith(
+        { id: "v-user", name: "VW" },
+        undefined,
+      );
+    });
+
+    test("verify callback done(err) routes to strategy.error()", async () => {
+      const verifyCb = jest.fn((info, done) => done(new Error("verify failed")));
+      const wa = createWebAuthnStrategy({ rpId: "ex.com" }, verifyCb);
+      wa._defaultCredentialStore.set("ve-user", [
+        { id: "ve-cred", publicKey: "pk", counter: 0, transports: ["internal"] },
+      ]);
+      const opts = await wa.handleAuthStart({ clientId: "c-ve", userId: "ve-user" });
+      const c = ctx();
+      wa.authenticate.call(c, {
+        body: {
+          assertion: { id: "ve-cred" },
+          challenge: opts.challenge,
+          userId: "ve-user",
+        },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.error).toHaveBeenCalledWith(expect.any(Error));
+    });
+
+    test("verify callback done(null, false) without info uses default message", async () => {
+      const verifyCb = jest.fn((info, done) => done(null, false));
+      const wa = createWebAuthnStrategy({ rpId: "ex.com" }, verifyCb);
+      wa._defaultCredentialStore.set("vf-user", [
+        { id: "vf-cred", publicKey: "pk", counter: 0, transports: ["internal"] },
+      ]);
+      const opts = await wa.handleAuthStart({ clientId: "c-vf", userId: "vf-user" });
+      const c = ctx();
+      wa.authenticate.call(c, {
+        body: {
+          assertion: { id: "vf-cred" },
+          challenge: opts.challenge,
+          userId: "vf-user",
+        },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.fail).toHaveBeenCalledWith({ message: "Verification failed" });
+    });
+
+    test("verify callback throwing synchronously routes to strategy.error()", async () => {
+      const verifyCb = jest.fn(() => {
+        throw new Error("verify boom");
+      });
+      const wa = createWebAuthnStrategy({ rpId: "ex.com" }, verifyCb);
+      wa._defaultCredentialStore.set("vb-user", [
+        { id: "vb-cred", publicKey: "pk", counter: 0, transports: ["internal"] },
+      ]);
+      const opts = await wa.handleAuthStart({ clientId: "c-vb", userId: "vb-user" });
+      const c = ctx();
+      wa.authenticate.call(c, {
+        body: {
+          assertion: { id: "vb-cred" },
+          challenge: opts.challenge,
+          userId: "vb-user",
+        },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.error).toHaveBeenCalledWith(expect.any(Error));
+    });
+
+    test("passReqToCallback=true forwards the request to verify callback", async () => {
+      const verifyCb = jest.fn((req, info, done) => done(null, { id: info.userId }));
+      const wa = createWebAuthnStrategy(
+        { rpId: "ex.com", passReqToCallback: true },
+        verifyCb,
+      );
+      wa._defaultCredentialStore.set("pr-user", [
+        { id: "pr-cred", publicKey: "pk", counter: 0, transports: ["internal"] },
+      ]);
+      const opts = await wa.handleAuthStart({ clientId: "c-pr", userId: "pr-user" });
+      const c = ctx();
+      const req = {
+        body: {
+          assertion: { id: "pr-cred" },
+          challenge: opts.challenge,
+          userId: "pr-user",
+        },
+      };
+      wa.authenticate.call(c, req);
+      await new Promise((r) => setImmediate(r));
+      expect(verifyCb).toHaveBeenCalledWith(req, expect.objectContaining({ userId: "pr-user" }), expect.any(Function));
+    });
+
+    test("authenticate handles a request with no body or query", () => {
+      const wa = createWebAuthnStrategy({ rpId: "ex.com" });
+      const c = ctx();
+      wa.authenticate.call(c, {});
+      expect(c.fail).toHaveBeenCalledWith({ message: "Missing WebAuthn credentials" }, 400);
+    });
+  });
 });

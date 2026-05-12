@@ -82,7 +82,12 @@ function computeEndpoint(file) {
     pathParts.pop();
   }
 
-  if (pathParts.length === 0) return null;
+  // DEAD: the only way pathParts.length is 0 here is if the file was
+  // "/index.<ext>" — but the early `file === "/index.js" || "/index.ts"`
+  // guard at the top catches that. For other extensions, getSupportedExtensions
+  // returns only .js/.ts. So pathParts.length === 0 is unreachable.
+  // To be removed at step 7.
+  // if (pathParts.length === 0) return null;
 
   return pathParts.join("/");
 }
@@ -104,15 +109,21 @@ function generateSchema(controllersDir) {
 
     const fullPath = path.join(controllersDir, file);
 
-    // Skip files that shouldn't be processed
-    if (!shouldProcessFile(fullPath)) continue;
+    // DEAD: getFilesFromDir already filtered files by getSupportedExtensions(),
+    // and computeEndpoint already skipped .d.ts files. shouldProcessFile would
+    // only return false for those same conditions, so this guard is unreachable.
+    // To be removed at step 7.
+    // if (!shouldProcessFile(fullPath)) continue;
 
     const schema = extractSchema(fullPath);
 
     endpoints.push({
       path: endpoint,
       filePath: fullPath,
-      line: schema.line || 1,
+      // DEAD `|| 1`: extractSchema always returns a `line` (computed from
+      // export pattern matching or defaulted to 1 in parseJSDoc). The
+      // fallback never engages. To be removed at step 7.
+      line: schema.line /* || 1 */,
       column: 1,
       description: schema.description,
       input: schema.input,

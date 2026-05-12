@@ -167,5 +167,121 @@ describe("Schema Endpoint", () => {
       // This should not throw
       expect(() => refreshSchema(fixturesDir)).not.toThrow();
     });
+
+    // Scenario: refreshSchema is called BEFORE any handler is created (e.g.
+    // during initial setup). The `if (cachedSchema)` false branch engages
+    // and the function exits without mutating state.
+    test("refreshSchema is a true no-op before handler initialization", () => {
+      jest.isolateModules(() => {
+        const fresh = require("./index");
+        expect(() => fresh.refreshSchema(fixturesDir)).not.toThrow();
+      });
+    });
+  });
+
+  // ============================================================================
+  // computeEndpoint edge cases — exercised via generateSchema on a custom
+  // tmpdir that contains the file shapes the parser must skip.
+  // ============================================================================
+  describe("computeEndpoint skip paths", () => {
+    const fs = require("fs");
+    const os = require("os");
+
+    function tmpControllerDir(tree) {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "schema-idx-"));
+      for (const [rel, content] of Object.entries(tree)) {
+        const abs = path.join(root, rel);
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, content, "utf8");
+      }
+      return root;
+    }
+
+    function cleanup(root) {
+      try { fs.rmSync(root, { recursive: true, force: true }); } catch {}
+    }
+
+    // Scenario: root-level /index.js — skipped per convention.
+    test("skips root-level /index.js", () => {
+      const root = tmpControllerDir({
+        "index.js": "module.exports = function () {};",
+        "users.js": "module.exports = function () {};",
+      });
+      try {
+        const schema = generateSchema(root);
+        const paths = schema.endpoints.map((e) => e.path);
+        expect(paths).toContain("users");
+        expect(paths).not.toContain("");
+        expect(paths).not.toContain("index");
+      } finally {
+        cleanup(root);
+      }
+    });
+
+    // Scenario: root-level /index.ts — also skipped per convention.
+    test("skips root-level /index.ts", () => {
+      const root = tmpControllerDir({
+        "index.ts": "module.exports = function () {};",
+        "users.ts": "module.exports = function () {};",
+      });
+      try {
+        const schema = generateSchema(root);
+        const paths = schema.endpoints.map((e) => e.path);
+        expect(paths).toContain("users");
+      } finally {
+        cleanup(root);
+      }
+    });
+
+    // Scenario: underscore-prefixed private files.
+    test("skips underscore-prefixed files", () => {
+      const root = tmpControllerDir({
+        "users.js": "module.exports = function () {};",
+        "_private.js": "module.exports = function () {};",
+        "_shared/helper.js": "module.exports = function () {};",
+      });
+      try {
+        const schema = generateSchema(root);
+        const paths = schema.endpoints.map((e) => e.path);
+        expect(paths).toContain("users");
+        expect(paths).not.toContain("_private");
+        expect(paths).not.toContain("_shared/helper");
+      } finally {
+        cleanup(root);
+      }
+    });
+
+    // Scenario: .d.ts files (TypeScript declaration companions).
+    test("skips .d.ts declaration files", () => {
+      const root = tmpControllerDir({
+        "users.js": "module.exports = function () {};",
+        "users.d.ts": "export {};",
+      });
+      try {
+        const schema = generateSchema(root);
+        const paths = schema.endpoints.map((e) => e.path);
+        expect(paths).toEqual(["users"]);
+      } finally {
+        cleanup(root);
+      }
+    });
+
+    // Scenario: an empty controller path after stripping "index" — the
+    // `pathParts.length === 0 → null` skip engages.  Use .ts so root
+    // /index.js skip doesn't fire first.
+    test("skips when pathParts becomes empty after index pop", () => {
+      const root = tmpControllerDir({
+        "users.js": "module.exports = function () {};",
+        "outer/index.js": "module.exports = function () {};",
+      });
+      try {
+        const schema = generateSchema(root);
+        const paths = schema.endpoints.map((e) => e.path);
+        expect(paths).toContain("outer"); // subdir index → parent name
+        expect(paths).toContain("users");
+      } finally {
+        cleanup(root);
+      }
+    });
   });
 });

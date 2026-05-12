@@ -652,4 +652,138 @@ describe("Ledger", () => {
       expect(fetched.shares.S3.toString()).toBe("s3-v2");
     });
   });
+
+  // ============================================================================
+  // Default-argument coverage for the ledger factory and its internal helpers.
+  // Real-world callers pass minimal config (no audit callback, no custom
+  // storage), relying entirely on defaults.
+  // ============================================================================
+  describe("Default-argument fallbacks", () => {
+    // Scenario: createLedger() with no arguments at all (smallest possible
+    // construction in a test harness). Both the outer `config = {}` and the
+    // destructuring `auditEnabled = true` defaults engage.
+    test("createLedger() constructs with all defaults", async () => {
+      const l = createLedger();
+      // auditEnabled defaults true; with no onAuditEvent supplied the logAudit
+      // path runs through (auditEnabled && onAuditEvent) → onAuditEvent falsy.
+      await l.storeShares("default-u", {
+        S1: { factor: "oauth", data: Buffer.from("d1") },
+        S3: { factor: "totp", data: Buffer.from("d3") },
+      });
+      expect(await l.isEnrolled("default-u")).toBe(true);
+    });
+
+    // Scenario: a custom storage backend is injected but auditEnabled is
+    // omitted (defaults to true). With no audit callback the audit helper
+    // still runs cleanly.
+    test("logAudit details parameter defaults to {} when caller omits", async () => {
+      // The internal logAudit is exercised indirectly via every operation;
+      // the no-details path engages on revokeShare / rotateShare / etc.
+      const events = [];
+      const l = createLedger({ onAuditEvent: (e) => events.push(e) });
+      await l.storeShares("audit-u", {
+        S1: { factor: "oauth", data: Buffer.from("a1") },
+      });
+      // Each operation's logAudit emits an event — the default-arg path was
+      // hit at least once via storeShares' internal call paths.
+      expect(events.length).toBeGreaterThan(0);
+    });
+  });
+
+  // ============================================================================
+  // storeShares-with-explicit-S2: when the caller pre-supplies an S2 share
+  // (e.g. migration from external store), the auto-fill branch must NOT run.
+  // ============================================================================
+  describe("storeShares with explicit S2", () => {
+    test("does not auto-fill S2 placeholder when caller provides S2", async () => {
+      const l = createLedger({
+        auditEnabled: true,
+        onAuditEvent: () => {},
+      });
+      await l.storeShares("s2-u", {
+        S1: { factor: "oauth", data: Buffer.from("s1") },
+        S2: { factor: "webauthn", data: Buffer.from("s2") },
+        S3: { factor: "totp", data: Buffer.from("s3") },
+      });
+      const fetched = await l.fetchShares("s2-u", ["S2"]);
+      // S2 has data because we provided it explicitly (default placeholder
+      // would have null encryptedData).
+      expect(fetched.shares.S2.toString()).toBe("s2");
+    });
+  });
+
+  // ============================================================================
+  // User-not-found error paths across the rotation/metadata/proof helpers.
+  // These represent realistic scenarios: an admin or background job invokes
+  // an operation against a user that was already unenrolled (race).
+  // ============================================================================
+  describe("User-not-found errors across mutation helpers", () => {
+    test("rotateShare throws when user has no record", async () => {
+      await expect(
+        ledger.rotateShare("ghost-user", "S1", { factor: "oauth", data: Buffer.from("x") }, "reason"),
+      ).rejects.toThrow();
+    });
+
+    test("rotateShare throws when share id is unknown for the user", async () => {
+      await ledger.storeShares("rot-u", {
+        S1: { factor: "oauth", data: Buffer.from("a") },
+      });
+      // S3 was never stored → throws shareNotFound
+      await expect(
+        ledger.rotateShare("rot-u", "S3", { factor: "totp", data: Buffer.from("y") }, "reason"),
+      ).rejects.toThrow();
+    });
+
+    test("updateProofHash throws when user has no record", async () => {
+      await expect(
+        ledger.updateProofHash("ghost-user", Buffer.from("hash")),
+      ).rejects.toThrow();
+    });
+
+    test("getShareMetadata throws when user has no record", async () => {
+      await expect(ledger.getShareMetadata("ghost-user", "S1")).rejects.toThrow();
+    });
+
+    test("getShareMetadata throws when share id is unknown for the user", async () => {
+      await ledger.storeShares("meta-u", {
+        S1: { factor: "oauth", data: Buffer.from("a") },
+      });
+      await expect(ledger.getShareMetadata("meta-u", "S3")).rejects.toThrow();
+    });
+
+    test("updateS2Metadata throws when user has no record", async () => {
+      await expect(ledger.updateS2Metadata("ghost-user", 2)).rejects.toThrow();
+    });
+
+    // Scenario: a custom storage backend persisted a record without the S2
+    // placeholder (e.g. partial migration). updateS2Metadata must reject
+    // rather than silently create the share.
+    test("updateS2Metadata throws when the persisted record lacks S2", async () => {
+      const store = new Map();
+      const l = createLedger({
+        getRecord: async (uid) => store.get(uid) || null,
+        saveRecord: async (uid, rec) => { store.set(uid, rec); },
+        deleteRecord: async (uid) => { store.delete(uid); },
+      });
+      // Persist a record that only has S1 (no S2 placeholder)
+      store.set("no-s2-u", {
+        userId: "no-s2-u",
+        enrolledAt: Date.now(),
+        proofHash: null,
+        shares: {
+          S1: {
+            shareId: "S1",
+            factor: "oauth",
+            encryptedData: Buffer.from("x").toString("base64"),
+            version: 1,
+            revoked: false,
+            createdAt: Date.now(),
+            revokedAt: null,
+            revokedReason: null,
+          },
+        },
+      });
+      await expect(l.updateS2Metadata("no-s2-u", 2)).rejects.toThrow();
+    });
+  });
 });

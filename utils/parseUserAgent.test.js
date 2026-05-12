@@ -815,4 +815,19 @@ describe('parseUserAgent', () => {
             });
         });
     });
+
+    // Real-world scenario: legacy webview UAs sometimes ship "Safari" with no
+    // version suffix (e.g. WKWebView wrappers, stripped UAs from corporate
+    // proxies). The Safari fallback branch must produce browser.name='Safari'
+    // with version=null and major=null instead of throwing on the missing
+    // `Safari/X.Y.Z` segment.
+    describe('Safari fallback without version segment', () => {
+        test('Safari token without /version produces null version + major', () => {
+            const ua = 'Mozilla/5.0 (iPad; CPU OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari';
+            const result = parseUserAgent(ua);
+            expect(result.browser.name).toBe('Safari');
+            expect(result.browser.version).toBeNull();
+            expect(result.browser.major).toBeNull();
+        });
+    });
 });

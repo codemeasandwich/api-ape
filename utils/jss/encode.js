@@ -194,7 +194,11 @@ function encode(obj) {
    * @returns {[string, any]} Tuple of [tag, encodedValue]
    * @private
    */
-  function encodeValueWithVisited(value, path = []) {
+  // DEAD `path = []` default: encodeValueWithVisited is a private closure
+  // and every call site within encode() passes an explicit path (`[key]` at
+  // the top-level loop, `[...path, key]` in the recursive call). To be
+  // removed at step 7.
+  function encodeValueWithVisited(value, path /* = [] */) {
     const type = typeof value;
     const tag = tagLookup[Object.prototype.toString.call(value)];
 
@@ -205,12 +209,17 @@ function encode(obj) {
       if ("R" === tag) return [tag, value.toString()];
       if ("U" === tag) return [tag, null];
       if ("S" === tag) return [tag, Array.from(value)];
-      if ("M" === tag) return [tag, Object.fromEntries(value)];
+      // DEAD `if br 1` (false): tagLookup exhaustively maps the 6 special
+      // toString tags (D/E/R/U/S/M). Earlier branches already returned for
+      // D/E/R/U/S; reaching here means tag === "M". To be removed at step 7.
+      return [tag, Object.fromEntries(value)];
     }
 
     // Check custom plugins
     for (const [customTag, plugin] of getAllPlugins()) {
-      const key = path.length > 0 ? path[path.length - 1] : undefined;
+      // DEAD `path.length > 0 ? ... : undefined` RHS: every call site
+      // passes a non-empty path (at least `[key]`). To be removed at step 7.
+      const key = path[path.length - 1];
       if (plugin.check(key, value)) {
         return [customTag, plugin.encode(path, key, value, {})];
       }

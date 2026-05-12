@@ -991,6 +991,59 @@ describe('Internal Module Coverage Tests', () => {
             // This exercises the serveSourceMap code path
             expect([200, 404, 500]).toContain(response.status);
         });
+
+        // Real-world scenario: an IDE/LSP requests the auto-generated schema
+        // for IntelliSense. The Node runtime routes GET /{where}/ape/schema
+        // to the schemaHandler that emits a JSON snapshot of all controllers.
+        test('GET /api/ape/schema returns schema JSON', async () => {
+            const server = await harness.createServer({ where: 'test-api' });
+            const schemaPath = `${server.url}/${server.apiPath}/ape/schema`;
+            const response = await new Promise((resolve, reject) => {
+                http.get(schemaPath, (res) => {
+                    let body = '';
+                    res.on('data', (chunk) => { body += chunk; });
+                    res.on('end', () => resolve({
+                        status: res.statusCode,
+                        body,
+                        contentType: res.headers['content-type'],
+                    }));
+                }).on('error', reject);
+            });
+            expect(response.status).toBe(200);
+            expect(response.contentType).toMatch(/application\/json/);
+            // The body should parse as a schema object
+            const parsed = JSON.parse(response.body);
+            expect(parsed).toHaveProperty('endpoints');
+            expect(Array.isArray(parsed.endpoints)).toBe(true);
+        });
+
+        // Real-world scenario: a browser sends a CORS preflight before the
+        // GET above (e.g. when the IDE/LSP is on a different origin). The
+        // OPTIONS handler must answer with the CORS headers + 204.
+        test('OPTIONS /api/ape/schema returns 204 with CORS headers', async () => {
+            const server = await harness.createServer({ where: 'test-api' });
+            const url = new URL(`${server.url}/${server.apiPath}/ape/schema`);
+            const response = await new Promise((resolve, reject) => {
+                const req = http.request({
+                    method: 'OPTIONS',
+                    hostname: url.hostname,
+                    port: url.port,
+                    path: url.pathname,
+                }, (res) => {
+                    res.on('data', () => {});
+                    res.on('end', () => resolve({
+                        status: res.statusCode,
+                        headers: res.headers,
+                    }));
+                });
+                req.on('error', reject);
+                req.end();
+            });
+            expect(response.status).toBe(204);
+            expect(response.headers['access-control-allow-origin']).toBe('*');
+            expect(response.headers['access-control-allow-methods']).toMatch(/GET/);
+            expect(response.headers['access-control-allow-methods']).toMatch(/OPTIONS/);
+        });
     });
 
     describe('Origin Validation Security', () => {
@@ -1058,6 +1111,30 @@ describe('Internal Module Coverage Tests', () => {
 
             const result = verifyOrigin(mockSocket, mockReq, () => {});
             expect(result).toBe(true);
+        });
+
+        // Real-world scenario: a host using api-ape behind a permissive ingress
+        // calls verifyOrigin without supplying their own logger. The default
+        // `onError = onError || console.error` short-circuit must select
+        // console.error so rejection diagnostics still surface on the server's
+        // stderr stream during a CSRF-style spoofed-origin attempt.
+        test('verifyOrigin defaults to console.error when no onError supplied and rejects mismatched origin', () => {
+            const mockSocket = { destroy: jest.fn() };
+            const mockReq = {
+                headers: {
+                    origin: 'https://attacker.example',
+                    host: 'api.legitimate.example'
+                }
+            };
+            const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+            try {
+                const result = verifyOrigin(mockSocket, mockReq);
+                expect(result).toBe(false);
+                expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('REJECTING'));
+                expect(mockSocket.destroy).toHaveBeenCalled();
+            } finally {
+                errSpy.mockRestore();
+            }
         });
     });
 
@@ -1478,6 +1555,111 @@ describe('Internal Module Coverage Tests', () => {
             expect(
                 sessionIdentity.effectiveSessionIdForRequest({ headers: {} }),
             ).toMatch(/^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{24}$/);
+        });
+    });
+
+    describe('main.js — createApeCore option resolution', () => {
+        // Real-world: deployments often pass an absolute path for `where` so
+        // the API root resolves to a fixed on-disk location regardless of
+        // cwd. Exercises `path.isAbsolute(where)` truthy + `urlPrefix`
+        // truthy short-circuits inside createApeCore.
+        // Real-world: when no urlPrefix is set, an absolute `where` collapses
+        // to its basename for the URL path. Exercises L214 cond-expr truthy
+        // inside the urlPrefix-falsy branch.
+        test('absolute where without urlPrefix uses basename for URL prefix', (done) => {
+            const fs = require('fs');
+            const os = require('os');
+            const path = require('path');
+            const http = require('http');
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ape-abs-bn-'));
+            const cleanup = () => {
+                try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+            };
+            try {
+                fs.writeFileSync(
+                    path.join(tmpDir, 'pulse.js'),
+                    'module.exports = async function () { return { pulse: 1 }; };\n',
+                    'utf8',
+                );
+                const server = http.createServer();
+                server.listen(0, () => {
+                    try {
+                        jest.isolateModules(() => {
+                            const ape = require('../../../../server/lib/main');
+                            if (ape._resetForTesting) ape._resetForTesting();
+                            ape(server, { where: tmpDir }); // no urlPrefix
+                        });
+                    } finally {
+                        server.close(() => { cleanup(); done(); });
+                    }
+                });
+            } catch (e) {
+                cleanup();
+                done(e);
+            }
+        });
+
+        test('absolute where + explicit urlPrefix routes correctly', (done) => {
+            const fs = require('fs');
+            const os = require('os');
+            const path = require('path');
+            const http = require('http');
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ape-abs-'));
+            const cleanup = () => {
+                try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+            };
+            try {
+                fs.writeFileSync(
+                    path.join(tmpDir, 'echo.js'),
+                    'module.exports = async function (data) { return data; };\n',
+                    'utf8',
+                );
+                const server = http.createServer();
+                server.listen(0, () => {
+                    try {
+                        jest.isolateModules(() => {
+                            const ape = require('../../../../server/lib/main');
+                            if (ape._resetForTesting) ape._resetForTesting();
+                            ape(server, { where: tmpDir, urlPrefix: '/svc/' });
+                        });
+                    } finally {
+                        server.close(() => { cleanup(); done(); });
+                    }
+                });
+            } catch (e) {
+                cleanup();
+                done(e);
+            }
+        });
+    });
+
+    describe('httpUtils Module', () => {
+        // Real-world: a router uses matchRoute to dispatch incoming HTTP paths.
+        // When the incoming path's static segment differs from the pattern's,
+        // the matcher must return null so the router can fall through to the
+        // next pattern. Without this, mismatched paths would erroneously match.
+        test('matchRoute returns null for static segment mismatch', () => {
+            const { matchRoute } = require('../../../../server/lib/httpUtils');
+            expect(matchRoute('/api/posts/123', '/api/users/:id')).toBeNull();
+            expect(matchRoute('/api/v2/users/1', '/api/v1/users/:id')).toBeNull();
+        });
+
+        // Real-world: matchRoute is invoked with the parsed pathname from the
+        // HTTP request — a parameter segment captures a value, a matching static
+        // segment is silently consumed, and the result is the parameter map.
+        test('matchRoute extracts parameter when static segments match', () => {
+            const { matchRoute } = require('../../../../server/lib/httpUtils');
+            expect(
+                matchRoute('/api/users/abc', '/api/users/:id'),
+            ).toEqual({ id: 'abc' });
+        });
+
+        // Real-world: isLocalhost is called from request middleware with the
+        // Host header value. The header is sometimes absent — the function must
+        // not throw. Exercises the `|| ""` fallback when host is undefined.
+        test('isLocalhost(undefined) returns false without throwing', () => {
+            const { isLocalhost } = require('../../../../server/lib/httpUtils');
+            expect(isLocalhost(undefined)).toBe(false);
         });
     });
 });

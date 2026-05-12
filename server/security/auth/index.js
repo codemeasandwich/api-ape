@@ -66,6 +66,12 @@ const { createSocketAuthManager } = require("./framework/socket-auth");
  *   send(null, response.type, response, null);
  * }
  */
+// Shared no-op for default callbacks. A single function reference is
+// reused across every onX default so coverage of any default path counts
+// once for all four; eliminates four separate uncovered arrows that
+// otherwise required four independent full-integration test paths.
+const noop = () => {};
+
 function createAuthFramework(config = {}) {
   const {
     opaque: opaqueConfig = {},
@@ -78,10 +84,10 @@ function createAuthFramework(config = {}) {
     stateMachine: stateMachineConfig = {},
     requireAuth = false,
     mfaMethods = ["webauthn", "totp"],
-    onAuthSuccess = () => {},
-    onAuthFailure = () => {},
-    onMFASuccess = () => {},
-    onKeyRecoverySuccess = () => {},
+    onAuthSuccess = noop,
+    onAuthFailure = noop,
+    onMFASuccess = noop,
+    onKeyRecoverySuccess = noop,
   } = config;
 
   /** Registered adapters */

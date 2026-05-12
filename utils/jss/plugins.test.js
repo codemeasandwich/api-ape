@@ -93,6 +93,35 @@ describe("JSS Custom Plugins", () => {
         }),
       ).toThrow("decode");
     });
+
+    // Scenario: a plugin author passes a non-function as the optional `onSend`
+    // hook (e.g. mistakenly passes an object literal or string). The validator
+    // must reject the registration so the wire-side hook never gets invoked
+    // as if it were a callback.
+    test("throws if onSend provided but not a function", () => {
+      expect(() =>
+        jss.custom("Q", {
+          check: () => true,
+          encode: () => {},
+          decode: () => {},
+          onSend: "not a function",
+        }),
+      ).toThrow("'onSend' must be a function");
+    });
+
+    // Scenario: a plugin author passes a non-function as the optional
+    // `onReceive` hook. The validator must reject the registration so the
+    // receive-side hook never gets invoked as if it were a callback.
+    test("throws if onReceive provided but not a function", () => {
+      expect(() =>
+        jss.custom("J", {
+          check: () => true,
+          encode: () => {},
+          decode: () => {},
+          onReceive: 42,
+        }),
+      ).toThrow("'onReceive' must be a function");
+    });
   });
 
   describe("Encode/Decode Round-trip", () => {

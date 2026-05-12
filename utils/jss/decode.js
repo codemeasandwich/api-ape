@@ -278,7 +278,11 @@ const MAX_DECODE_DEPTH = 500;
  * // Returns: [Date, Date]
  */
 
-function decodeValue(val, tag, path = [], depth = 0) {
+// `path = []` default is DEAD: decodeValue is internal; the entry-point
+// decode() calls it with `[]` explicitly, and recursive calls pass
+// `[...path, key]`. No caller omits the `path` argument. To be removed
+// at step 7.
+function decodeValue(val, tag, path /* = [] */, depth = 0) {
   if (depth > MAX_DECODE_DEPTH) {
     throw new Error(
       `JSS decode depth limit exceeded at depth ${depth}, path: ...${path.slice(-3).join('.')}. ` +

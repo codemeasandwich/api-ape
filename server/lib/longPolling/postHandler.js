@@ -257,8 +257,13 @@ function createPostHandler(streamClients) {
         const clientState = streamClients.get(clientId);
         const embedValues = clientState?.embed || {};
 
-        // Extract session ID from cookie if present
-        const sessionIdMatch = (req.headers.cookie || "").match(
+        // Extract session ID from cookie if present.
+        // DEAD `|| ""`: getClientId() above already requires
+        // req.headers.cookie to be a non-empty string containing `apeClientId=`
+        // (else it returns null and the handler bails with 401 at L226). So
+        // by the time control reaches here, `req.headers.cookie` is guaranteed
+        // truthy. The fallback is unreachable. To be removed at step 7.
+        const sessionIdMatch = (req.headers.cookie /* || "" */).match(
           /(?:^|;\s*)sessionId=([^;]*)/,
         );
         const sessionId = sessionIdMatch ? sessionIdMatch[1] : null;

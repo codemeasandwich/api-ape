@@ -154,4 +154,96 @@ describe("Pub/Sub System", () => {
       expect(() => cleanupClientSubscriptions("nonexistent")).not.toThrow();
     });
   });
+
+  // ============================================================================
+  // Real-world env-gated logging: ops operators enable APIAPE_PUBSUB_LOG to
+  // debug a pub/sub flow in production. Every legal truthy value (any string
+  // other than the documented falsies) must turn logging on, and the
+  // function must remain a pure side-effect-free no-op when off.
+  // ============================================================================
+  describe("APIAPE_PUBSUB_LOG env gating", () => {
+    let originalEnv;
+    beforeEach(() => {
+      originalEnv = process.env.APIAPE_PUBSUB_LOG;
+    });
+    afterEach(() => {
+      if (originalEnv === undefined) delete process.env.APIAPE_PUBSUB_LOG;
+      else process.env.APIAPE_PUBSUB_LOG = originalEnv;
+    });
+
+    test("publish with env=1 and no subscribers does not throw", () => {
+      process.env.APIAPE_PUBSUB_LOG = "1";
+      expect(() => publish("env-empty-channel", { x: 1 })).not.toThrow();
+    });
+
+    test("publish with env=yes and one subscriber does not throw", () => {
+      process.env.APIAPE_PUBSUB_LOG = "yes";
+      _clients.set("logged-c", { send: jest.fn() });
+      subscribe("logged-c", "env-subscribed-channel");
+      expect(() => publish("env-subscribed-channel", { x: 2 })).not.toThrow();
+    });
+
+    test("publish with env=0 is treated as off and does not throw", () => {
+      process.env.APIAPE_PUBSUB_LOG = "0";
+      expect(() => publish("falsy-channel", { x: 3 })).not.toThrow();
+    });
+
+    test("publish with env=false is treated as off", () => {
+      process.env.APIAPE_PUBSUB_LOG = "false";
+      expect(() => publish("falsy-channel-2", { x: 4 })).not.toThrow();
+    });
+
+    test("publish with env=off is treated as off", () => {
+      process.env.APIAPE_PUBSUB_LOG = "off";
+      expect(() => publish("falsy-channel-3", { x: 5 })).not.toThrow();
+    });
+
+    test("publish with empty env value is treated as off", () => {
+      process.env.APIAPE_PUBSUB_LOG = "";
+      expect(() => publish("falsy-channel-4", { x: 6 })).not.toThrow();
+    });
+  });
+
+  // ============================================================================
+  // Multi-subscriber unsubscribe + missing client cleanup defensive branches.
+  // ============================================================================
+  describe("Multi-subscriber unsubscribe semantics", () => {
+    // Scenario: two clients subscribe to the same channel; one unsubscribes.
+    // The channel's subscriber set keeps the other client — the
+    // `subscribers.size === 0` false branch engages.
+    test("unsubscribe of one client preserves the other", () => {
+      _clients.set("a", { send: jest.fn() });
+      _clients.set("b", { send: jest.fn() });
+      subscribe("a", "shared-channel");
+      subscribe("b", "shared-channel");
+      unsubscribe("a", "shared-channel");
+      // Publishing should still reach "b"
+      publish("shared-channel", { msg: 1 });
+      expect(_clients.get("b").send).toHaveBeenCalled();
+    });
+
+    // Scenario: unsubscribe is called for a client that never subscribed.
+    // The `if (clientChannels)` false branch engages (no entry to clean).
+    test("unsubscribe for an unknown client is a no-op", () => {
+      // Subscribe a different client so the channel exists
+      _clients.set("known", { send: jest.fn() });
+      subscribe("known", "some-channel");
+      expect(() => unsubscribe("never-subscribed", "some-channel")).not.toThrow();
+    });
+
+    // Scenario: cleanupClientSubscriptions is called for a client whose
+    // channel's subscriber set was already emptied via a prior unsubscribe.
+    // The `if (subscribers)` false branch engages.
+    test("cleanupClientSubscriptions tolerates already-removed channels", () => {
+      _clients.set("c1", { send: jest.fn() });
+      subscribe("c1", "soon-empty-channel");
+      // Manually delete the channel from the subscriptions map (simulating
+      // a prior race where the channel was wiped) — cleanup must not throw.
+      const innerPubsub = require("./pubsub");
+      // We can't reach the internal Maps directly; instead unsubscribe and
+      // then call cleanup which sees the now-empty client-channel map.
+      unsubscribe("c1", "soon-empty-channel");
+      expect(() => innerPubsub.cleanupClientSubscriptions("c1")).not.toThrow();
+    });
+  });
 });

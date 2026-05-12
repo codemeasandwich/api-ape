@@ -233,15 +233,18 @@ function createWebAuthnStrategy(options, verify) {
     return true;
   }
 
-  /**
-   * Convert base64url to Uint8Array
-   * @param {string} base64url
-   * @returns {Uint8Array}
-   * @private
-   */
-  function base64urlToBuffer(base64url) {
-    return Buffer.from(base64url, "base64url");
-  }
+  // DEAD: base64urlToBuffer is a private closure that no internal code path
+  // invokes. Kept here (commented) only for review per the user's dead-code
+  // audit workflow; will be deleted at step 7.
+  // /**
+  //  * Convert base64url to Uint8Array
+  //  * @param {string} base64url
+  //  * @returns {Uint8Array}
+  //  * @private
+  //  */
+  // function base64urlToBuffer(base64url) {
+  //   return Buffer.from(base64url, "base64url");
+  // }
 
   /**
    * Convert Uint8Array to base64url

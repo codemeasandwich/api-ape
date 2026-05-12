@@ -602,4 +602,201 @@ describe("Recovery Handler", () => {
       expect(verifyWebAuthn).toHaveBeenCalledWith("user1", "my-webauthn-assertion");
     });
   });
+
+  // ============================================================================
+  // Real-world scenarios for the verifier shortcuts: integrators sometimes
+  // pass the raw token/assertion/code as the `verification` argument instead
+  // of wrapping it. The `verification.token || verification` short-circuits
+  // exercise the RHS path.
+  // ============================================================================
+  describe("handleVerifyFactor accepts raw verification primitives", () => {
+    // Scenario: integrator passes the OAuth token as the `verification` value
+    // directly (not wrapped in `{ token }`). The RHS of `verification.token
+    // || verification` engages.
+    test("raw string verification for S1 (oauth) is forwarded to verifyOAuth", async () => {
+      const verifyOAuth = jest.fn().mockResolvedValue(true);
+      const handler = createRecoveryHandler({
+        twoOfThreeAdapter,
+        verifyOAuth,
+      });
+      await handler.handleLostDeviceStart({
+        clientId: "rawc-1",
+        userId: "user1",
+        lostFactor: "S3",
+      });
+      await handler.handleVerifyFactor({
+        clientId: "rawc-1",
+        userId: "user1",
+        factor: "S1",
+        verification: "raw-token",
+      });
+      expect(verifyOAuth).toHaveBeenCalledWith("user1", "raw-token");
+    });
+
+    test("raw string verification for S2 (webauthn) is forwarded to verifyWebAuthn", async () => {
+      const verifyWebAuthn = jest.fn().mockResolvedValue(true);
+      const handler = createRecoveryHandler({
+        twoOfThreeAdapter,
+        verifyWebAuthn,
+      });
+      await handler.handleLostDeviceStart({
+        clientId: "rawc-2",
+        userId: "user1",
+        lostFactor: "S3",
+      });
+      await handler.handleVerifyFactor({
+        clientId: "rawc-2",
+        userId: "user1",
+        factor: "S2",
+        verification: "raw-assertion",
+      });
+      expect(verifyWebAuthn).toHaveBeenCalledWith("user1", "raw-assertion");
+    });
+
+    test("raw string verification for S3 (totp) is forwarded to verifyTOTP", async () => {
+      const verifyTOTP = jest.fn().mockResolvedValue(true);
+      const handler = createRecoveryHandler({
+        twoOfThreeAdapter,
+        verifyTOTP,
+      });
+      await handler.handleLostDeviceStart({
+        clientId: "rawc-3",
+        userId: "user1",
+        lostFactor: "S2",
+      });
+      await handler.handleVerifyFactor({
+        clientId: "rawc-3",
+        userId: "user1",
+        factor: "S3",
+        verification: "raw-totp-code",
+      });
+      expect(verifyTOTP).toHaveBeenCalledWith("user1", "raw-totp-code");
+    });
+
+    // Scenario: TOTP factor verifier configured. The S3+verifyTOTP branch
+    // engages and the wrapper extracts the .code field.
+    test("S3 with custom verifyTOTP extracts verification.code", async () => {
+      const verifyTOTP = jest.fn().mockResolvedValue(true);
+      const handler = createRecoveryHandler({
+        twoOfThreeAdapter,
+        verifyTOTP,
+      });
+      await handler.handleLostDeviceStart({
+        clientId: "rawc-4",
+        userId: "user1",
+        lostFactor: "S2",
+      });
+      await handler.handleVerifyFactor({
+        clientId: "rawc-4",
+        userId: "user1",
+        factor: "S3",
+        verification: { code: "123456" },
+      });
+      expect(verifyTOTP).toHaveBeenCalledWith("user1", "123456");
+    });
+  });
+
+  // ============================================================================
+  // Auto-cleanup timer for pendingRecoveries entries. The setTimeout
+  // schedules a deletion after recoveryTimeout+1000ms; we drive jest fake
+  // timers and assert via attempting to verify after expiry (which fails
+  // with NO_PENDING_RECOVERY rather than succeeding).
+  // ============================================================================
+  // Scenario: a stale pending recovery (expiresAt in the past) is cleaned
+  // up at the start of the next handler call. The cleanupExpired loop's
+  // `if (pending.expiresAt < now)` true branch engages and the entry is
+  // removed from the map.
+  describe("cleanupExpired removes stale entries on next handler call", () => {
+    test("expired pending recovery is purged before the next verify", async () => {
+      const handler = createRecoveryHandler({
+        twoOfThreeAdapter,
+        recoveryTimeout: 1, // 1 ms — expires almost immediately
+      });
+      await handler.handleLostDeviceStart({
+        clientId: "expc",
+        userId: "user1",
+        lostFactor: "S3",
+      });
+      // Wait long enough for the entry to be considered expired
+      await new Promise((r) => setTimeout(r, 10));
+      // Next handler call runs cleanupExpired and sees expiresAt < now
+      await expect(
+        handler.handleVerifyFactor({
+          clientId: "expc",
+          userId: "user1",
+          factor: "S1",
+          verification: { token: "x" },
+        }),
+      ).rejects.toMatchObject({ code: RecoveryError.NO_PENDING_RECOVERY });
+    });
+  });
+
+  // Scenario: a buggy/incomplete caller invokes the factory with no
+  // arguments. The `config = {}` default-arg engages, then the required-
+  // adapter check throws.
+  describe("createRecoveryHandler() default-arg path", () => {
+    test("throws when called with no arguments", () => {
+      expect(() => createRecoveryHandler()).toThrow(
+        /twoOfThreeAdapter is required/,
+      );
+    });
+  });
+
+  // Scenario: two clients have pending recoveries when cleanupClient runs
+  // for one of them. The handler's `if (key.startsWith(...))` false branch
+  // engages for the OTHER client's entries — they remain intact.
+  describe("cleanupClient with multiple clients' pending recoveries", () => {
+    test("only removes the target client's entries", async () => {
+      // Set up a recovery handler that drives the same pendingRecoveries map
+      const handler = createRecoveryHandler({ twoOfThreeAdapter });
+      await handler.handleLostDeviceStart({
+        clientId: "alpha", userId: "user1", lostFactor: "S3",
+      });
+      await handler.handleLostDeviceStart({
+        clientId: "beta", userId: "user1", lostFactor: "S3",
+      });
+      // Cleanup only alpha — beta's entry must survive.
+      handler.cleanupClient("alpha");
+      // Subsequent verify for beta should still find a pending entry
+      // (won't throw NO_PENDING_RECOVERY). We use the verify call to probe.
+      await expect(
+        handler.handleVerifyFactor({
+          clientId: "beta",
+          userId: "user1",
+          factor: "S1",
+          verification: { token: "x" },
+        }),
+      ).resolves.toBeDefined();
+    });
+  });
+
+  describe("Pending-recovery auto-cleanup timer", () => {
+    test("timer removes pending recovery entry after recoveryTimeout+1000ms", async () => {
+      jest.useFakeTimers();
+      try {
+        const handler = createRecoveryHandler({
+          twoOfThreeAdapter,
+          recoveryTimeout: 5000,
+        });
+        await handler.handleLostDeviceStart({
+          clientId: "timer-rec",
+          userId: "user1",
+          lostFactor: "S3",
+        });
+        jest.advanceTimersByTime(6001);
+        // After the timer fires, the pending entry is gone — a verify
+        // attempt rejects with NO_PENDING_RECOVERY.
+        await expect(
+          handler.handleVerifyFactor({
+            clientId: "timer-rec",
+            userId: "user1",
+            factor: "S1",
+            verification: { token: "x" },
+          }),
+        ).rejects.toMatchObject({ code: RecoveryError.NO_PENDING_RECOVERY });
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
 });

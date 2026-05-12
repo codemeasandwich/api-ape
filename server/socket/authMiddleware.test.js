@@ -672,4 +672,32 @@ describe("Authorization Middleware", () => {
       expect(result.allowed).toBe(true);
     });
   });
+
+  // Real-world scenario: an endpoint requirement specifies permissions/roles
+  // without an explicit `tier` (the operator wants permission-based control
+  // and is happy to inherit the middleware's configured default tier).
+  // The nullish-coalescing `requirement.tier ?? defaultTier` must fall through
+  // to defaultTier rather than treat the missing tier as 0.
+  describe("requirement without tier inherits defaultTier", () => {
+    test("missing tier on requirement falls back to configured defaultTier", () => {
+      const authz = createAuthMiddleware({
+        defaultTier: 1,
+        requirements: {
+          "content/edit": { permissions: ["content:edit"] },
+        },
+      });
+
+      const mockSocketAuth = {
+        getState: () => ({
+          tier: 0,
+          principal: { id: "u1", permissions: ["content:edit"] },
+        }),
+      };
+
+      const result = authz.check(mockSocketAuth, "content/edit");
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe("INSUFFICIENT_TIER");
+      expect(result.requiredTier).toBe(1);
+    });
+  });
 });

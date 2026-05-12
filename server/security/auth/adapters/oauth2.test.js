@@ -491,4 +491,364 @@ describe("OAuth2 Authentication Adapter", () => {
       expect(refreshResult.accessToken).toBeDefined();
     });
   });
+
+  // ============================================================================
+  // Real-world OAuth2 ceremony coverage: Passport single-arg constructor,
+  // default-arg fallbacks, provider error paths, and Passport.authenticate
+  // dispatch through both redirect and callback paths.
+  // ============================================================================
+  describe("Passport.js single-arg constructor", () => {
+    test("accepts createOAuth2Strategy(verifyFn)", () => {
+      const verifyFn = jest.fn();
+      const strategy = createOAuth2Strategy(verifyFn);
+      expect(strategy.name).toBe("oauth2");
+      expect(typeof strategy.authenticate).toBe("function");
+      strategy.cleanup();
+    });
+  });
+
+  describe("Default-argument fallbacks", () => {
+    test("handleAuthStart() with no arguments uses default data and redirectTo='/'", async () => {
+      const strategy = createOAuth2Strategy({ pkce: false });
+      const result = await strategy.handleAuthStart();
+      expect(result.type).toBe(OAuth2MessageType.AUTH_REDIRECT);
+      expect(result.state).toBeDefined();
+      strategy.cleanup();
+    });
+
+    test("registerTestUser(userId) without profile uses default {}", async () => {
+      const strategy = createOAuth2Strategy({});
+      const ok = await strategy.registerTestUser("test-default-user");
+      expect(ok).toBe(true);
+      strategy.cleanup();
+    });
+
+    test("initializeState(state) without data uses default {}", async () => {
+      const strategy = createOAuth2Strategy({});
+      const ok = await strategy.initializeState("preset-state");
+      expect(ok).toBe(true);
+      strategy.cleanup();
+    });
+  });
+
+  describe("Provider error path in handleAuthCallback", () => {
+    // Scenario: token-exchange / profile-construction throws (e.g. malformed
+    // JSON from provider). The catch block must surface PROVIDER_ERROR with
+    // the inner err.message preserved.
+    test("catch block returns PROVIDER_ERROR using err.message", async () => {
+      const strategy = createOAuth2Strategy({ pkce: false });
+      await strategy.initializeState("err-state", { redirectTo: "/" });
+      await strategy.registerTestUser("err-user", {
+        get displayName() { throw new Error("provider DB down"); },
+        get name() { throw new Error("provider DB down"); },
+      });
+      const result = await strategy.handleAuthCallback({
+        code: "err-user",
+        state: "err-state",
+      });
+      expect(result.type).toBe(OAuth2MessageType.AUTH_FAIL);
+      expect(result.error).toBe(OAuth2Error.PROVIDER_ERROR);
+      expect(result.message).toMatch(/provider DB down/);
+      strategy.cleanup();
+    });
+
+    // Scenario: thrown value has no .message (e.g. `throw "string"`). Fallback
+    // string engages.
+    test("catch block falls back to default message when err has none", async () => {
+      const strategy = createOAuth2Strategy({ pkce: false });
+      await strategy.initializeState("nomsg-state", { redirectTo: "/" });
+      await strategy.registerTestUser("nomsg-user", {
+        get displayName() { throw ""; },
+        get name() { throw ""; },
+      });
+      const result = await strategy.handleAuthCallback({
+        code: "nomsg-user",
+        state: "nomsg-state",
+      });
+      expect(result.error).toBe(OAuth2Error.PROVIDER_ERROR);
+      expect(result.message).toBe("Failed to complete OAuth2 flow");
+      strategy.cleanup();
+    });
+  });
+
+  describe("Passport.js authenticate()", () => {
+    function ctx() {
+      return {
+        success: jest.fn(),
+        fail: jest.fn(),
+        error: jest.fn(),
+        redirect: jest.fn(),
+      };
+    }
+
+    test("redirect path (no code) calls self.redirect with auth URL", async () => {
+      const strategy = createOAuth2Strategy({ pkce: false });
+      const c = ctx();
+      strategy.authenticate.call(c, {});
+      await new Promise((r) => setImmediate(r));
+      expect(c.redirect).toHaveBeenCalledWith(expect.stringContaining("response_type=code"));
+      strategy.cleanup();
+    });
+
+    test("redirect path forwards options.redirectTo", async () => {
+      const strategy = createOAuth2Strategy({ pkce: false });
+      const c = ctx();
+      strategy.authenticate.call(c, {}, { redirectTo: "/dash" });
+      await new Promise((r) => setImmediate(r));
+      expect(c.redirect).toHaveBeenCalled();
+      strategy.cleanup();
+    });
+
+    // Scenario: the underlying state-generation helper throws (e.g. the
+    // entropy source is unavailable). handleAuthStart's only synchronous
+    // op fails, so the redirect path's outer .catch engages and forwards
+    // to self.error.
+    // Scenario: generateState throws AND the Passport context has no
+    // .error handler. The catch's `if (typeof self.error === "function")`
+    // false branch engages — silent no-op.
+    test("redirect path is silent when generateState fails AND no self.error", async () => {
+      await new Promise((resolve) => {
+        jest.isolateModules(() => {
+          jest.doMock("./oauth2/helpers", () => ({
+            createDefaultStorage: () => ({
+              saveState: async () => {},
+              getState: async () => null,
+              deleteState: async () => {},
+              registerMockUser: async () => true,
+              getMockUser: async () => null,
+              createMockToken: async () => ({ access_token: "t" }),
+            }),
+            generateState: () => { throw new Error("boom"); },
+            generateCodeVerifier: () => "v",
+            generateCodeChallenge: () => "c",
+          }));
+          const { createOAuth2Strategy: createOAuth2 } = require("./oauth2");
+          const strategy = createOAuth2({ pkce: false });
+          const c = {
+            success: jest.fn(),
+            fail: jest.fn(),
+            redirect: jest.fn(),
+            // self.error intentionally absent
+          };
+          strategy.authenticate.call(c, {}, {});
+          setImmediate(() => {
+            // No throw, no unhandled rejection — false branch engaged
+            expect(c.success).not.toHaveBeenCalled();
+            strategy.cleanup();
+            jest.dontMock("./oauth2/helpers");
+            resolve();
+          });
+        });
+      });
+    });
+
+    test("redirect path catches generateState failure via self.error", async () => {
+      // Use jest.isolateModules so the doMock applies cleanly to the
+      // re-required oauth2 module.
+      await new Promise((resolve, reject) => {
+        jest.isolateModules(() => {
+          jest.doMock("./oauth2/helpers", () => ({
+            createDefaultStorage: () => ({
+              saveState: async () => {},
+              getState: async () => null,
+              deleteState: async () => {},
+              registerMockUser: async () => true,
+              getMockUser: async () => null,
+              createMockToken: async () => ({
+                access_token: "t",
+                refresh_token: "r",
+                expires_in: 3600,
+              }),
+            }),
+            generateState: () => { throw new Error("state-gen failed"); },
+            generateCodeVerifier: () => "v",
+            generateCodeChallenge: () => "c",
+          }));
+          const { createOAuth2Strategy: createOAuth2 } = require("./oauth2");
+          const strategy = createOAuth2({ pkce: false });
+          const errSpy = jest.fn();
+          const c = {
+            success: jest.fn(),
+            fail: jest.fn(),
+            error: errSpy,
+            redirect: jest.fn(),
+          };
+          strategy.authenticate.call(c, {}, {});
+          setImmediate(() => {
+            try {
+              expect(errSpy).toHaveBeenCalledWith(expect.any(Error));
+              resolve();
+            } catch (e) {
+              reject(e);
+            } finally {
+              strategy.cleanup();
+              jest.dontMock("./oauth2/helpers");
+            }
+          });
+        });
+      });
+    });
+
+    test("callback path with code and matching state succeeds and calls self.success", async () => {
+      const strategy = createOAuth2Strategy({ pkce: false });
+      await strategy.registerTestUser("auth-pp-user", {
+        displayName: "Pass Port",
+        email: "pp@ex.com",
+      });
+      const start = await strategy.handleAuthStart({ redirectTo: "/p" });
+      const c = ctx();
+      strategy.authenticate.call(c, {
+        query: { code: "auth-pp-user", state: start.state },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.success).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "auth-pp-user" }),
+        expect.objectContaining({ userId: "auth-pp-user" }),
+      );
+      strategy.cleanup();
+    });
+
+    test("callback path with bad state calls self.fail", async () => {
+      const strategy = createOAuth2Strategy({ pkce: false });
+      const c = ctx();
+      strategy.authenticate.call(c, {
+        query: { code: "anything", state: "nonexistent-state" },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.fail).toHaveBeenCalledWith(expect.objectContaining({
+        code: OAuth2Error.INVALID_STATE,
+      }));
+      strategy.cleanup();
+    });
+
+    test("callback path with verify callback success", async () => {
+      const verifyFn = jest.fn((accessToken, refreshToken, profile, done) =>
+        done(null, { id: profile.id, role: "admin" }),
+      );
+      const strategy = createOAuth2Strategy({ pkce: false }, verifyFn);
+      await strategy.registerTestUser("vfy-user", { displayName: "VFY" });
+      const start = await strategy.handleAuthStart({ redirectTo: "/" });
+      const c = ctx();
+      strategy.authenticate.call(c, {
+        query: { code: "vfy-user", state: start.state },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(verifyFn).toHaveBeenCalled();
+      expect(c.success).toHaveBeenCalledWith({ id: "vfy-user", role: "admin" }, undefined);
+      strategy.cleanup();
+    });
+
+    test("callback path with verify done(err) routes to self.error", async () => {
+      const verifyFn = jest.fn((at, rt, p, done) => done(new Error("verify err")));
+      const strategy = createOAuth2Strategy({ pkce: false }, verifyFn);
+      await strategy.registerTestUser("vye-user", { displayName: "VYE" });
+      const start = await strategy.handleAuthStart({ redirectTo: "/" });
+      const c = ctx();
+      strategy.authenticate.call(c, {
+        query: { code: "vye-user", state: start.state },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.error).toHaveBeenCalledWith(expect.any(Error));
+      strategy.cleanup();
+    });
+
+    test("callback path with verify done(null, false) without info uses default", async () => {
+      const verifyFn = jest.fn((at, rt, p, done) => done(null, false));
+      const strategy = createOAuth2Strategy({ pkce: false }, verifyFn);
+      await strategy.registerTestUser("vyf-user", { displayName: "VYF" });
+      const start = await strategy.handleAuthStart({ redirectTo: "/" });
+      const c = ctx();
+      strategy.authenticate.call(c, {
+        query: { code: "vyf-user", state: start.state },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.fail).toHaveBeenCalledWith({ message: "Verification failed" });
+      strategy.cleanup();
+    });
+
+    test("callback path with verify throwing synchronously routes to self.error", async () => {
+      const verifyFn = jest.fn(() => { throw new Error("sync verify boom"); });
+      const strategy = createOAuth2Strategy({ pkce: false }, verifyFn);
+      await strategy.registerTestUser("vyb-user", { displayName: "VYB" });
+      const start = await strategy.handleAuthStart({ redirectTo: "/" });
+      const c = ctx();
+      strategy.authenticate.call(c, {
+        query: { code: "vyb-user", state: start.state },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.error).toHaveBeenCalledWith(expect.any(Error));
+      strategy.cleanup();
+    });
+
+    test("callback path passReqToCallback=true forwards req to verify", async () => {
+      const verifyFn = jest.fn((req, at, rt, p, done) => done(null, { id: p.id, ip: req.ip }));
+      const strategy = createOAuth2Strategy(
+        { pkce: false, passReqToCallback: true },
+        verifyFn,
+      );
+      await strategy.registerTestUser("vyr-user", { displayName: "VYR" });
+      const start = await strategy.handleAuthStart({ redirectTo: "/" });
+      const c = ctx();
+      const req = { query: { code: "vyr-user", state: start.state }, ip: "1.2.3.4" };
+      strategy.authenticate.call(c, req);
+      await new Promise((r) => setImmediate(r));
+      expect(verifyFn).toHaveBeenCalledWith(req, expect.anything(), expect.anything(), expect.anything(), expect.any(Function));
+      strategy.cleanup();
+    });
+
+    test("callback path catch invokes self.error when self.success throws", async () => {
+      const strategy = createOAuth2Strategy({ pkce: false });
+      await strategy.registerTestUser("succ-throw-user", { displayName: "ST" });
+      const start = await strategy.handleAuthStart({ redirectTo: "/" });
+      const c = {
+        success: () => { throw new Error("success crash"); },
+        fail: jest.fn(),
+        error: jest.fn(),
+        redirect: jest.fn(),
+      };
+      strategy.authenticate.call(c, {
+        query: { code: "succ-throw-user", state: start.state },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.error).toHaveBeenCalledWith(expect.any(Error));
+      strategy.cleanup();
+    });
+
+    test("callback path catch is no-op when self.error is not a function", async () => {
+      const strategy = createOAuth2Strategy({ pkce: false });
+      await strategy.registerTestUser("silent-user", { displayName: "Silent" });
+      const start = await strategy.handleAuthStart({ redirectTo: "/" });
+      const c = {
+        success: () => { throw new Error("silent crash"); },
+        fail: jest.fn(),
+        redirect: jest.fn(),
+      };
+      strategy.authenticate.call(c, {
+        query: { code: "silent-user", state: start.state },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(typeof c.success).toBe("function");
+      strategy.cleanup();
+    });
+
+    // Scenario: callback path receives code+state via req.code / req.state
+    // properties (instead of req.query). The OR-fallback expression
+    // `req.query?.code || req.code` engages on the RHS.
+    test("callback path reads code/state from top-level req fields", async () => {
+      const strategy = createOAuth2Strategy({ pkce: false });
+      await strategy.registerTestUser("topfield-user", { displayName: "TF" });
+      const start = await strategy.handleAuthStart({ redirectTo: "/" });
+      const c = ctx();
+      strategy.authenticate.call(c, {
+        code: "topfield-user",
+        state: start.state,
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.success).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "topfield-user" }),
+        expect.any(Object),
+      );
+      strategy.cleanup();
+    });
+  });
 });

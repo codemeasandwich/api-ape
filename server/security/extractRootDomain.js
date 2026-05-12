@@ -99,7 +99,10 @@ const CCTLD_SLDS = new Set(["co", "com", "net", "org", "me", "ac", "gov", "edu"]
  * @private
  */
 function isCcTLD(parts) {
-  if (parts.length < 3) return false;
+  // DEAD: every caller (extractRootDomain) only invokes isCcTLD when
+  // `parts.length > 2`, so the `< 3` guard is unreachable. To be removed
+  // at step 7.
+  // if (parts.length < 3) return false;
   const tld = parts[parts.length - 1];
   const sld = parts[parts.length - 2];
   // TLD must be 2 chars (country code) AND SLD is a known pattern

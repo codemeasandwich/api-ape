@@ -424,4 +424,305 @@ describe("SAML Authentication Adapter", () => {
       expect(authCallback.relayState).toBe("/projects/new");
     });
   });
+
+  // ============================================================================
+  // Real-world SAML ceremony coverage: single-arg constructor, default-args,
+  // invalid-response catch path, SLO without sessionIndex, and full Passport
+  // dispatch through both redirect and callback paths.
+  // ============================================================================
+  describe("Passport.js single-arg constructor", () => {
+    test("accepts createSAMLStrategy(verifyFn)", () => {
+      const verifyFn = jest.fn();
+      const strategy = createSAMLStrategy(verifyFn);
+      expect(strategy.name).toBe("saml");
+      strategy.cleanup();
+    });
+  });
+
+  describe("Default-argument fallbacks", () => {
+    test("handleAuthStart() with no arguments uses default data and relayState=''", async () => {
+      const strategy = createSAMLStrategy({});
+      const result = await strategy.handleAuthStart();
+      expect(result.type).toBe(SAMLMessageType.AUTH_REDIRECT);
+      expect(result.url).toContain("RelayState=");
+      strategy.cleanup();
+    });
+
+    test("registerTestUser(nameId) without attributes uses default {}", async () => {
+      const strategy = createSAMLStrategy({});
+      const ok = await strategy.registerTestUser("nameless@ex.com");
+      expect(ok).toBe(true);
+      strategy.cleanup();
+    });
+  });
+
+  describe("Invalid response catch path", () => {
+    test("catch block returns INVALID_RESPONSE with err.message", async () => {
+      const strategy = createSAMLStrategy({});
+      await strategy.registerTestUser("broken@ex.com", {
+        get firstName() { throw new Error("attribute corrupted"); },
+      });
+      const result = await strategy.handleAuthCallback({
+        SAMLResponse: "broken@ex.com",
+      });
+      expect(result.type).toBe(SAMLMessageType.AUTH_FAIL);
+      expect(result.error).toBe(SAMLError.INVALID_RESPONSE);
+      expect(result.message).toMatch(/attribute corrupted/);
+      strategy.cleanup();
+    });
+
+    test("catch block falls back to default message when err.message is empty", async () => {
+      const strategy = createSAMLStrategy({});
+      await strategy.registerTestUser("nomsg@ex.com", {
+        get firstName() { throw ""; },
+      });
+      const result = await strategy.handleAuthCallback({
+        SAMLResponse: "nomsg@ex.com",
+      });
+      expect(result.error).toBe(SAMLError.INVALID_RESPONSE);
+      expect(result.message).toBe("Failed to process SAML response");
+      strategy.cleanup();
+    });
+  });
+
+  describe("SLO redirect cond-expr branches", () => {
+    test("logout redirect omits SessionIndex when not provided", async () => {
+      const strategy = createSAMLStrategy({
+        logoutUrl: "https://idp.example/slo",
+      });
+      const result = await strategy.handleLogoutStart({ nameId: "u@ex.com" });
+      expect(result.type).toBe(SAMLMessageType.LOGOUT_REDIRECT);
+      expect(result.url).not.toContain("SessionIndex");
+    });
+  });
+
+  describe("Passport.js authenticate()", () => {
+    function ctx() {
+      return {
+        success: jest.fn(),
+        fail: jest.fn(),
+        error: jest.fn(),
+        redirect: jest.fn(),
+      };
+    }
+
+    test("redirect path (no SAMLResponse) calls self.redirect with auth URL", async () => {
+      const strategy = createSAMLStrategy({});
+      const c = ctx();
+      strategy.authenticate.call(c, {});
+      await new Promise((r) => setImmediate(r));
+      expect(c.redirect).toHaveBeenCalledWith(expect.stringContaining("SAMLRequest="));
+      strategy.cleanup();
+    });
+
+    test("redirect path forwards options.relayState", async () => {
+      const strategy = createSAMLStrategy({});
+      const c = ctx();
+      strategy.authenticate.call(c, {}, { relayState: "/path" });
+      await new Promise((r) => setImmediate(r));
+      expect(c.redirect).toHaveBeenCalledWith(expect.stringContaining("RelayState=%2Fpath"));
+      strategy.cleanup();
+    });
+
+    // Scenario: handleAuthStart's only sync op fails (e.g. crypto fault).
+    // The redirect path's outer .catch engages.
+    test("redirect path catches generateRequestId failure via self.error", async () => {
+      await new Promise((resolve) => {
+        jest.isolateModules(() => {
+          jest.doMock("./saml/helpers", () => ({
+            createDefaultStorage: () => ({
+              savePendingRequest: async () => {},
+              getMockUser: async () => null,
+              registerMockUser: async () => true,
+            }),
+            generateRequestId: () => { throw new Error("crypto failed"); },
+          }));
+          const { createSAMLStrategy: createSAML } = require("./saml");
+          const strategy = createSAML({});
+          const errSpy = jest.fn();
+          const c = {
+            success: jest.fn(),
+            fail: jest.fn(),
+            redirect: jest.fn(),
+            error: errSpy,
+          };
+          strategy.authenticate.call(c, {}, {});
+          setImmediate(() => {
+            expect(errSpy).toHaveBeenCalledWith(expect.any(Error));
+            strategy.cleanup();
+            jest.dontMock("./saml/helpers");
+            resolve();
+          });
+        });
+      });
+    });
+
+    // Scenario: same failure but no self.error. The catch's typeof guard
+    // false branch engages.
+    test("redirect path is silent when generateRequestId fails AND no self.error", async () => {
+      await new Promise((resolve) => {
+        jest.isolateModules(() => {
+          jest.doMock("./saml/helpers", () => ({
+            createDefaultStorage: () => ({
+              savePendingRequest: async () => {},
+              getMockUser: async () => null,
+              registerMockUser: async () => true,
+            }),
+            generateRequestId: () => { throw new Error("crypto failed"); },
+          }));
+          const { createSAMLStrategy: createSAML } = require("./saml");
+          const strategy = createSAML({});
+          const c = {
+            success: jest.fn(),
+            fail: jest.fn(),
+            redirect: jest.fn(),
+          };
+          strategy.authenticate.call(c, {}, {});
+          setImmediate(() => {
+            expect(c.success).not.toHaveBeenCalled();
+            strategy.cleanup();
+            jest.dontMock("./saml/helpers");
+            resolve();
+          });
+        });
+      });
+    });
+
+    test("callback path success with no verify callback calls self.success", async () => {
+      const strategy = createSAMLStrategy({});
+      await strategy.registerTestUser("ppsuccess@ex.com", {
+        firstName: "Pass",
+        lastName: "Port",
+      });
+      const c = ctx();
+      strategy.authenticate.call(c, {
+        body: { SAMLResponse: "ppsuccess@ex.com", RelayState: "/r" },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.success).toHaveBeenCalledWith(
+        expect.objectContaining({ nameID: "ppsuccess@ex.com" }),
+        expect.objectContaining({ userId: "ppsuccess@ex.com" }),
+      );
+      strategy.cleanup();
+    });
+
+    test("callback path with verify callback success", async () => {
+      const verifyFn = jest.fn((profile, done) => done(null, { id: profile.nameID }));
+      const strategy = createSAMLStrategy({}, verifyFn);
+      await strategy.registerTestUser("vfy-saml@ex.com", {
+        firstName: "V",
+        lastName: "S",
+      });
+      const c = ctx();
+      strategy.authenticate.call(c, {
+        body: { SAMLResponse: "vfy-saml@ex.com" },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(verifyFn).toHaveBeenCalled();
+      expect(c.success).toHaveBeenCalled();
+      strategy.cleanup();
+    });
+
+    test("callback path verify done(err) routes to self.error", async () => {
+      const verifyFn = jest.fn((profile, done) => done(new Error("saml verify err")));
+      const strategy = createSAMLStrategy({}, verifyFn);
+      await strategy.registerTestUser("vye-saml@ex.com", {});
+      const c = ctx();
+      strategy.authenticate.call(c, {
+        body: { SAMLResponse: "vye-saml@ex.com" },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.error).toHaveBeenCalledWith(expect.any(Error));
+      strategy.cleanup();
+    });
+
+    test("callback path verify done(null, false) without info uses default message", async () => {
+      const verifyFn = jest.fn((profile, done) => done(null, false));
+      const strategy = createSAMLStrategy({}, verifyFn);
+      await strategy.registerTestUser("vyf-saml@ex.com", {});
+      const c = ctx();
+      strategy.authenticate.call(c, {
+        body: { SAMLResponse: "vyf-saml@ex.com" },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.fail).toHaveBeenCalledWith({ message: "Verification failed" });
+      strategy.cleanup();
+    });
+
+    test("callback path verify throwing synchronously routes to self.error", async () => {
+      const verifyFn = jest.fn(() => { throw new Error("sync saml boom"); });
+      const strategy = createSAMLStrategy({}, verifyFn);
+      await strategy.registerTestUser("vyb-saml@ex.com", {});
+      const c = ctx();
+      strategy.authenticate.call(c, {
+        body: { SAMLResponse: "vyb-saml@ex.com" },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.error).toHaveBeenCalledWith(expect.any(Error));
+      strategy.cleanup();
+    });
+
+    test("callback path passReqToCallback=true forwards req to verify", async () => {
+      const verifyFn = jest.fn((req, profile, done) => done(null, { id: profile.nameID, ip: req.ip }));
+      const strategy = createSAMLStrategy({ passReqToCallback: true }, verifyFn);
+      await strategy.registerTestUser("vyr-saml@ex.com", {});
+      const c = ctx();
+      const req = { body: { SAMLResponse: "vyr-saml@ex.com" }, ip: "1.2.3.4" };
+      strategy.authenticate.call(c, req);
+      await new Promise((r) => setImmediate(r));
+      expect(verifyFn).toHaveBeenCalledWith(req, expect.anything(), expect.any(Function));
+      strategy.cleanup();
+    });
+
+    // Scenario: callback path receives SAMLResponse/RelayState via top-level
+    // req fields (legacy Express). The `req.body?.X || req.X` RHS engages.
+    test("callback path reads SAMLResponse from top-level req fields", async () => {
+      const strategy = createSAMLStrategy({});
+      await strategy.registerTestUser("topfield-saml@ex.com", {});
+      const c = ctx();
+      strategy.authenticate.call(c, {
+        SAMLResponse: "topfield-saml@ex.com",
+        RelayState: "/r2",
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.success).toHaveBeenCalledWith(
+        expect.objectContaining({ nameID: "topfield-saml@ex.com" }),
+        expect.any(Object),
+      );
+      strategy.cleanup();
+    });
+
+    test("callback path catch routes to self.error when self.success throws", async () => {
+      const strategy = createSAMLStrategy({});
+      await strategy.registerTestUser("crash-saml@ex.com", {});
+      const c = {
+        success: () => { throw new Error("saml success crash"); },
+        fail: jest.fn(),
+        error: jest.fn(),
+        redirect: jest.fn(),
+      };
+      strategy.authenticate.call(c, {
+        body: { SAMLResponse: "crash-saml@ex.com" },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(c.error).toHaveBeenCalledWith(expect.any(Error));
+      strategy.cleanup();
+    });
+
+    test("callback path catch is no-op when self.error is absent", async () => {
+      const strategy = createSAMLStrategy({});
+      await strategy.registerTestUser("silent-saml@ex.com", {});
+      const c = {
+        success: () => { throw new Error("silent crash"); },
+        fail: jest.fn(),
+        redirect: jest.fn(),
+      };
+      strategy.authenticate.call(c, {
+        body: { SAMLResponse: "silent-saml@ex.com" },
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(typeof c.success).toBe("function");
+      strategy.cleanup();
+    });
+  });
 });

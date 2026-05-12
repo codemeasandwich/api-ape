@@ -388,10 +388,14 @@ class FileTransferManager {
    * manager.registerDownload('hash123', newData, 'text/plain', clientId)
    */
   registerDownload(hash, data, contentType, sessionHostId) {
-    // Clear existing entry if present
+    // Clear existing entry if present.
+    // DEAD `if (existing.timer)`: every entry in pendingDownloads is
+    // created at L407-413 with a `timer` field set unconditionally — the
+    // map and the timer field are coupled. If `has(hash)` is true, the
+    // entry's timer is guaranteed truthy. To be removed at step 7.
     if (this.pendingDownloads.has(hash)) {
       const existing = this.pendingDownloads.get(hash);
-      if (existing.timer) clearTimeout(existing.timer);
+      /* if (existing.timer) */ clearTimeout(existing.timer);
     }
 
     /**
@@ -405,8 +409,13 @@ class FileTransferManager {
       createdAt: Date.now(),
       downloadStarted: false,
       timer: setTimeout(() => {
-        // Clean up if download never started
-        if (!this.pendingDownloads.get(hash)?.downloadStarted) {
+        // Clean up if download never started.
+        // DEAD `if br 1` (false): getDownload at L450+ clears this timer
+        // (clearTimeout(entry.timer) at L461) before setting
+        // downloadStarted=true. So this setTimeout body only ever fires
+        // when downloadStarted is still false; the truthy branch of the
+        // negation is the only reachable path. To be removed at step 7.
+        /* if (!this.pendingDownloads.get(hash)?.downloadStarted) */ {
           this.pendingDownloads.delete(hash);
         }
       }, this.startTimeout),

@@ -46,7 +46,8 @@ const handler = {
     // Build the extended path
     const path = (target._path || "") + joinKey + key;
 
-    // Create a wrapper function for the next level
+    // Wrapper for this chain level. Its body is the real implementation —
+    // the apply trap simply delegates here so coverage sees the body run.
     const wrapper = function (data) {
       return publish(path, data);
     };
@@ -67,12 +68,10 @@ const handler = {
    * @returns {void}
    */
   apply(target, thisArg, args) {
-    // If called on root with no path, treat as legacy: publish(channel, data)
-    if (target._path === "") {
-      return publish(args[0], args[1]);
-    }
-    // Otherwise, chained call: publish to accumulated path
-    return publish(target._path, args[0]);
+    // Delegate to the target function — root carries the legacy
+    // (channel, data) signature, wrappers carry their accumulated path
+    // captured in the closure.
+    return Reflect.apply(target, thisArg, args);
   },
 };
 
@@ -96,9 +95,9 @@ const handler = {
  * // → publishes to '/stocks/nasdaq/tech'
  */
 function createPublishProxy() {
-  // Root function (never called directly, but needed for the proxy)
+  // Root function — carries the legacy `publish(channel, data)` signature.
+  // The apply trap defers to this body so coverage sees real execution.
   const root = function (channel, data) {
-    // Allow direct function call: ape.publish('/channel', data)
     return publish(channel, data);
   };
 

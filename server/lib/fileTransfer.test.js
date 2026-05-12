@@ -248,6 +248,94 @@ describe('FileTransferManager - Downloads', () => {
             expect(result.data.toString()).toBe('hello');
             expect(result.contentType).toBe('text/plain');
         });
+
+        // Scenario: registerDownload called twice with the same hash — the
+        // existing entry's timer must be cleared before the new entry replaces
+        // it. Without this, the old setTimeout would fire later and delete
+        // the freshly-registered entry.
+        test('re-registering same hash clears the existing timer', () => {
+            manager.registerDownload('hash-dup', Buffer.from('v1'), 'text/plain', 'client-1');
+            manager.registerDownload('hash-dup', Buffer.from('v2'), 'text/plain', 'client-1');
+            const result = manager.getDownload('hash-dup', 'client-1');
+            expect(result.data.toString()).toBe('v2');
+        });
+
+        // Scenario: registerDownload called WITHOUT a contentType — the entry
+        // must default to the binary fallback `application/octet-stream`.
+        test('defaults contentType to application/octet-stream when omitted', () => {
+            manager.registerDownload('hash-noct', Buffer.from('data'), undefined, 'client-1');
+            const result = manager.getDownload('hash-noct', 'client-1');
+            expect(result.contentType).toBe('application/octet-stream');
+        });
+
+        // Scenario: the start-timeout fires before the download is consumed —
+        // the entry must auto-delete. Exercises the setTimeout callback at
+        // L407-412 (`if (!entry.downloadStarted) delete`).
+        test('start-timeout deletes entry when download never starts', async () => {
+            const m = new FileTransferManager({ startTimeout: 30, completeTimeout: 30 });
+            try {
+                m.registerDownload('hash-expire', Buffer.from('x'), 'text/plain', 'client-1');
+                await new Promise((r) => setTimeout(r, 60));
+                expect(m.getDownload('hash-expire', 'client-1')).toBeNull();
+            } finally {
+                m.destroy();
+            }
+        });
+
+        // Scenario: the consumer fetched the download first (downloadStarted
+        // becomes true), and only after that does the start-timeout fire. The
+        // setTimeout body must NOT delete the entry — exercises the falsy
+        // branch of `if (!entry?.downloadStarted)` at L409.
+        test('start-timeout no-ops when download already started', async () => {
+            const m = new FileTransferManager({ startTimeout: 50, completeTimeout: 5000 });
+            try {
+                m.registerDownload('hash-fast', Buffer.from('x'), 'text/plain', 'client-1');
+                // Consume the download immediately — downloadStarted = true,
+                // first timer cleared and replaced with completeTimeout (5s).
+                const got = m.getDownload('hash-fast', 'client-1');
+                expect(got).not.toBeNull();
+                // Wait until the original startTimeout would have fired (50ms).
+                // Even if a stale timer reference fires, the entry must remain
+                // because downloadStarted=true.
+                await new Promise((r) => setTimeout(r, 80));
+                // Entry should still exist (until completeTimeout fires).
+                expect(m.pendingDownloads.has('hash-fast')).toBe(true);
+            } finally {
+                m.destroy();
+            }
+        });
+
+        // Scenario: the download was fetched (started) but the consumer did
+        // not finish consuming within completeTimeout. The entry must be
+        // garbage-collected. Exercises the second setTimeout body at L463.
+        test('completeTimeout deletes entry after started but not completed', async () => {
+            const m = new FileTransferManager({ startTimeout: 1000, completeTimeout: 30 });
+            try {
+                m.registerDownload('hash-comp', Buffer.from('z'), 'text/plain', 'client-1');
+                m.getDownload('hash-comp', 'client-1'); // downloadStarted=true, completeTimeout begins
+                await new Promise((r) => setTimeout(r, 60));
+                expect(m.pendingDownloads.has('hash-comp')).toBe(false);
+            } finally {
+                m.destroy();
+            }
+        });
+
+        // Scenario: getDownload called twice — the second call sees
+        // entry.downloadStarted already true and skips the timer swap.
+        // Exercises the falsy branch of `if (!entry.downloadStarted)` at L459.
+        test('second getDownload sees downloadStarted=true and skips timer swap', () => {
+            const m = new FileTransferManager({ startTimeout: 1000, completeTimeout: 1000 });
+            try {
+                m.registerDownload('hash-twice', Buffer.from('y'), 'text/plain', 'client-1');
+                m.getDownload('hash-twice', 'client-1'); // first — sets downloadStarted=true
+                const entry = m.pendingDownloads.get('hash-twice');
+                const timerBefore = entry.timer;
+                m.getDownload('hash-twice', 'client-1'); // second — timer must NOT be swapped
+                expect(m.pendingDownloads.get('hash-twice').timer).toBe(timerBefore);
+            } finally {
+                m.destroy();
+            }
+        });
     });
 
     describe('generateHash', () => {
@@ -341,6 +429,57 @@ describe('FileTransferManager - Uploads', () => {
 // =============================================================================
 // SINGLETON PATTERN TESTS
 // =============================================================================
+
+describe('FileTransferManager - periodic cleanup', () => {
+    // Scenario: _cleanup reaps a download entry whose age has exceeded
+    // startTimeout + completeTimeout. Calling _cleanup() directly avoids
+    // the fake-timer + entry-timer race that would empty the map before
+    // the loop runs.
+    test('_cleanup reaps expired downloads', () => {
+        const manager = new FileTransferManager({ startTimeout: 30000, completeTimeout: 30000 });
+        try {
+            manager.registerDownload('hash-old', Buffer.from('x'), 'text/plain', 'c1');
+            const entry = manager.pendingDownloads.get('hash-old');
+            entry.createdAt = Date.now() - 1000000;
+            manager._cleanup();
+            expect(manager.pendingDownloads.has('hash-old')).toBe(false);
+        } finally {
+            manager.destroy();
+        }
+    });
+
+    // Scenario: cleanup also rejects pending uploads whose deadlines have
+    // passed. The promise from registerUpload resolves to an error.
+    // Scenario: _cleanup runs while no entry has aged out — both per-entry
+    // age checks must take their falsy branch. Exercises L624 and L632.
+    test('periodic cleanup with fresh entries leaves them in place', () => {
+        const manager = new FileTransferManager({ startTimeout: 30000, completeTimeout: 30000 });
+        try {
+            manager.registerDownload('hash-fresh', Buffer.from('x'), 'text/plain', 'c1');
+            const p = manager.registerUpload('q1', 'hash-up-fresh', 'c1');
+            p.catch(() => {});
+            manager._cleanup();
+            expect(manager.pendingDownloads.has('hash-fresh')).toBe(true);
+            expect(manager.pendingUploads.has('q1/hash-up-fresh')).toBe(true);
+        } finally {
+            manager.destroy();
+        }
+    });
+
+    test('periodic cleanup rejects expired pending uploads', async () => {
+        const manager = new FileTransferManager({ startTimeout: 30000, completeTimeout: 30000 });
+        const p = manager.registerUpload('q1', 'hash-up', 'c1');
+        p.catch(() => {});
+        const key = 'q1/hash-up';
+        const entry = manager.pendingUploads.get(key);
+        // Age the entry past maxAge
+        entry.createdAt = Date.now() - 1000000;
+        // Call _cleanup directly to drive the upload-expiry branch
+        manager._cleanup();
+        expect(manager.pendingUploads.has(key)).toBe(false);
+        manager.destroy();
+    });
+});
 
 describe('getFileTransferManager', () => {
     afterAll(() => {

@@ -83,10 +83,13 @@ module.exports = function receiveHandler(ape) {
 
       // Handle authentication messages first (before any other processing)
       if (handleAuthMessage && isAuthMessage(type)) {
-        const handled = await handleAuthMessage(queryId, type, data);
-        if (handled) {
-          return; // Auth message was handled, don't route to controllers
-        }
+        await handleAuthMessage(queryId, type, data);
+        // DEAD: handleAuthMessage always returns true after isAuthMessage(type)
+        // returns true (its own internal early-return on `!isAuthMessage(type)`
+        // is unreachable because the outer guard already filtered). Hence
+        // the wrapping `if (handled)` is always true — collapsed to a direct
+        // `return`. To be removed at step 7.
+        return;
       }
 
       const onFinish = events.onReceive(queryId, data, type) || (() => { });

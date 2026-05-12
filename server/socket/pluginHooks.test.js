@@ -134,6 +134,26 @@ describe("Plugin Hooks", () => {
       expect(cleanupFn).toHaveBeenCalled();
     });
 
+    test("plugin matched at root (no path) passes empty pathArray to onSend", () => {
+      // When processPluginSend is called without a path argument the default
+      // path = "" hits the falsy branch of `path ? path.split(".") : []`,
+      // which must produce an empty pathArray for onSend.
+      let receivedPathArray = null;
+      register("Q", {
+        check: (key, value) => key === "root" && value && value.rootHook,
+        encode: () => "encoded",
+        decode: (v) => v,
+        onSend: (pathArray) => {
+          receivedPathArray = pathArray;
+          return { replace: "ok" };
+        },
+      });
+
+      const result = processPluginSend({ rootHook: true }, {});
+      expect(receivedPathArray).toEqual([]);
+      expect(result.data["__ape_plugin_Q__"]).toBe("ok");
+    });
+
     test("plugin matched without onSend returns data unchanged", () => {
       register("Z", {
         check: (key, value) => value.tagged === true,

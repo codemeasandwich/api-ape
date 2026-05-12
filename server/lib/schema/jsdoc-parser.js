@@ -233,7 +233,12 @@ function parseJSDoc(filePath) {
       for (const param of dataParams) {
         if (param.name === "data" && param.type) {
           input = parseTypeString(param.type);
-        } else if (param.name && param.name.startsWith("data.")) {
+        } else {
+          // DEAD: the dataParams filter already required p.name === "data" or
+          // p.name.startsWith("data."), and the `data && type` branch handles
+          // the first case. The else-if redundantly re-tested startsWith.
+          // Simplified to a plain else branch. To be removed at step 7.
+          // } else if (param.name && param.name.startsWith("data.")) {
           const propName = param.name.slice(5);
           properties[propName] = {
             ...parseTypeString(param.type),

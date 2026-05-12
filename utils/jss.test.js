@@ -326,4 +326,79 @@ describe('JSS - JSON SuperSet', () => {
             expect(decoded.dates[2]).toBeInstanceOf(Date)
         })
     })
+
+    // ========================================================================
+    // Coverage for the I-tag (inline base64 binary) and the recursion-depth
+    // guard. Inline binary is how server-side payloads ship Buffer data to
+    // browser clients; the depth guard protects against pathological nesting.
+    // ========================================================================
+    describe('Inline base64 binary decoding (I-tag)', () => {
+        // Scenario: a server-side response includes a small Buffer encoded
+        // inline as base64 using the I-tag. In Node, the decoder returns
+        // a Buffer; the test environment is Node so the `typeof Buffer
+        // !== "undefined"` branch's Node arm engages.
+        test('decodes I-tag base64 to Buffer in Node', () => {
+            const payload = Buffer.from('hello inline').toString('base64')
+            const encoded = { 'blob<!I>': payload }
+            const decoded = jss.decode(encoded)
+            expect(Buffer.isBuffer(decoded.blob)).toBe(true)
+            expect(decoded.blob.toString()).toBe('hello inline')
+        })
+
+        // Scenario: a browser environment where Buffer is undefined. The
+        // browser arm (atob + Uint8Array) engages. We simulate this by
+        // temporarily hiding the global Buffer while re-requiring the
+        // decoder, then restoring it.
+        test('decodes I-tag base64 to Uint8Array.buffer in browser-like env', () => {
+            const realBuffer = global.Buffer
+            const text = 'hi browser'
+            // Pre-compute the base64 payload BEFORE shadowing Buffer
+            const payload = realBuffer.from(text).toString('base64')
+            try {
+                // Hide Buffer to make the typeof check fail inside the I-tag
+                delete global.Buffer
+                global.atob = (b64) => realBuffer.from(b64, 'base64').toString('binary')
+                jest.isolateModules(() => {
+                    // Fresh module pickup so the I-tag closure re-evaluates typeof Buffer
+                    const freshJss = require('./jss')
+                    const decoded = freshJss.decode({ 'blob<!I>': payload })
+                    // Should be an ArrayBuffer (from Uint8Array.buffer)
+                    expect(decoded.blob).toBeInstanceOf(ArrayBuffer)
+                    expect(new Uint8Array(decoded.blob)).toEqual(
+                        new Uint8Array([...text].map(c => c.charCodeAt(0))),
+                    )
+                })
+            } finally {
+                global.Buffer = realBuffer
+                delete global.atob
+            }
+        })
+    })
+
+    describe('Recursion depth guard', () => {
+        // Scenario: an attacker submits a pathologically nested payload to
+        // trigger stack exhaustion. The decoder must reject before recursing
+        // past MAX_DECODE_DEPTH (500).
+        test('throws when decoded structure exceeds MAX_DECODE_DEPTH', () => {
+            // Build a >500-deep nested object
+            let nested = { leaf: 1 }
+            for (let i = 0; i < 510; i++) {
+                nested = { nested }
+            }
+            expect(() => jss.decode(nested)).toThrow(/depth limit exceeded/)
+        })
+    })
+
+    describe('Top-level arrays', () => {
+        // Scenario: a controller returns a bare array (not wrapped in an
+        // object). The encoder must walk the array's numeric indices and
+        // produce a parseable JSON. Exercises the `Array.isArray(obj)` truthy
+        // branch in encode() at L269-271.
+        test('encodes a top-level array of mixed types without throwing', () => {
+            const input = [1, 'two', true, null, new Date('2024-01-01T00:00:00Z')]
+            const encoded = jss.stringify(input)
+            expect(typeof encoded).toBe('string')
+            expect(encoded.length).toBeGreaterThan(0)
+        })
+    })
 })

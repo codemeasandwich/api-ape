@@ -341,6 +341,195 @@ describe("Two-of-Three Adapter", () => {
         expect(err.code).toBe(TwoOfThreeError.INVALID_FLOW);
       }
     });
+
+    // Scenario: a recovery client submits a valid HMAC-SHA256 proof using
+    // the stored proof-hash secret. The handler validates and elevates.
+    test("handleRecoveryComplete accepts a matching proof", async () => {
+      const start = await strategy.handleRecoveryStart({
+        clientId: "client-proof",
+        userId: "user1",
+      });
+      // Reproduce the proof using the same secret the handler stored.
+      // The proof secret is the proofHash recorded by handleEnrollmentFinish
+      // (which is computeProofHash(kUser)). We replay the math by reading
+      // it from the ledger via the strategy's exposed _ledger.
+      const proofHash = await strategy.ledger.getProofHash("user1");
+      const expectedProof = crypto
+        .createHmac("sha256", proofHash)
+        .update(start.challenge)
+        .digest("base64");
+      const result = await strategy.handleRecoveryComplete({
+        clientId: "client-proof",
+        userId: "user1",
+        proof: expectedProof,
+      });
+      expect(result.type).toBe(TwoOfThreeMessageType.RECOVERY_OK);
+      expect(result.tier).toBe(3);
+    });
+
+    // Scenario: an attacker submits an arbitrary string as the proof. The
+    // handler must compare against the stored HMAC, fail to match, and
+    // reject with INVALID_PROOF.
+    test("handleRecoveryComplete rejects a non-matching proof", async () => {
+      await strategy.handleRecoveryStart({
+        clientId: "client-bad-proof",
+        userId: "user1",
+      });
+      await expect(
+        strategy.handleRecoveryComplete({
+          clientId: "client-bad-proof",
+          userId: "user1",
+          proof: "Y29tcGxldGVseS13cm9uZw==", // arbitrary base64
+        }),
+      ).rejects.toMatchObject({ code: TwoOfThreeError.INVALID_PROOF });
+    });
+  });
+
+  // ============================================================
+  // Enrollment-expiry timer + late-finish edge cases
+  // ============================================================
+  describe("Enrollment session expiry", () => {
+    // Scenario: a user starts enrollment, then the auto-cleanup timer fires
+    // after `enrollmentTimeout + 1000`ms. The pending entry must be
+    // garbage-collected by the timer.
+    test("auto-cleanup timer removes the pending enrollment", async () => {
+      jest.useFakeTimers();
+      try {
+        const s = createTwoOfThreeStrategy({ enrollmentTimeout: 1000 });
+        await s.handleEnrollmentStart({
+          clientId: "timer-c",
+          userId: "timer-u",
+        });
+        expect(s._pendingEnrollments.size).toBe(1);
+        jest.advanceTimersByTime(2001);
+        expect(s._pendingEnrollments.size).toBe(0);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    // Scenario: a client races the cleanup timer — submits a finish call
+    // after the pending entry's `expiresAt` has passed but before the
+    // cleanup timer's interval has fired. The handler must reject with
+    // ENROLLMENT_EXPIRED and remove the stale entry itself.
+    test("handleEnrollmentFinish rejects when expiresAt has passed", async () => {
+      await strategy.handleEnrollmentStart({
+        clientId: "client-late",
+        userId: "user-late",
+      });
+      const entry = strategy._pendingEnrollments.get("client-late:user-late");
+      entry.expiresAt = Date.now() - 1000;
+      await expect(
+        strategy.handleEnrollmentFinish({
+          clientId: "client-late",
+          userId: "user-late",
+          encryptedShares: {
+            S1: crypto.randomBytes(64).toString("base64"),
+            S3: crypto.randomBytes(64).toString("base64"),
+          },
+        }),
+      ).rejects.toMatchObject({ code: TwoOfThreeError.ENROLLMENT_EXPIRED });
+      expect(strategy._pendingEnrollments.has("client-late:user-late")).toBe(false);
+    });
+  });
+
+  // ============================================================
+  // Recovery-start with partial shares: the ledger may legitimately return
+  // missing share buffers when a share was rotated to a tombstone or the
+  // factor adapter is unavailable. The `?.toString("base64") || null`
+  // short-circuit must fall through to `null` for the missing share.
+  // ============================================================
+  describe("Recovery start with missing share buffers", () => {
+    test("encShares fall back to null when ledger returns missing shares", async () => {
+      const s = createTwoOfThreeStrategy({ enrollmentTimeout: 5000 });
+      // Enroll first, then mutate the ledger to drop S3's data
+      await s.handleEnrollmentStart({
+        clientId: "missing-c",
+        userId: "missing-u",
+      });
+      await s.handleEnrollmentFinish({
+        clientId: "missing-c",
+        userId: "missing-u",
+        encryptedShares: {
+          S1: crypto.randomBytes(64).toString("base64"),
+          S3: crypto.randomBytes(64).toString("base64"),
+        },
+      });
+      // Patch fetchShares on the ledger to return only S1
+      const origFetch = s.ledger.fetchShares.bind(s.ledger);
+      s.ledger.fetchShares = async (uid, ids) => {
+        const out = await origFetch(uid, ids);
+        return { shares: { S1: out.shares.S1 }, metadata: out.metadata };
+      };
+      const result = await s.handleRecoveryStart({
+        clientId: "missing-c2",
+        userId: "missing-u",
+      });
+      expect(result.encShares.S3).toBeNull();
+    });
+
+    // Scenario: the S1 buffer is also missing (e.g. tombstoned during a
+    // simultaneous re-enroll race). The LHS `?.toString("base64")` returns
+    // undefined so the `|| null` short-circuit picks null.
+    test("encShares.S1 falls back to null when ledger returns no S1", async () => {
+      const s = createTwoOfThreeStrategy({ enrollmentTimeout: 5000 });
+      await s.handleEnrollmentStart({
+        clientId: "no-s1-c",
+        userId: "no-s1-u",
+      });
+      await s.handleEnrollmentFinish({
+        clientId: "no-s1-c",
+        userId: "no-s1-u",
+        encryptedShares: {
+          S1: crypto.randomBytes(64).toString("base64"),
+          S3: crypto.randomBytes(64).toString("base64"),
+        },
+      });
+      s.ledger.fetchShares = async () => ({
+        shares: {},
+        metadata: {},
+      });
+      const result = await s.handleRecoveryStart({
+        clientId: "no-s1-c2",
+        userId: "no-s1-u",
+      });
+      expect(result.encShares.S1).toBeNull();
+      expect(result.encShares.S3).toBeNull();
+    });
+  });
+
+  // Scenario: a legacy enrollment record never persisted a proof hash (e.g.
+  // upgraded from a pre-proof schema). The client sends a proof but
+  // ledger.getProofHash returns null/undefined — the verification block
+  // skips and the recovery completes via the no-proof path.
+  describe("Recovery with missing stored proofHash", () => {
+    test("skips proof validation when ledger has no proofHash for the user", async () => {
+      const s = createTwoOfThreeStrategy({ enrollmentTimeout: 5000 });
+      await s.handleEnrollmentStart({
+        clientId: "noph-c",
+        userId: "noph-u",
+      });
+      await s.handleEnrollmentFinish({
+        clientId: "noph-c",
+        userId: "noph-u",
+        encryptedShares: {
+          S1: crypto.randomBytes(64).toString("base64"),
+          S3: crypto.randomBytes(64).toString("base64"),
+        },
+      });
+      // Make the ledger report no proofHash for this user
+      s.ledger.getProofHash = async () => null;
+      await s.handleRecoveryStart({
+        clientId: "noph-c2",
+        userId: "noph-u",
+      });
+      const result = await s.handleRecoveryComplete({
+        clientId: "noph-c2",
+        userId: "noph-u",
+        proof: "any-proof",
+      });
+      expect(result.type).toBe(TwoOfThreeMessageType.RECOVERY_OK);
+    });
   });
 
   // ============================================================
@@ -517,6 +706,77 @@ describe("Two-of-Three Adapter", () => {
       });
     });
 
+    // Scenario: constructor called with no arguments — `options || {}` RHS engages.
+    test("createTwoOfThreeStrategy() with no args constructs with defaults", () => {
+      const s = createTwoOfThreeStrategy();
+      expect(s.name).toBe("two-of-three");
+    });
+
+    // Scenario: request is a plain object (not an Express req with .body).
+    // `req.body || req` RHS engages.
+    test("authenticate accepts request without .body", () => {
+      const c = {
+        success: jest.fn(),
+        fail: jest.fn(),
+        error: jest.fn(),
+      };
+      strategy.authenticate.call(c, {
+        userId: "u",
+        factors: { oauth: {}, totp: {} },
+      });
+      expect(c.success).toHaveBeenCalled();
+    });
+
+    // Scenario: caller submits a factor flow not in `allowedFlows`. The
+    // `!allowedFlows.some(...)` true branch engages and self.fail with
+    // INVALID_FLOW.
+    test("authenticate fails when factor flow is not in allowedFlows", () => {
+      const restricted = createTwoOfThreeStrategy({
+        allowedFlows: ["oauth+totp"], // only this single flow
+      });
+      const c = {
+        success: jest.fn(),
+        fail: jest.fn(),
+        error: jest.fn(),
+      };
+      restricted.authenticate.call(c, {
+        body: { userId: "u", factors: { webauthn: {}, totp: {} } },
+      });
+      expect(c.fail).toHaveBeenCalledWith(expect.objectContaining({
+        code: TwoOfThreeError.INVALID_FLOW,
+      }));
+    });
+
+    // Scenario: verify callback signals error via done(err).
+    test("verifyCallback done(err) routes to self.error", () => {
+      const verifyFn = jest.fn((data, done) => done(new Error("verify fail")));
+      const s = createTwoOfThreeStrategy({}, verifyFn);
+      const c = {
+        success: jest.fn(),
+        fail: jest.fn(),
+        error: jest.fn(),
+      };
+      s.authenticate.call(c, {
+        body: { userId: "u", factors: { oauth: {}, totp: {} } },
+      });
+      expect(c.error).toHaveBeenCalledWith(expect.any(Error));
+    });
+
+    // Scenario: verify callback signals failure with done(null, false).
+    test("verifyCallback done(null, false) routes to self.fail", () => {
+      const verifyFn = jest.fn((data, done) => done(null, false, { reason: "x" }));
+      const s = createTwoOfThreeStrategy({}, verifyFn);
+      const c = {
+        success: jest.fn(),
+        fail: jest.fn(),
+        error: jest.fn(),
+      };
+      s.authenticate.call(c, {
+        body: { userId: "u", factors: { oauth: {}, totp: {} } },
+      });
+      expect(c.fail).toHaveBeenCalledWith({ reason: "x" });
+    });
+
     test("passes request to verify callback with passReqToCallback", (done) => {
       const verifyFn = jest.fn((req, data, verified) => {
         expect(req.body).toBeDefined();
@@ -585,6 +845,101 @@ describe("Two-of-Three Adapter", () => {
       strategy.cleanupClient("client1");
 
       expect(strategy._pendingEnrollments.size).toBe(0);
+    });
+
+    // Scenario: a pending recovery entry is past its expiresAt. The next
+    // handler call invokes cleanupExpired which iterates pendingRecoveries
+    // and removes the stale entry — exercising the `pending.expiresAt < now`
+    // true branch in the recoveries loop.
+    test("cleanupExpired purges expired recoveries on next handler call", async () => {
+      const s = createTwoOfThreeStrategy({ enrollmentTimeout: 5000 });
+      await s.handleEnrollmentStart({ clientId: "expr-c", userId: "user1" });
+      await s.handleEnrollmentFinish({
+        clientId: "expr-c",
+        userId: "user1",
+        encryptedShares: {
+          S1: crypto.randomBytes(64).toString("base64"),
+          S3: crypto.randomBytes(64).toString("base64"),
+        },
+      });
+      // Start recovery, then manually expire the entry
+      await s.handleRecoveryStart({ clientId: "expr-c2", userId: "user1" });
+      const key = "expr-c2:user1";
+      const entry = s._pendingRecoveries.get(key);
+      entry.expiresAt = Date.now() - 1000;
+      // Any handler call now triggers cleanupExpired which removes the entry
+      await expect(
+        s.handleRecoveryComplete({
+          clientId: "expr-c2",
+          userId: "user1",
+          proof: "anything",
+        }),
+      ).rejects.toThrow();
+      expect(s._pendingRecoveries.has(key)).toBe(false);
+    });
+
+    // Scenario: direct verification of the verifyProof helper used by
+    // integrators who want to validate a K_user proof against a stored
+    // hash outside the standard recovery flow.
+    test("verifyProof returns true for a matching K_user / stored proofHash pair", () => {
+      const { computeProofHash, verifyProof } = require("./two-of-three/helpers");
+      const kUser = crypto.randomBytes(32);
+      const proofHash = computeProofHash(kUser);
+      expect(verifyProof(kUser, proofHash)).toBe(true);
+    });
+
+    test("verifyProof returns false for a non-matching K_user", () => {
+      const { computeProofHash, verifyProof } = require("./two-of-three/helpers");
+      const realKey = crypto.randomBytes(32);
+      const forgedKey = crypto.randomBytes(32);
+      const proofHash = computeProofHash(realKey);
+      expect(verifyProof(forgedKey, proofHash)).toBe(false);
+    });
+
+    // Scenario: cleanupClient runs while two clients have pending entries.
+    // Only the target client's entries are removed; the other client's
+    // remain. Exercises both branches of the `startsWith` check on both
+    // the enrollments and recoveries maps.
+    test("cleanupClient leaves other clients' entries intact and clears recoveries", async () => {
+      const s = createTwoOfThreeStrategy({ enrollmentTimeout: 5000 });
+      // Two ongoing enrollments — neither finished yet — to exercise the
+      // enrollments-loop branches (alpha key matches; beta key doesn't).
+      await s.handleEnrollmentStart({ clientId: "alpha", userId: "user-c" });
+      await s.handleEnrollmentStart({ clientId: "beta", userId: "user-d" });
+      expect(s._pendingEnrollments.size).toBe(2);
+      // Now start a separate enrollment+finish flow for the recovery test,
+      // using different users so the in-flight enrollments above survive.
+      await s.handleEnrollmentStart({ clientId: "alpha", userId: "user-a" });
+      await s.handleEnrollmentStart({ clientId: "beta", userId: "user-b" });
+      // Enroll user-a so we can start a recovery for them
+      await s.handleEnrollmentFinish({
+        clientId: "alpha",
+        userId: "user-a",
+        encryptedShares: {
+          S1: crypto.randomBytes(64).toString("base64"),
+          S3: crypto.randomBytes(64).toString("base64"),
+        },
+      });
+      await s.handleRecoveryStart({ clientId: "alpha", userId: "user-a" });
+      // Now also seed a recovery under beta to ensure recoveries map has
+      // entries with different client prefixes.
+      await s.handleEnrollmentFinish({
+        clientId: "beta",
+        userId: "user-b",
+        encryptedShares: {
+          S1: crypto.randomBytes(64).toString("base64"),
+          S3: crypto.randomBytes(64).toString("base64"),
+        },
+      });
+      await s.handleRecoveryStart({ clientId: "beta", userId: "user-b" });
+
+      expect(s._pendingRecoveries.size).toBe(2);
+      s.cleanupClient("alpha");
+      // Only alpha's recoveries cleared; beta's remain
+      expect(s._pendingRecoveries.size).toBe(1);
+      // Beta still has a recovery entry — only the alpha one was removed
+      const remainingKeys = [...s._pendingRecoveries.keys()];
+      expect(remainingKeys.every((k) => k.startsWith("beta:"))).toBe(true);
     });
 
     test("getShareVersions returns version info", async () => {

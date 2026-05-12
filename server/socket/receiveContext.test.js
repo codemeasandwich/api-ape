@@ -102,6 +102,21 @@ describe("receiveContext", () => {
       expect(typeof context.publish).toBe("function");
     });
 
+    // Real-world scenario: a controller fires a fan-out broadcast by calling
+    // `this.publish('news/markets', payload)`. The context's publish wrapper
+    // must invoke the global publish() without throwing, even when there are
+    // no current subscribers (the most common shape of a first push).
+    test("publish delegates to global publish() without throwing", () => {
+      const context = createControllerContext({
+        sharedValues: {},
+        embedValues: {},
+        clientId: "c1",
+        sessionId: "s1",
+      });
+
+      expect(() => context.publish("test/channel", { hello: "world" })).not.toThrow();
+    });
+
     test("includes clients reference", () => {
       const context = createControllerContext({
         sharedValues: {},
