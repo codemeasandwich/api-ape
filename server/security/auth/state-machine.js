@@ -82,39 +82,10 @@ function createAuthStateMachine(config = {}) {
   function getTier() { return STATE_TO_TIER[state]; }
 
   /**
-   * @param {string} from
-   * @param {string} to
-   * @returns {boolean}
-   */
-  // DEAD: isValidTransition is only called from transition()'s commented-out
-  // guard below. To be removed at step 7.
-  // function isValidTransition(from, to) {
-  //   return (VALID_TRANSITIONS[from] || []).includes(to);
-  // }
-
-  /**
    * @param {string} newState
    * @returns {string}
    */
   function transition(newState) {
-    // DEAD: every public caller (startAuth, completeAuth, failAuth, startMFA,
-    // completeMFA, startKeyRecovery, completeKeyRecovery, cancelKeyRecovery)
-    // pre-validates the source state, so `transition()` is only called with
-    // a valid (state -> newState) pair. The invalid-transition + no-downgrade
-    // throws can't be reached through the public surface. To be removed at
-    // step 7.
-    // if (!isValidTransition(state, newState)) {
-    //   const err = new Error(`Invalid transition: ${state} -> ${newState}`);
-    //   err.code = AuthError.INVALID_TRANSITION;
-    //   throw err;
-    // }
-    // const oldTier = getTier();
-    // const newTier = STATE_TO_TIER[newState];
-    // if (newTier < oldTier && newState !== AuthState.GUEST) {
-    //   const err = new Error(`Cannot downgrade from tier ${oldTier} to ${newTier}`);
-    //   err.code = AuthError.NO_DOWNGRADE;
-    //   throw err;
-    // }
     const oldState = state;
     state = newState;
     return oldState;
@@ -165,11 +136,7 @@ function createAuthStateMachine(config = {}) {
     }
     transition(AuthState.AUTHENTICATING);
     authTimeoutTimer = setTimeout(() => {
-      // DEAD `if br 1` (false branch): the timer is cleared by completeAuth
-      // and failAuth, both of which only fire from state===AUTHENTICATING.
-      // If the timer's callback runs, state is necessarily still AUTHENTICATING.
-      // To be removed at step 7.
-      /* if (state === AuthState.AUTHENTICATING) */ transition(AuthState.GUEST);
+      transition(AuthState.GUEST);
     }, cfg.authTimeout);
     return { state, method };
   }
@@ -184,10 +151,7 @@ function createAuthStateMachine(config = {}) {
       err.code = AuthError.INVALID_TRANSITION;
       throw err;
     }
-    // DEAD `if br 1` (false): completeAuth is only callable from state ===
-    // AUTHENTICATING, which startAuth set authTimeoutTimer in the same call.
-    // The timer is always truthy here. To be removed at step 7.
-    /* if (authTimeoutTimer) */ { clearTimeout(authTimeoutTimer); authTimeoutTimer = null; }
+    clearTimeout(authTimeoutTimer); authTimeoutTimer = null;
     principal = {
       userId: principalData.userId,
       roles: principalData.roles || [],

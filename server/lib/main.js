@@ -366,13 +366,7 @@ module.exports = function (server, options) {
   }
 
   // Check for Node.js http.Server (or Express, Koa, etc.)
-  // DEAD `if br 1` (false): the public `ape()` entry point at server/index.js
-  // pre-filters server arguments via `isHttpServer()` which only allows
-  // objects with at least one of .listen, .on, .address, or .reload. A
-  // non-conforming server never reaches this point. The throw below is a
-  // belt-and-suspenders defense for direct require'rs of this module.
-  // To be removed at step 7.
-  /* if (server && typeof server.on === "function") */ {
+  {
     return initNodeServer(server, options, core);
   }
 

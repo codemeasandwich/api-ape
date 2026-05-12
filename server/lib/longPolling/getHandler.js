@@ -261,22 +261,10 @@ function createGetHandler(streamClients, onConnect, options = {}) {
       clientState.isActive = false;
 
       // Clear heartbeat timer.
-      // DEAD `if br 1` (false): cleanup is wired as req/res listeners at
-      // L284-286 BEFORE the timers are assigned at L290+. In practice the
-      // event loop never delivers a `close`/`error` event in the same
-      // synchronous tick that the handler runs in, so by the time cleanup
-      // fires, heartbeatTimer/recycleTimer are always set. To be removed
-      // at step 7.
-      /* if (clientState.heartbeatTimer) */ {
-        clearInterval(clientState.heartbeatTimer);
-      }
+      clearInterval(clientState.heartbeatTimer);
 
       // Clear recycle timer.
-      // DEAD `if br 1` (false): same reasoning as heartbeatTimer above.
-      // To be removed at step 7.
-      /* if (clientState.recycleTimer) */ {
-        clearTimeout(clientState.recycleTimer);
-      }
+      clearTimeout(clientState.recycleTimer);
 
       // Remove from client maps
       streamClients.delete(clientId);
@@ -296,14 +284,6 @@ function createGetHandler(streamClients, onConnect, options = {}) {
     // Set up heartbeat to keep connection alive
     // Without this, proxies and browsers may close idle connections
     clientState.heartbeatTimer = setInterval(() => {
-      // DEAD `if (!clientState.isActive) return`: cleanup at L258+ is the
-      // only path that flips isActive to false, and it also clears the
-      // heartbeat timer in the same synchronous body before any further
-      // tick can fire. So the heartbeat callback never observes
-      // isActive=false; the early-return is a belt-and-suspenders defense.
-      // To be removed at step 7.
-      // if (!clientState.isActive) return;
-
       try {
         // Use SSE comment format for heartbeat (doesn't trigger message parsing)
         res.write(":ping\n\n");

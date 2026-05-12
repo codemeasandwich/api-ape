@@ -417,11 +417,7 @@ function handleDownload(req, res, hash, core) {
   // Send the file data
   res.writeHead(200, {
     "Content-Type": result.contentType,
-    // DEAD `|| result.data.byteLength`: result.data is always a Node Buffer
-    // here (from fs.readFile / the file-transfer pipeline), which has both
-    // `length` and `byteLength`. The Buffer.length is always truthy for
-    // non-empty file data. To be removed at step 7.
-    "Content-Length": result.data.length /* || result.data.byteLength */,
+    "Content-Length": result.data.length,
   });
   res.end(result.data);
 }

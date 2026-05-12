@@ -71,38 +71,25 @@ function createMockLDAPClient(storage) {
      */
     async search(base, options) {
       const results = [];
-      // DEAD `|| ""`: every caller (LDAP adapter's searchUser + getGroups)
-      // builds and passes an explicit `filter`. To be removed at step 7.
-      const filter = options.filter /* || "" */;
+      const filter = options.filter;
 
       const match = filter.match(/\(uid=([^)]+)\)/i) || filter.match(/\(cn=([^)]+)\)/i);
       if (match) {
         const username = match[1];
         const user = await storage.getUser(username);
         if (user) {
-          // DEAD fallback short-circuits below: registerTestUser always sets
-          // cn, mail, memberOf for the user record (see ldap.js:303-310).
-          // To be removed at step 7.
           results.push({
             dn: `uid=${username},${base}`,
             uid: username,
-            cn: user.cn /* || username */,
-            mail: user.mail /* || `${username}@example.com` */,
-            memberOf: user.memberOf /* || [] */,
+            cn: user.cn,
+            mail: user.mail,
+            memberOf: user.memberOf,
             ...user.attributes,
           });
         }
       }
       return results;
     },
-
-    // DEAD: the LDAP adapter never invokes `unbind` on the mock client (only
-    // `bind`, `search`, `destroy` are used). To be removed at step 7.
-    // /**
-    //  * Mock unbind operation
-    //  * @returns {Promise<void>}
-    //  */
-    // async unbind() {},
 
     /**
      * Mock destroy operation

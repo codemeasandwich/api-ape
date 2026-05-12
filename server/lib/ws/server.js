@@ -337,12 +337,7 @@ class WebSocketServer extends EventEmitter {
     }
 
     // Invoke callback with the new WebSocket
-    // DEAD `if br 1` (false): every caller of `handleUpgrade` passes a
-    // non-null callback (per the ws-server protocol contract — the
-    // 'upgrade' event listener wires it up). To be removed at step 7.
-    /* if (callback) */ {
-      callback(ws);
-    }
+    callback(ws);
   }
 
   /**

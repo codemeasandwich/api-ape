@@ -37,10 +37,7 @@ function createLedger(config = {}) {
    * @param {Object} details - Event details
    * @returns {void}
    */
-  // DEAD `details = {}` default: every internal call site (storeShares,
-  // fetchShares, revokeShare, rotateShare, deleteAllShares, updateS2Metadata)
-  // passes an explicit details object. To be removed at step 7.
-  function logAudit(eventType, userId, details /* = {} */) {
+  function logAudit(eventType, userId, details) {
     if (auditEnabled && onAuditEvent) onAuditEvent({ type: eventType, userId, timestamp: Date.now(), ...details });
   }
 

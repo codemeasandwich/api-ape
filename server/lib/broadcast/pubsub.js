@@ -151,17 +151,9 @@ function cleanupClientSubscriptions(clientId) {
   if (clientChannels) {
     clientChannels.forEach((channel) => {
       const subscribers = _subscriptions.get(channel);
-      // DEAD `if br 1` (false): subscribe()/unsubscribe() keep
-      // `_subscriptions` and `_clientSubscriptions` in lockstep — every
-      // channel in clientChannels has a corresponding subscribers entry
-      // until the very last client unsubscribes (at which point the
-      // unsubscribe path itself removes both). So `subscribers` is always
-      // truthy here. To be removed at step 7.
-      /* if (subscribers) */ {
-        subscribers.delete(clientId);
-        if (subscribers.size === 0) {
-          _subscriptions.delete(channel);
-        }
+      subscribers.delete(clientId);
+      if (subscribers.size === 0) {
+        _subscriptions.delete(channel);
       }
     });
     _clientSubscriptions.delete(clientId);

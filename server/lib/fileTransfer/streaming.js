@@ -189,11 +189,7 @@ class StreamingFileManager {
     // Clear existing entry if present
     if (this.streamingFiles.has(fileId)) {
       const existing = this.streamingFiles.get(fileId);
-      // DEAD `if br 1` (false): register() always assigns a setTimeout
-      // handle to `existing.timer` below. The map only stores entries that
-      // were created here, so `existing.timer` is always truthy when an
-      // entry exists. To be removed at step 7.
-      /* if (existing.timer) */ clearTimeout(existing.timer);
+      clearTimeout(existing.timer);
     }
 
     /**

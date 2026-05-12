@@ -82,16 +82,6 @@ function createEnrollmentHandlers(ctx) {
       throw err;
     }
 
-    // DEAD: cleanupExpired() at the top of this handler already removed any
-    // entry with `expiresAt < now`. If `pending` is still defined here, its
-    // expiresAt is in the future. To be removed at step 7.
-    // if (pending.expiresAt < Date.now()) {
-    //   pendingEnrollments.delete(key);
-    //   const err = new Error("Enrollment has expired");
-    //   err.code = TwoOfThreeError.ENROLLMENT_EXPIRED;
-    //   throw err;
-    // }
-
     if (!encryptedShares?.S1 || !encryptedShares?.S3) {
       const err = new Error("Missing encrypted shares (S1 and S3 required)");
       err.code = TwoOfThreeError.INVALID_FACTOR;

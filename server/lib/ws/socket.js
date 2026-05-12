@@ -543,15 +543,7 @@ class WebSocket extends EventEmitter {
    * @private
    */
   _handlePing(payload) {
-    // DEAD `if br 1` (false): _handlePing is wired as a frame-dispatch
-    // callback from _handleData; frames are only parsed while readyState
-    // is OPEN (close() transitions to CLOSING and the TCP socket is
-    // destroyed at L375 before further frames can arrive). The OPEN
-    // check is a belt-and-suspenders defense; the false branch is
-    // unreachable through the parser path. To be removed at step 7.
-    /* if (this._readyState === READY_STATES.OPEN) */ {
-      this._socket.write(buildPongFrame(payload));
-    }
+    this._socket.write(buildPongFrame(payload));
   }
 }
 

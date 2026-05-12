@@ -91,28 +91,6 @@ function createMFAFunctions(deps) {
     };
   }
 
-  // DEAD: getStateSnapshot is exposed via mfaFunctions but never wired into
-  // the public state-machine.js exports — state-machine.js inlines its own
-  // getState() with the same shape. To be removed at step 7.
-  // /**
-  //  * Get current auth state snapshot
-  //  * @returns {Object} Current state info
-  //  */
-  // function getStateSnapshot() {
-  //   const state = getState();
-  //   const principal = getPrincipal();
-  //   const tier = getTier();
-  //   return {
-  //     state: state.state,
-  //     tier,
-  //     principal: principal ? { ...principal } : null,
-  //     isAuthenticated: tier >= AuthTier.BASIC,
-  //     isElevated: tier >= AuthTier.ELEVATED,
-  //     isHighSecurity: tier >= AuthTier.HIGH_SECURITY,
-  //     keyRecoveryPending: pendingKeyRecovery !== null,
-  //   };
-  // }
-
   // ============================================================
   // Key Recovery (2-of-3 Tier 3) Functions
   // ============================================================
@@ -177,15 +155,6 @@ function createMFAFunctions(deps) {
       err.code = AuthError.INVALID_TRANSITION;
       throw err;
     }
-
-    // DEAD: reaching this point requires state === KEY_RECOVERY_PENDING which
-    // is set in lockstep with pendingKeyRecovery by startKeyRecovery. They
-    // can't drift in synchronous JS. To be removed at step 7.
-    // if (!pendingKeyRecovery) {
-    //   const err = new Error("No pending key recovery challenge");
-    //   err.code = AuthError.INVALID_TRANSITION;
-    //   throw err;
-    // }
 
     if (!proof || typeof proof !== 'string') {
       const err = new Error("Invalid key recovery proof");
@@ -261,7 +230,6 @@ function createMFAFunctions(deps) {
   return {
     startMFA,
     completeMFA,
-    // getStateSnapshot, // DEAD — see commented definition above
     // Key recovery functions
     startKeyRecovery,
     completeKeyRecovery,

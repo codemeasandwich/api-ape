@@ -183,9 +183,6 @@ function base32Decode(encoded) {
 
   for (let i = 0; i < cleanEncoded.length; i++) {
     const idx = alphabet.indexOf(cleanEncoded[i]);
-    // DEAD: cleanEncoded was filtered by /[^A-Z2-7]/g, so every char is in
-    // the 32-symbol alphabet — idx is always ≥ 0. To be removed at step 7.
-    // if (idx === -1) continue;
 
     value = (value << 5) | idx;
     bits += 5;
