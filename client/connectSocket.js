@@ -156,7 +156,7 @@ let ready = false;
  * @type {Object.<string, function(Error|null, any): void>}
  * @private
  */
-const waitingOn = {};
+const waitingOn = Object.create(null); // keyed by queryId from the wire: no inherited names
 
 /**
  * Queue of messages waiting to be sent when connection becomes ready

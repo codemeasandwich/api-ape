@@ -16,7 +16,8 @@ This module contains the low-level encoding and decoding implementations for JSO
 ```
 jss/
 ├── encode.js   # JSS encoding (object → tagged JSON-compatible format)
-└── decode.js   # JSS decoding (tagged format → restored JavaScript types)
+├── decode.js        # JSS decoding (tagged format → restored JavaScript types)
+└── decode.test.js   # What a peer can and cannot make the decoder do
 ```
 
 ## Files
@@ -53,6 +54,7 @@ Restores JavaScript types from JSS-encoded format:
 
 - Parses tagged keys to identify encoded types
 - Reconstructs Date, RegExp, Error, Map, Set, and undefined
+- Builds Errors from a static list of the standard classes only (`Error`, `TypeError`, `RangeError`, `SyntaxError`, `ReferenceError`, `EvalError`, `URIError`, `AggregateError`); any other name becomes a plain `Error` whose `name` is that string. The decoder never indexes `global` and matches tags, keys and pointer paths against own properties only (`utils/safeKeys.js`)
 - Resolves circular reference pointers to restore object cycles
 - Handles nested structures recursively
 
@@ -66,3 +68,7 @@ Restores JavaScript types from JSS-encoded format:
 1. First pass: Decode all values, storing pointer locations
 2. Second pass: Resolve `<!P>` pointers by following stored paths
 3. Return fully restored object with original types and circular references
+
+### `decode.test.js`
+
+Stories for the decoder as a security boundary (every inbound server frame is parsed before any lookup): hostile error names construct nothing, standard Errors round-trip, inherited names and `__proto__` are data, pointers cannot reach `Function` or prototypes.

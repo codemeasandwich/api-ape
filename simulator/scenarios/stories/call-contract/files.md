@@ -14,6 +14,7 @@ Stories about the server's side of the call protocol, driven with a raw socket s
 call-contract/
 ├── README.md       # Overview
 ├── files.md        # This file
+├── hostile-peer.test.js   # What a stranger's frames can make a server do
 ├── index.test.js   # The stories
 ├── raw-client.js   # Raw-socket client that records every frame
 └── wire-protocol.test.js  # The documented wire protocol, spoken with api-ape/jss and api-ape/messageHash
@@ -24,6 +25,10 @@ call-contract/
 ### `index.test.js`
 
 The call-contract stories (keepalive, identical calls, replies, errors, controller files). Starts a harness server over `simulator/test-api-contract/` or over controller files written to a temp directory for the test, and talks to it with the raw client.
+
+### `hostile-peer.test.js`
+
+Security stories with a raw WebSocket peer against a real server: an error tag naming `Worker`, `WebSocket`, `XMLHttpRequest`, `EventSource`, `Function`, `Proxy` or `__proto__` constructs nothing; a call to an inherited name (`valueOf`, `constructor`, `__proto__`) is not found like any unknown endpoint; a pointer cannot hand a controller `Function` or `Object`; an upload field path through `constructor.prototype` (or through a text value) is refused instead of changing `Object.prototype`.
 
 ### `wire-protocol.test.js`
 

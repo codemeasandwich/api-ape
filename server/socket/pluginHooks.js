@@ -30,6 +30,8 @@
  */
 
 const { getAllPlugins } = require("../../utils/jss/plugins");
+const { setKey } = require("../../utils/safeKeys");
+const { setValueAtPath } = require("./tagUtils");
 
 /**
  * Check if a value is a JSS-native type that shouldn't be processed by plugins
@@ -235,36 +237,13 @@ function cleanPluginTags(obj) {
   for (const key of Object.keys(obj)) {
     const match = key.match(/^(.+)<!([A-Z])>$/);
     if (match) {
-      cleaned[match[1]] = obj[key];
+      setKey(cleaned, match[1], obj[key]);
     } else {
-      cleaned[key] = cleanPluginTags(obj[key]);
+      setKey(cleaned, key, cleanPluginTags(obj[key]));
     }
   }
 
   return cleaned;
-}
-
-/**
- * Set a value at a dot-notation path in an object
- *
- * @param {Object} obj - Object to modify (mutated)
- * @param {string} path - Dot-notation path
- * @param {any} value - Value to set
- *
- * @example
- * const obj = { user: { profile: {} } }
- * setValueAtPath(obj, 'user.profile.avatar', buffer)
- * // obj.user.profile.avatar === buffer
- */
-function setValueAtPath(obj, path, value) {
-  const parts = path.split(".");
-  let current = obj;
-
-  for (let i = 0; i < parts.length - 1; i++) {
-    current = current[parts[i]];
-  }
-
-  current[parts[parts.length - 1]] = value;
 }
 
 /**

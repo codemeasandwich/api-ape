@@ -39,7 +39,7 @@ const receiverArray = [];
  * @private
  * @type {Object<string, Array<function({err: *, type: string, data: *}): void>>}
  */
-const ofTypesOb = {};
+const ofTypesOb = Object.create(null); // no inherited names: a message type "constructor" is just a type
 
 /**
  * Queue of receivers waiting to be registered when connection opens.

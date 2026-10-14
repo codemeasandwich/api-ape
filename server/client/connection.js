@@ -108,7 +108,7 @@ let ws = null;
  * @private
  * @type {Object<string, function(Error|null, *): void>}
  */
-const waitingOn = {};
+const waitingOn = Object.create(null); // keyed by queryId from the wire: no inherited names
 
 /**
  * Queue of requests waiting to be sent when connection is established.

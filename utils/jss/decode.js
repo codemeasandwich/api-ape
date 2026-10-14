@@ -20,11 +20,18 @@
  * |-----|-----------|-------------------------------------------|
  * | `D` | Date      | `new Date(timestamp)`                     |
  * | `R` | RegExp    | `new RegExp(pattern)` from string         |
- * | `E` | Error     | Reconstructs with name, message, stack    |
+ * | `E` | Error     | Standard Error classes only (see below)   |
  * | `U` | undefined | Returns `undefined` value                 |
  * | `M` | Map       | `new Map(Object.entries(obj))`            |
  * | `S` | Set       | `new Set(array)`                          |
  * | `P` | Pointer   | Circular reference (resolved after parse) |
+ *
+ * ## What a peer cannot choose
+ *
+ * Tag names, keys and pointer paths are text from the peer. `E` builds only the
+ * standard Error classes (a static list); any other name becomes a plain `Error` with
+ * that `name`. Tags, keys and pointer paths are matched against OWN properties only,
+ * and a `__proto__` key stays an ordinary key. Nothing here indexes `global`.
  *
  * ## Circular Reference Resolution
  *
@@ -68,6 +75,9 @@
  * console.log(decoded.config instanceof Map) // true
  */
 
+const { getPlugin } = require("./plugins");
+const { hasOwn, setKey } = require("../safeKeys");
+
 /**
  * Temporary storage for circular reference pointers during decoding
  *
@@ -80,9 +90,29 @@
  * @type {Array<[string[], string[]]>}
  * @private
  */
-const { getPlugin } = require("./plugins");
-
 let pointers2Res = [];
+
+/**
+ * The Error classes a peer may name in an `E` tag.
+ *
+ * A static allow-list, never a lookup on `global` / `globalThis`: the name comes from
+ * the peer, and `new global[name](message)` let an unauthenticated client make the
+ * server construct any global (a `Worker` running its code, a `WebSocket` dialling out).
+ * Any other name decodes to a plain `Error` whose `name` is the string the peer sent.
+ *
+ * @type {Object.<string, function(string): Error>}
+ * @private
+ */
+const ERROR_CLASSES = Object.freeze({
+  Error: (m) => new Error(m),
+  TypeError: (m) => new TypeError(m),
+  RangeError: (m) => new RangeError(m),
+  SyntaxError: (m) => new SyntaxError(m),
+  ReferenceError: (m) => new ReferenceError(m),
+  EvalError: (m) => new EvalError(m),
+  URIError: (m) => new URIError(m),
+  AggregateError: (m) => new AggregateError([], m),
+});
 
 /**
  * Tag decoder lookup table
@@ -138,28 +168,18 @@ const tagLookup = {
   /**
    * Decode Error with preserved type, message, and stack
    *
-   * Attempts to reconstruct the original error type (TypeError, RangeError, etc.)
-   * Falls back to generic Error if the type is not available globally.
+   * The class is chosen from `ERROR_CLASSES` only (the standard Error types). The name
+   * is peer data: an unlisted or non-string name never selects a constructor, it only
+   * becomes the `name` of a plain `Error`.
    *
    * @param {[string, string, string]} errorData - Tuple of [name, message, stack]
    * @returns {Error} Reconstructed Error instance
    */
   E: ([name, message, stack]) => {
-    let err;
-    try {
-      // Try to create the specific error type (TypeError, RangeError, etc.)
-      err = new global[name](message);
-      if (err instanceof Error) {
-        err.stack = stack;
-      } else {
-        throw {}; // Force fallback if not a real Error
-      }
-    } catch (e) {
-      // Fallback to generic Error with custom name
-      err = new Error(message);
-      err.name = name;
-      err.stack = stack;
-    }
+    const known = typeof name === "string" && hasOwn(ERROR_CLASSES, name);
+    const err = known ? ERROR_CLASSES[name](message) : new Error(message);
+    if (!known) err.name = typeof name === "string" ? name : "Error";
+    if (typeof stack === "string") err.stack = stack;
     return err;
   },
 
@@ -287,7 +307,7 @@ function decodeValue(val, tag, path, depth = 0) {
   }
 
   // If we have a known tag, use the appropriate decoder
-  if (tag in tagLookup) {
+  if (hasOwn(tagLookup, tag)) {
     return tagLookup[tag](val, path);
   }
 
@@ -316,9 +336,9 @@ function decodeValue(val, tag, path, depth = 0) {
   if (val !== null && typeof val === "object") {
     const res = {};
 
-    for (const key in val) {
+    for (const key of Object.keys(val)) {
       const [name, t] = parseKeyWithTags(key);
-      res[name] = decodeValue(val[key], t, [...path, name], depth + 1);
+      setKey(res, name, decodeValue(val[key], t, [...path, name], depth + 1));
     }
 
     return res;
@@ -351,10 +371,11 @@ function decodeValue(val, tag, path, depth = 0) {
  * console.log(obj.ref === obj.child)  // true
  */
 function resolvePointers(obj, [refPath, attrPath]) {
-  // Navigate to the referenced object
+  // Navigate to the referenced object. The path is peer data: follow own properties
+  // only, so `["constructor","constructor"]` cannot reach the Function constructor.
   let ref = obj;
   for (const key of refPath) {
-    ref = ref[key];
+    ref = ref !== null && typeof ref === "object" && hasOwn(ref, key) ? ref[key] : undefined;
   }
 
   // Navigate to the parent of the target location
@@ -364,7 +385,7 @@ function resolvePointers(obj, [refPath, attrPath]) {
   }
 
   // Set the reference at the target location
-  attrParent[attrPath[attrPath.length - 1]] = ref;
+  setKey(attrParent, attrPath[attrPath.length - 1], ref);
 }
 
 /**

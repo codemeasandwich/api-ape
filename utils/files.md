@@ -19,6 +19,7 @@ utils/
 ├── jss.js                   # JSS main entry point (encode/decode/stringify/parse)
 ├── jss.d.ts                 # Types for `api-ape/jss`
 ├── jss.test.js              # JSS test suite
+├── safeKeys.js              # hasOwn / setKey: the only way peer text indexes an object
 ├── messageHash.js           # Jenkins hash with Crockford Base32 encoding
 ├── messageHash.d.ts         # Types for `api-ape/messageHash`
 ├── wireError.js             # How a failed call travels: Error via JSS + code/data
@@ -36,6 +37,10 @@ Internal logging facade for api-ape on both browser and Node. Exports `configure
 ### `wireError.js`
 
 How a failed call travels from a controller to its caller. `errorFrame(thrown, type, queryId)` (server) builds the reply `{ err: <Error via JSS>, errCode?, errData?, type, queryId }`: name and message are kept, the stack is replaced by `"Name: message"` so no server paths leak, and unserialisable `data` is dropped rather than losing the reply. `attachErrorDetails(err, frame)` (browser and Node clients) puts `code` / `data` back on the Error. `toWireError` normalises strings and Error-shaped objects.
+
+### `safeKeys.js`
+
+Property access for names that come from a peer. `hasOwn(obj, key)` is an own-property test that `hasOwnProperty` as a key cannot fool; `setKey(target, key, value)` stores a key without letting `__proto__` replace the prototype. The decoder, the upload/plugin tag cleaners, the controller lookup (`controllers[type]`) and the long-poll lookup all use them: a peer chooses frame types, keys and path segments, and a plain `obj[name]` reaches `constructor` and `valueOf`.
 
 ### `jss.d.ts`
 
@@ -68,6 +73,10 @@ Generates deterministic hash strings from message content using the Jenkins one-
 - **Algorithm:** Jenkins one-at-a-time hash (32-bit)
 - **Encoding:** Crockford Base32 (excludes I, L, O, U for readability)
 - **Output:** 1-7 character URL-safe string
+
+### `jss/decode.test.js`
+
+Stories for what a peer can make `jss.parse` do: an `E` tag naming `Worker`, `WebSocket`, `Function`, `Proxy`, `__proto__` or a non-string builds nothing and decodes to a plain `Error`; the standard Error classes (and `AggregateError`) still round-trip; inherited names as tags, `__proto__` as a key and pointer paths such as `constructor.constructor` stay data.
 
 ### `jss.test.js`
 

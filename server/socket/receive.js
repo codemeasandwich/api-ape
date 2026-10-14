@@ -11,6 +11,7 @@ const { apeLog } = require("../../utils/apeLogger");
 const messageHash = require("../../utils/messageHash");
 const { subscribe, unsubscribe } = require("../lib/broadcast");
 const jss = require("../../utils/jss");
+const { hasOwn } = require("../../utils/safeKeys");
 const {
   findUploadTags,
   findFileTags,
@@ -163,7 +164,9 @@ module.exports = function receiveHandler(ape) {
 
       const result = new Promise((resolve, reject) => {
         try {
-          const controller = controllers[type];
+          // Own endpoints only: `type` is peer text, and `valueOf` / `constructor`
+          // are not controllers just because every object inherits them.
+          const controller = hasOwn(controllers, type) ? controllers[type] : undefined;
 
           if (!controller) {
             throw `TypeError: "${type}" was not found`;

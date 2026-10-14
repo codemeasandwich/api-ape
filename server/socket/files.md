@@ -10,6 +10,7 @@ This module handles WebSocket message processing for api-ape servers. It manages
 - **Controller context** — Controllers receive `this` with `clientId`, `broadcast`, `send`, and embedded data
 - **Error handling** — Catch all controller errors and send error responses; never let exceptions crash the connection
 - **Security first** — All connections must pass `open.js` validation before processing messages
+- **Peer text is data** — Frame types, keys and path segments are looked up with `utils/safeKeys.js` (`hasOwn`, `setKey`), never `obj[name]`: `controllers[type]` must not find `valueOf` or `constructor`
 
 ## Directory Structure
 
@@ -17,6 +18,7 @@ This module handles WebSocket message processing for api-ape servers. It manages
 socket/
 ├── authMiddleware.js  # Authorization middleware for endpoint access control
 ├── open.js            # Connection validation & security check
+├── pluginHooks.js     # Plugin onSend/onReceive hooks around JSS (resolve plugin-tagged values)
 ├── receive.js         # Incoming message handler
 ├── receiveContext.js  # Controller context factory
 ├── send.js            # Outgoing message handler
@@ -66,6 +68,10 @@ Outgoing message handler that serializes and sends responses:
 - Registers binary data with `fileTransfer` for HTTP download
 - Sends the serialized response with matching `queryId`
 
+### `pluginHooks.js`
+
+Runs JSS plugin hooks around the wire: `processPluginSend` before a reply is encoded, `processPluginReceive` after a frame is decoded (finds `<!X>` plugin tags, calls the plugin's `onReceive`, injects the result with `setValueAtPath` from `tagUtils.js`), plus `findPluginTags` and `cleanPluginTags`. Peer keys are written with `setKey`, so a `__proto__` key cannot replace a prototype.
+
 ### `receiveContext.js`
 
 Controller context factory that creates the `this` binding for controllers:
@@ -83,4 +89,4 @@ Utilities for parsing and processing binary data tags:
 - `findUploadTags(obj)` — Find all `<!B>` and `<!A>` tags with their paths
 - `findFileTags(obj)` — Find all `<!F>` tags for streaming transfers
 - `cleanUploadTags(obj)` — Remove tag suffixes from object keys
-- `setValueAtPath(obj, path, value)` — Inject values at dot-notation paths
+- `setValueAtPath(obj, path, value)` — Inject values at dot-notation paths. The path is built from keys a peer chose, so it follows own properties only and throws when a segment is missing or goes through a non-object (a `constructor.prototype.x` field name can no longer reach `Object.prototype`)

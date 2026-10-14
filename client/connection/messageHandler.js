@@ -29,7 +29,7 @@ const receiverArray = [];
  * @type {Object.<string, Array<function({err: any, type: string, data: any}): void>>}
  * @private
  */
-const ofTypesOb = {};
+const ofTypesOb = Object.create(null); // no inherited names: a message type "constructor" is just a type
 
 /**
  * Process incoming message data to hydrate binary resources

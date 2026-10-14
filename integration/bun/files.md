@@ -15,6 +15,7 @@ Tests that run api-ape under the real Bun runtime (`Bun.serve`). They are run by
 bun/
 ├── run.ts          # Core RPC scenarios over Bun.serve (shared scenarios)
 ├── security.ts     # Origin, headers, keepalive, Bun idle timeout/pings
+├── security-decode.ts   # A stranger's error tag (Worker, WebSocket) builds nothing in the server process
 ├── hot-reload.ts   # Opt-in hot reload: default off, watch.paths coherent, documented limit
 ├── scenario-runner.ts   # Runs a scenario's page half (real browser client) in a child process against a real Bun.serve
 ├── client-keepalive.ts  # Keepalive user stories through the real browser client
@@ -34,6 +35,10 @@ Entry point for the core Bun integration tests. Mounts `apeBun()` over `integrat
 ### `security.ts`
 
 Origin check (exact host:port accepted, another port and a foreign domain refused with 403, no Origin accepted, `allowedOrigins`, `allowedHosts`); headers reaching controllers (`cookie`, `sessionId`, `x-ape-session-id`, user agent, `headers.get`, peer address); `this.keepalive()` frames; `GET /ape/ping`; Bun `idleTimeout` with and without `sendPings`.
+
+### `security-decode.ts`
+
+The decoder as a security boundary under real Bun: a raw peer sends a frame whose error tag names `Worker` (carrying a `data:` script that would write a marker file) or `WebSocket` (carrying the address of a local listener). Nothing may run and nothing may connect; honest calls and a standard `TypeError` still work. `APE_ROOT=/older/checkout` shows it failing on 4.3.1 and earlier.
 
 ### `scenario-runner.ts`
 

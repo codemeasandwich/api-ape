@@ -52,6 +52,7 @@
 const { clients } = require("../broadcast");
 const jss = require("../../../utils/jss");
 const messageHash = require("../../../utils/messageHash");
+const { hasOwn } = require("../../../utils/safeKeys");
 
 /**
  * Extracts the client ID from request cookies.
@@ -246,7 +247,7 @@ function createPostHandler(streamClients) {
         const type = rawType.replace(/^\//, "");
 
         // Look up the controller
-        const controller = controllers[type];
+        const controller = hasOwn(controllers, type) ? controllers[type] : undefined;
         if (!controller) {
           return sendJson(res, 404, {
             error: `Controller "${type}" not found`,

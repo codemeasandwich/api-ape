@@ -93,6 +93,10 @@ jobs:
         if: matrix.runtime == 'bun'
         run: bun run integration/bun/security.ts
 
+      - name: Bun security (a peer's error tag builds nothing)
+        if: matrix.runtime == 'bun'
+        run: bun run integration/bun/security-decode.ts
+
       - name: Run Bun hot-reload integration
         if: matrix.runtime == 'bun'
         run: bun run integration/bun/hot-reload.ts

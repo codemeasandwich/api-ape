@@ -41,6 +41,8 @@
  * // { avatar: <Buffer ...>, name: 'Alice' }
  */
 
+const { hasOwn, setKey } = require("../../utils/safeKeys");
+
 /**
  * @typedef {Object} UploadTag
  * Represents a detected upload tag in a message object.
@@ -308,13 +310,13 @@ function cleanUploadTags(obj) {
 
     if (bMatch) {
       // Remove <!B> tag, keep the value (hash for now, will be replaced with data)
-      cleaned[bMatch[1]] = obj[key];
+      setKey(cleaned, bMatch[1], obj[key]);
     } else if (aMatch) {
       // Remove <!A> tag, keep the value
-      cleaned[aMatch[1]] = obj[key];
+      setKey(cleaned, aMatch[1], obj[key]);
     } else {
       // No tag, recursively clean the value
-      cleaned[key] = cleanUploadTags(obj[key]);
+      setKey(cleaned, key, cleanUploadTags(obj[key]));
     }
   }
 
@@ -366,13 +368,21 @@ function setValueAtPath(obj, path, value) {
   const parts = path.split(".");
   let current = obj;
 
-  // Navigate to the parent of the target
+  // Navigate to the parent of the target. The path is built from keys a peer chose,
+  // so follow OWN properties only: `constructor.prototype.x` must not reach
+  // `Object.prototype`.
   for (let i = 0; i < parts.length - 1; i++) {
+    if (current === null || typeof current !== "object" || !hasOwn(current, parts[i])) {
+      throw new Error(`Cannot set a value at "${path}": "${parts[i]}" is not a property of the message`);
+    }
     current = current[parts[i]];
   }
 
   // Set the value at the final key
-  current[parts[parts.length - 1]] = value;
+  if (current === null || typeof current !== "object") {
+    throw new Error(`Cannot set a value at "${path}": its parent is not an object`);
+  }
+  setKey(current, parts[parts.length - 1], value);
 }
 
 module.exports = {
