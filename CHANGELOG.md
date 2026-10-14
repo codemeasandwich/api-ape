@@ -3,6 +3,67 @@
 All notable changes to api-ape. Versions follow semantic versioning; the
 GitHub release notes are generated from commit subjects by `npm run release`.
 
+## 4.5.0
+
+Two additions, built on the 4.4.0 security release. **No breaking changes** for an app
+that passes neither new option; the two small differences are listed under "Changed".
+Each was reproduced first with a user-story test that fails on 4.4.0 (stories in
+`simulator/scenarios/stories/call-contract/`, page-side scenarios and the compiled
+binary in `integration/bun/`).
+
+### Added
+
+- **`controllers` option: programmatic controllers for compiled executables.**
+  `ape()` and `apeBun()` found controllers by scanning a folder (`where`) with
+  `fs.readdirSync`, which crashes inside a `bun build --compile` executable when the
+  binary runs from another folder (no folder on disk). Pass
+  `controllers: { 'cards/move': move, users: { default: fn } }` instead: a map from
+  endpoint path to function (or a module namespace whose `default` is the function).
+  It is used in place of the folder scan and follows the folder's rules through the same
+  code: `index` maps to the parent, a function `default` is unwrapped, a non-function stops
+  startup naming the endpoint, duplicates stop startup. Where the scan silently skips a
+  file (a `_private` segment, a bare `index`, a `.test` / `.spec` name) a key is refused,
+  so an endpoint you list by hand cannot go missing. `where` and `controllers` are
+  mutually exclusive (startup throws if both or neither); `watch` and `selector` apply to
+  `where` only (ignored with a warning); the public URL prefix defaults to `api`. Types in
+  `index.d.ts` (`ApeServerOptions` is now `where` XOR `controllers`). Proved by a real
+  `bun build --compile` binary started from another folder and called from the page client
+  (`integration/bun/compiled-binary.ts`). See "Compiled executables" in `server/README.md`.
+- **`onSubscribe(channel, context)` option: subscribe authorisation.** Any connected client
+  could send `{ subscribe: 'any/channel' }` and was handed the channel's retained last
+  message at once, so a channel named after a user or tenant leaked to anyone who guessed
+  it. `onSubscribe` (returns `boolean | Promise<boolean>`; `context` is
+  `{ clientId, sessionId, embed }`) is asked before the subscription is recorded and before
+  the retained message is replayed. Only exactly `true` allows: `false`, a throw, a
+  rejection, `undefined` or a non-string channel refuse (fail closed). A refused client gets
+  a `__subscribe_refused__` error frame (`errCode: 'SUBSCRIBE_REFUSED'`, `errData: { channel }`,
+  no cause) and neither the retained message nor later publishes; a refusal also drops a
+  subscription already held on that channel. A late answer after an unsubscribe, a newer
+  subscribe or a disconnect is dropped. The browser client and the server-side client take a
+  second function, `api.news.banking(callback, onError)`, called with an `Error`
+  (`code: 'SUBSCRIBE_REFUSED'`, `data: { channel }`); without it the refusal is logged.
+  Without `onSubscribe` nothing changes. The HTTP long-poll / streaming path cannot
+  subscribe (its `POST` never understood `{ subscribe }`), so it cannot receive channel
+  publishes and has nothing to guard. See "Authorising subscriptions" in `server/README.md`.
+- **`clearLastMessage(channel)`: forget a channel's retained message** so the next
+  subscriber is sent nothing (current subscribers keep receiving; the next publish is
+  retained again). Also `ape.clearLastMessage(channel)` and `this.clearLastMessage(channel)`
+  in a controller. A function of its own, not a `{ retain: false }` option, because the
+  chained `ape.publish.a.b(data)` has no place for options.
+
+### Changed
+
+- `ape()` / `apeBun()` with neither `where` nor `controllers` now throw a message naming
+  both (it was a `TypeError` from `path`).
+- TypeScript: `ApeServerOptions` is a type alias (an intersection with a union), not an
+  interface, so `interface X extends ApeServerOptions` no longer compiles; use
+  `type X = ApeServerOptions & { ... }`.
+
+### Wire protocol
+
+New server-to-client frame `{ type: '__subscribe_refused__', err, errCode, errData }`.
+Older clients ignore it (they never receive the refused channel and cannot say why).
+
 ## 4.4.0
 
 **Security fix, plus call-path fixes** found while mapping api-ape onto Bluey's Bun +
