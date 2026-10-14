@@ -112,100 +112,92 @@ export function getPingUrl() {
 }
 
 /**
- * Check for captive portal by pinging the api-ape ping endpoint
+ * Ask the api-ape ping endpoint whether the server is reachable and genuine.
  *
- * This function detects captive portals (hotel/airport WiFi login pages)
- * by making a request to a known endpoint and validating the response.
+ * ## Classification
  *
- * ## Detection Logic
- * 1. Sends GET request to /api/ape/ping
- * 2. Verifies HTTP 200 response
- * 3. Checks response JSON contains `{ ok: true }`
- * 4. Validates timestamp is within acceptable clock skew
+ * - `'ok'` — HTTP 200 with `{ ok: true }` and a timestamp within acceptable clock skew
+ * - `'unreachable'` — no usable answer: the request failed (connection refused or
+ *   reset, DNS, offline) or timed out, or a gateway answered 5xx. The server is down
+ *   or restarting; retry soon (see `pingRetryDelayMs`).
+ * - `'walled'` — an HTTP answer arrived that is not the ape ping: a captive portal's
+ *   login page or redirect, a 3xx/4xx, `{ ok }` missing, or a stale replayed timestamp.
  *
- * If any check fails, assumes we're behind a captive portal.
+ * Before 4.3.1 every failure was `'walled'`, so a restarted server kept the page in
+ * "walled" for the 30 s captive-portal retry.
  *
- * @returns {Promise<'ok'|'walled'>} 'ok' if real internet connection,
- *                                    'walled' if captive portal detected
+ * @returns {Promise<'ok'|'walled'|'unreachable'>} The classification above
  *
  * @example
  * const status = await checkCaptivePortal()
- *
- * if (status === 'walled') {
- *   // Show message to user to complete WiFi login
- *   showCaptivePortalWarning()
- * } else {
- *   // Proceed with WebSocket connection
- *   connectWebSocket()
- * }
- *
- * @example
- * // In connection flow
- * async function attemptConnection() {
- *   if (await checkCaptivePortal() === 'walled') {
- *     notifyConnectionChange(ConnectionState.Walled)
- *     scheduleNetworkRetry(attemptConnection)
- *     return
- *   }
- *   // Continue with connection...
- * }
+ * if (status === 'walled') showCaptivePortalWarning()
+ * else if (status === 'unreachable') retrySoon()
+ * else connectWebSocket()
  */
 export async function checkCaptivePortal() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT);
+  let response;
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT);
-
-    const response = await fetch(getPingUrl(), {
+    response = await fetch(getPingUrl(), {
       cache: "no-store",
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      if (isDevMode()) {
-        apeLog.error("[DEV] Ping failed: HTTP", response.status);
-      }
-      return "walled";
-    }
-
-    const data = await response.json();
-
-    // Verify response is genuine (not a captive portal redirect page)
-    if (data?.ok !== true) {
-      if (isDevMode()) {
-        apeLog.error("[DEV] Ping failed: invalid response", data);
-      }
-      return "walled";
-    }
-
-    // Validate timestamp to detect proxy replay attacks
-    if (typeof data.ts === "number") {
-      const now = Date.now();
-      const skew = Math.abs(now - data.ts);
-      if (skew > MAX_PING_CLOCK_SKEW) {
-        if (isDevMode()) {
-          const direction =
-            now > data.ts ? "Server time is behind" : "Server time is ahead";
-          apeLog.error(
-            `[DEV] Ping failed: timestamp too old/stale\n` +
-              `  Skew: ${skew}ms (~${Math.round(skew / 1000)}s)\n` +
-              `  Client time: ${new Date(now).toISOString()}\n` +
-              `  Server time: ${new Date(data.ts).toISOString()}\n` +
-              `  ${direction} by ${Math.round(skew / 1000)}s\n` +
-              `  Max allowed: ${MAX_PING_CLOCK_SKEW}ms`,
-          );
-        }
-        return "walled";
-      }
-    }
-
-    return "ok";
   } catch (err) {
     if (isDevMode()) {
-      apeLog.error("[DEV] Ping failed:", err.message || err);
+      apeLog.debug("[DEV] Ping failed:", err.message || err);
+    }
+    return "unreachable";
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!response.ok) {
+    const gatewayDown = response.status >= 500;
+    if (isDevMode()) {
+      (gatewayDown ? apeLog.debug : apeLog.error)("[DEV] Ping failed: HTTP", response.status);
+    }
+    return gatewayDown ? "unreachable" : "walled";
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (err) {
+    // An HTML page is a portal; a body that broke off mid-read is a network failure.
+    return err instanceof SyntaxError ? "walled" : "unreachable";
+  }
+
+  // Verify response is genuine (not a captive portal redirect page)
+  if (data?.ok !== true) {
+    if (isDevMode()) {
+      apeLog.error("[DEV] Ping failed: invalid response", data);
     }
     return "walled";
   }
+
+  // Validate timestamp to detect proxy replay attacks
+  if (typeof data.ts === "number") {
+    const now = Date.now();
+    const skew = Math.abs(now - data.ts);
+    if (skew > MAX_PING_CLOCK_SKEW) {
+      if (isDevMode()) {
+        const direction =
+          now > data.ts ? "Server time is behind" : "Server time is ahead";
+        apeLog.error(
+          `[DEV] Ping failed: timestamp too old/stale\n` +
+            `  Skew: ${skew}ms (~${Math.round(skew / 1000)}s)\n` +
+            `  Client time: ${new Date(now).toISOString()}\n` +
+            `  Server time: ${new Date(data.ts).toISOString()}\n` +
+            `  ${direction} by ${Math.round(skew / 1000)}s\n` +
+            `  Max allowed: ${MAX_PING_CLOCK_SKEW}ms`,
+        );
+      }
+      return "walled";
+    }
+  }
+
+  return "ok";
 }
 
 /**
@@ -218,6 +210,8 @@ export async function checkCaptivePortal() {
  * function while a retry is already scheduled has no effect.
  *
  * @param {Function} attemptConnectionFn - Function to call for connection attempt
+ * @param {number} [delayMs=WS_RETRY_INTERVAL] - Wait before retrying (30 s for a walled network;
+ *   a short backoff for an unreachable server)
  * @returns {void}
  *
  * @example
@@ -234,12 +228,12 @@ export async function checkCaptivePortal() {
  *   attemptConnection()
  * })
  */
-export function scheduleNetworkRetry(attemptConnectionFn) {
+export function scheduleNetworkRetry(attemptConnectionFn, delayMs = WS_RETRY_INTERVAL) {
   if (networkCheckTimer) return;
   networkCheckTimer = setTimeout(() => {
     networkCheckTimer = null;
     attemptConnectionFn();
-  }, WS_RETRY_INTERVAL);
+  }, delayMs);
 }
 
 /**

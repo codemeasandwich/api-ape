@@ -77,7 +77,7 @@ import {
   scheduleNetworkRetry,
   setupOnlineListeners,
 } from "./connection/network";
-import { reconnectDelayMs } from "./connection/reconnectBackoff.js";
+import { reconnectDelayMs, pingRetryDelayMs } from "./connection/reconnectBackoff.js";
 import { createConnectAttempt } from "./connection/connectAttempt.js";
 import { wrap } from "./connection/proxy";
 import { createWsSend, createSender, flushQueue } from "./connection/sender";
@@ -192,6 +192,13 @@ let reconnectBackoffAttempt = 0;
  * @private
  */
 let reconnectBackoffTimer = null;
+
+/**
+ * Consecutive reachability pings that failed with a network error or timeout (backoff input).
+ * @type {number}
+ * @private
+ */
+let failedPings = 0;
 
 /**
  * Guard so only one connection attempt runs at a time (see connection/connectAttempt.js).
@@ -331,13 +338,22 @@ async function attemptConnection() {
   connectAttempt.start();
   notifyConnectionChange(ConnectionState.Connecting);
 
-  // Check for captive portal
-  if ((await checkCaptivePortal()) === "walled") {
+  // Is the server reachable, and is it the ape (not a captive portal)?
+  const ping = await checkCaptivePortal();
+  if (ping === "walled") {
     connectAttempt.end();
     notifyConnectionChange(ConnectionState.Walled);
     scheduleNetworkRetry(attemptConnection);
     return;
   }
+  if (ping === "unreachable") {
+    // Server down or restarting: not a captive portal. Retry soon, with backoff.
+    connectAttempt.end();
+    notifyConnectionChange(ConnectionState.Disconnected);
+    scheduleNetworkRetry(attemptConnection, pingRetryDelayMs(failedPings++));
+    return;
+  }
+  failedPings = 0;
 
   // Start appropriate transport
   configuredTransport === "polling" ? switchToStreaming() : tryWebSocket(false);

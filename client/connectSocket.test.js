@@ -10,7 +10,8 @@
  * 1. Making a ping request to the server
  * 2. Validating the response has `ok: true`
  * 3. Checking the timestamp is within acceptable clock skew (60 seconds)
- * 4. If any validation fails, the connection is marked as "walled"
+ * 4. If an answer fails validation, the connection is marked "walled"; if there is no answer
+ *    (network error, timeout, 5xx) it is "unreachable" and the client retries with backoff
  *
  * @module client/connectSocket.test
  * @see {@link module:client/connectSocket} - The main connection module being tested
@@ -115,23 +116,31 @@ describe("Connection State", () => {
     });
 
     /**
-     * Test: Fetch timeout (AbortError) should return 'walled'.
-     * If the request times out, it could indicate a captive portal
-     * is blocking or delaying the connection.
+     * Test: Fetch timeout (AbortError) should return 'unreachable'.
+     * A timeout means no answer arrived: the server is down or restarting, which is
+     * not a captive portal (a portal ANSWERS, with a login page). The client retries
+     * soon with backoff instead of waiting out the 30 s portal retry (4.3.1).
+     * The end-to-end stories are in integration/bun/client-connect.ts.
      */
-    it('should return "walled" when fetch times out', async () => {
+    it('should return "unreachable" when fetch times out', async () => {
       const result = await simulatePingCheck(null, new Error("AbortError"));
-      expect(result).toBe("walled");
+      expect(result).toBe("unreachable");
     });
 
     /**
-     * Test: Network errors should return 'walled'.
-     * Any network-level error suggests connectivity issues that may
-     * be caused by a captive portal.
+     * Test: Network errors (connection refused, reset) should return 'unreachable'.
      */
-    it('should return "walled" when network error occurs', async () => {
+    it('should return "unreachable" when network error occurs', async () => {
       const result = await simulatePingCheck(null, new Error("NetworkError"));
-      expect(result).toBe("walled");
+      expect(result).toBe("unreachable");
+    });
+
+    /**
+     * Test: A gateway error (5xx) means the upstream server is down, not a portal.
+     */
+    it('should return "unreachable" when a gateway answers 502', async () => {
+      const result = await simulatePingCheck({ ok: false, status: 502, json: async () => ({}) });
+      expect(result).toBe("unreachable");
     });
   });
 
@@ -182,7 +191,8 @@ describe("Connection State", () => {
  * @param {boolean} mockResponse.ok - Whether the HTTP status is OK (2xx)
  * @param {Function} mockResponse.json - Async function returning parsed JSON body
  * @param {Error|null} [mockError=null] - Error to simulate (e.g., network error, timeout)
- * @returns {Promise<'ok'|'walled'>} 'ok' if ping validates successfully, 'walled' otherwise
+ * @returns {Promise<'ok'|'walled'|'unreachable'>} 'ok' if ping validates, 'walled' for an answer that is not
+ *   the ape ping, 'unreachable' when there is no answer (network error, timeout, 5xx)
  *
  * @example
  * // Simulate successful ping
@@ -204,7 +214,7 @@ describe("Connection State", () => {
  * @example
  * // Simulate network error
  * const result = await simulatePingCheck(null, new Error('NetworkError'))
- * console.log(result) // 'walled'
+ * console.log(result) // 'unreachable'
  */
 async function simulatePingCheck(mockResponse, mockError = null) {
   try {
@@ -213,7 +223,7 @@ async function simulatePingCheck(mockResponse, mockError = null) {
     }
 
     if (!mockResponse.ok) {
-      return "walled";
+      return mockResponse.status >= 500 ? "unreachable" : "walled";
     }
 
     const data = await mockResponse.json();
@@ -232,6 +242,6 @@ async function simulatePingCheck(mockResponse, mockError = null) {
 
     return "ok";
   } catch (err) {
-    return "walled";
+    return "unreachable";
   }
 }

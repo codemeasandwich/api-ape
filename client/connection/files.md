@@ -54,13 +54,14 @@ Connection state machine that tracks the current connection status. Emits state 
 
 ### `reconnectBackoff.js`
 
-Pure helpers implementing the same exponential cap (**30s**) and jitter (**20%**) as **`server/client/connection-reconnect.js`** so browser reconnect storms match Node timing.
+Pure helpers implementing the same exponential cap (**30s**) and jitter (**20%**) as **`server/client/connection-reconnect.js`** so browser reconnect storms match Node timing. `pingRetryDelayMs` is the same curve starting at 0.5 s, used between reachability pings while the server is unreachable.
 
 ### `network.js`
 
 Detects network conditions to provide accurate connection state:
 - **Offline** — Browser reports no network (`navigator.onLine`)
-- **Walled garden** — Captive portal detected (WiFi login page)
+- **Walled garden** — Captive portal detected: an HTTP answer that is not the ape ping (WiFi login page)
+- **Unreachable** — No answer at all (refused, reset, timeout, 5xx gateway): the server is down or restarting; the client reports `disconnected` and retries with backoff (`pingRetryDelayMs`, 0.5 s to 30 s)
 - **Online** — Full internet connectivity confirmed
 
 Also builds the WebSocket URL (**`getSocketUrl(resumeClientId)`**) including optional **`?resume=`** for Phase 1.

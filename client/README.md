@@ -68,8 +68,8 @@ api.onConnectionChange((state) => {
 
 **Connection States:**
 - `offline` — Browser reports no network
-- `walled` — Captive portal detected (WiFi without real internet)
-- `disconnected` — Had connection, lost it
+- `walled` — Captive portal detected: the server's address answered, but with something that is not the api-ape ping (a login page, a redirect). Retried every 30 s.
+- `disconnected` — Had connection, lost it, or the server is down or restarting (the ping got no answer: connection refused or timed out). Retried with backoff, 0.5 s up to 30 s, so a restarted server is picked up within a second or two.
 - `connecting` — Actively connecting
 - `connected` — Ready to use
 - `closing` — Connection is closing

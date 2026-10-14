@@ -32,3 +32,19 @@ export function reconnectDelayMs(reconnectAttempt) {
   const jitter = Math.floor(Math.random() * base * RECONNECT_JITTER_FACTOR);
   return base + jitter;
 }
+
+/** @type {number} */
+export const PING_RETRY_MIN_MS = 500;
+
+/**
+ * Delay before the next reachability ping after one failed with a network error or
+ * timeout (server down or restarting): 0.5 s, 1 s, 2 s ... capped at 30 s, with jitter.
+ *
+ * @param {number} failedPings - Number of consecutive failed pings so far (0 = the first failure)
+ * @returns {number} Delay in milliseconds (with jitter)
+ */
+export function pingRetryDelayMs(failedPings) {
+  const base = Math.min(PING_RETRY_MIN_MS * Math.pow(2, failedPings), RECONNECT_MAX_MS);
+  const jitter = Math.floor(Math.random() * base * RECONNECT_JITTER_FACTOR);
+  return base + jitter;
+}

@@ -41,7 +41,7 @@ Keepalive stories: a slow call resolves with its real result (not `undefined` fr
 
 ### `client-connect.ts`
 
-Connection stories through the real browser client: a page that makes calls before it has connected opens exactly one socket.
+Connection stories through the real browser client: a page that makes calls before it has connected opens exactly one socket; after a server restart (or a server that is not up yet) the page says `disconnected`, never `walled`, and reconnects within seconds; a call made during the outage is sent when the server is back; a login page in place of the ping still reads `walled`. `Scenario.startDown`, `Scenario.fetch` and `onEvent` (server stop/start) drive these.
 
 ### `hot-reload.ts`
 

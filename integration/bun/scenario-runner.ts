@@ -77,6 +77,10 @@ export interface Scenario {
     onEvent?: Record<string, (ctl: ServerControl) => void | Promise<void>>;
     /** Assert on what the page returned and what the server saw. Throw to fail. */
     check: (seen: { result: any; ctl: ServerControl; log: string }) => void | Promise<void>;
+    /** Answer some requests yourself before api-ape sees them (e.g. a captive portal's login page). */
+    fetch?: (req: Request) => Response | undefined;
+    /** Start with the server down; the page starts first and the scenario brings the server up. */
+    startDown?: boolean;
     /** Give the child this long before it is killed. Default 20 s. */
     timeoutMs?: number;
 }
@@ -206,7 +210,7 @@ export async function runScenarios(file: string, title: string, scenarios: Scena
         });
         const boot = (port: number) => Bun.serve({
             port,
-            fetch(req, srv) { return ape.fetch(req, srv) ?? new Response('not found', { status: 404 }); },
+            fetch(req, srv) { return scenario.fetch?.(req) ?? ape.fetch(req, srv) ?? new Response('not found', { status: 404 }); },
             websocket: ape.websocket,
         });
         let server = boot(0);
@@ -217,6 +221,8 @@ export async function runScenarios(file: string, title: string, scenarios: Scena
             stop: () => server.stop(true),
             start: () => { server = boot(port); },
         };
+
+        if (scenario.startDown) server.stop(true);
 
         let log = '';
         const child = Bun.spawn(['bun', file, '--child', String(index), String(port)], {
