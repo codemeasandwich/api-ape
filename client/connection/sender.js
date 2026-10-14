@@ -349,3 +349,24 @@ export function createSender(isReady, getSendFn, waitingQueue, connectFn) {
     return waitingOnOpen;
   };
 }
+
+/**
+ * Send every queued call through the now-ready transport and empty the queue.
+ *
+ * The queue is emptied IN PLACE (`splice`): `createSender` pushes onto this same
+ * array object, so replacing it with a new array (as 4.3.0 did) left later calls
+ * queued on the old array, never flushed.
+ *
+ * @param {Array<Object>} waitingQueue - Queue shared with `createSender`
+ * @param {function(string, any, number): Promise<any>} sendFn - Bound sender (`wsSend` or streaming `send`)
+ * @returns {void}
+ */
+export function flushQueue(waitingQueue, sendFn) {
+  waitingQueue.splice(0).forEach(
+    ({ type, data, resolve, reject, waiting, createdAt, timer }) => {
+      clearTimeout(timer);
+      const result = sendFn(type, data, createdAt);
+      if (waiting) result.then(resolve).catch(reject);
+    },
+  );
+}

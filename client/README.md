@@ -10,7 +10,7 @@ The client module provides the browser-side WebSocket client for api-ape. It ena
 
 - **Proxy-based API** — Call server endpoints like local methods (`api.path.method(data)`)
 - **Auto-reconnection** — Automatically reconnects with exponential backoff on disconnection
-- **Call buffering** — Queues calls made before connection is established
+- **Call buffering** — Queues calls made before connection is established; however many calls are queued, one connection attempt runs and opens one socket
 - **JSS encoding** — Supports Date, RegExp, Error, Set, Map, and undefined over the wire
 - **HTTP fallback** — Falls back to long-polling when WebSocket is blocked
 - **Binary transfers** — Transparent file upload/download handling

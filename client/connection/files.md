@@ -14,6 +14,7 @@ This module handles the core mechanics of maintaining a WebSocket connection to 
 
 ```
 connection/
+├── connectAttempt.js  # One connection attempt at a time (no N+1 sockets)
 ├── fileDownload.js    # Binary file download handling
 ├── fileHandling.js    # File upload/download coordination
 ├── fileUtils.js       # File transfer utilities
@@ -23,10 +24,19 @@ connection/
 ├── proxy.js           # Proxy-based API generation
 ├── sender.js          # Message sending with queryId correlation
 ├── state.js           # Connection state machine
+├── streamingFallback.js # HTTP streaming fallback + WebSocket-upgrade retry
 └── subscriptions.js   # Pub/sub subscription manager
 ```
 
 ## Files
+
+### `connectAttempt.js`
+
+`createConnectAttempt()` returns the guard `connectSocket.js` uses so only one connection attempt (ping, then socket open) runs at a time. Every queued call asks the client to connect; without the guard, N calls made before the first connect opened N+1 sockets. The flag expires after 15 s so a stuck attempt cannot block connecting forever.
+
+### `streamingFallback.js`
+
+`createStreamingFallback(deps)` owns the HTTP streaming transport and the periodic WebSocket-upgrade retry, extracted from `connectSocket.js`. `switchToStreaming()` starts the fallback; the shared connection state is reached through the accessors it is given.
 
 ### `proxy.js`
 
@@ -34,7 +44,7 @@ Creates the Proxy-based API that allows `api.users.list()` syntax. Intercepts pr
 
 ### `sender.js`
 
-Handles message serialization and request/response correlation. Generates unique `queryId` for each request, tracks pending requests, manages timeouts, and resolves Promises when responses arrive.
+Handles message serialization and request/response correlation. Generates unique `queryId` for each request, tracks pending requests, manages timeouts, and resolves Promises when responses arrive. A keepalive frame (`this.keepalive()` on the server) restarts the call's timeout and does not settle it. `flushQueue` sends the calls queued while disconnected, emptying the queue in place.
 
 ### `state.js`
 

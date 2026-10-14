@@ -65,8 +65,7 @@
  */
 
 import jss from "../utils/jss";
-import { apeLog, configureApeLogging } from "../utils/apeLogger.js";
-import { createStreamingTransport } from "./transports/streaming";
+import { configureApeLogging } from "../utils/apeLogger.js";
 import {
   ConnectionState,
   notifyConnectionChange,
@@ -77,11 +76,12 @@ import {
   checkCaptivePortal,
   scheduleNetworkRetry,
   setupOnlineListeners,
-  WS_RETRY_INTERVAL,
 } from "./connection/network";
 import { reconnectDelayMs } from "./connection/reconnectBackoff.js";
+import { createConnectAttempt } from "./connection/connectAttempt.js";
 import { wrap } from "./connection/proxy";
-import { createWsSend, createSender } from "./connection/sender";
+import { createWsSend, createSender, flushQueue } from "./connection/sender";
+import { createStreamingFallback } from "./connection/streamingFallback.js";
 import { setSendFn, resubscribeAll } from "./connection/subscriptions";
 import {
   processIncomingData,
@@ -131,20 +131,6 @@ let configuredTransport = "auto";
 let currentTransport = null;
 
 /**
- * HTTP streaming transport instance (created lazily)
- * @type {import('./transports/streaming').StreamingTransport|null}
- * @private
- */
-let streamingTransport = null;
-
-/**
- * Timer for periodic WebSocket retry attempts
- * @type {number|null}
- * @private
- */
-let wsRetryTimer = null;
-
-/**
  * Timeout before falling back to HTTP streaming (ms)
  * @constant {number}
  */
@@ -177,7 +163,7 @@ const waitingOn = {};
  * @type {Array<{type: string, data: any, resolve: function, reject: function, waiting: boolean, createdAt: number, timer: number}>}
  * @private
  */
-let aWaitingSend = [];
+const aWaitingSend = [];
 
 /**
  * Whether auto-reconnect is enabled
@@ -206,6 +192,13 @@ let reconnectBackoffAttempt = 0;
  * @private
  */
 let reconnectBackoffTimer = null;
+
+/**
+ * Guard so only one connection attempt runs at a time (see connection/connectAttempt.js).
+ * @type {ReturnType<typeof createConnectAttempt>}
+ * @private
+ */
+const connectAttempt = createConnectAttempt();
 
 /**
  * WebSocket send function bound to current socket
@@ -245,105 +238,24 @@ function clearReconnectBackoffTimer() {
 }
 
 /**
- * Flush queued RPC/send entries through the active transport once `ready` flips true.
- *
- * @param {function(string, *, number): Promise<*>} sendFn - Bound sender (`wsSend` or streaming `send`)
- * @returns {void}
+ * HTTP streaming fallback (see connection/streamingFallback.js); owns the streaming
+ * transport and the WebSocket-upgrade retry timer.
  * @private
  */
-function flushWaitingMessages(sendFn) {
-  aWaitingSend.forEach(
-    ({ type, data, resolve, reject, waiting, createdAt, timer }) => {
-      clearTimeout(timer);
-      const result = sendFn(type, data, createdAt);
-      if (waiting) result.then(resolve).catch(reject);
-    },
-  );
-  aWaitingSend = [];
-}
-
-/**
- * Switch from WebSocket to HTTP streaming transport
- *
- * Creates the streaming transport if needed and sets up event handlers.
- * This is called when WebSocket connection fails or times out.
- *
- * @private
- */
-function switchToStreaming() {
-  apeLog.log("Switching to HTTP streaming transport");
-  currentTransport = "polling";
-
-  if (!streamingTransport) {
-    streamingTransport = createStreamingTransport();
-
-    /**
-     * Handle incoming messages from streaming transport
-     * @param {{type: string, data: any, err: any}} msg - Parsed message
-     */
-    streamingTransport.onMessage = async (msg) => {
-      const data = await processIncomingData(msg.data, msg.err);
-      dispatchMessage(msg.type, msg.err, data);
-    };
-
-    /**
-     * Handle streaming connection established
-     */
-    streamingTransport.onOpen = () => {
-      ready = true;
-
-      // Set up subscription send function for streaming and re-subscribe
-      setSendFn((msg) => streamingTransport.sendRaw(msg));
-      resubscribeAll();
-
-      notifyConnectionChange(ConnectionState.Connected);
-      flushWaitingMessages((t, d, c) => streamingTransport.send(t, d, c));
-      startWsRetry();
-    };
-
-    /**
-     * Handle streaming connection closed
-     */
-    streamingTransport.onClose = () => {
-      ready = false;
-      notifyConnectionChange(ConnectionState.Disconnected);
-    };
-
-    /**
-     * Handle streaming transport errors
-     * @param {Error} err - The error that occurred
-     */
-    streamingTransport.onError = (err) =>
-      apeLog.error("Streaming error:", err);
-  }
-
-  streamingTransport.connect();
-}
-
-/**
- * Start periodic WebSocket retry attempts
- *
- * When using HTTP streaming, periodically attempts to upgrade to WebSocket.
- * This allows the connection to upgrade when network conditions improve.
- *
- * @private
- */
-function startWsRetry() {
-  if (
-    wsRetryTimer ||
-    currentTransport !== "polling" ||
-    configuredTransport === "polling"
-  )
-    return;
-  wsRetryTimer = setInterval(() => {
-    if (currentTransport !== "polling") {
-      clearInterval(wsRetryTimer);
-      wsRetryTimer = null;
-      return;
-    }
-    tryWebSocket(true);
-  }, WS_RETRY_INTERVAL);
-}
+const fallback = createStreamingFallback({
+  getConfiguredTransport: () => configuredTransport,
+  getCurrentTransport: () => currentTransport,
+  setCurrentTransport: (v) => {
+    currentTransport = v;
+  },
+  setReady: (v) => {
+    ready = v;
+  },
+  endConnectAttempt: connectAttempt.end,
+  flushWaitingMessages: (sendFn) => flushQueue(aWaitingSend, sendFn),
+  tryWebSocket: () => tryWebSocket(true),
+});
+const { switchToStreaming } = fallback;
 
 const tryWebSocket = require("./connectSocket-tryWs.js").createTryWebSocket({
   clearReconnectBackoffTimer,
@@ -361,11 +273,9 @@ const tryWebSocket = require("./connectSocket-tryWs.js").createTryWebSocket({
   setCurrentTransport: (v) => {
     currentTransport = v;
   },
-  getStreamingTransport: () => streamingTransport,
-  getWsRetryTimer: () => wsRetryTimer,
-  setWsRetryTimer: (v) => {
-    wsRetryTimer = v;
-  },
+  getStreamingTransport: fallback.getStreamingTransport,
+  getWsRetryTimer: fallback.getWsRetryTimer,
+  setWsRetryTimer: fallback.setWsRetryTimer,
   setSocketRef: (v) => {
     __socket = v;
   },
@@ -373,11 +283,12 @@ const tryWebSocket = require("./connectSocket-tryWs.js").createTryWebSocket({
     ready = v;
   },
   getReadySnapshot: () => ready,
+  endConnectAttempt: connectAttempt.end,
   setSendFn,
   resubscribeAll,
   notifyConnectionChange,
   ConnectionState,
-  flushWaitingMessages,
+  flushWaitingMessages: (sendFn) => flushQueue(aWaitingSend, sendFn),
   wsSend,
   jss,
   applyConnectedHandshake,
@@ -405,6 +316,10 @@ const tryWebSocket = require("./connectSocket-tryWs.js").createTryWebSocket({
  * @private
  */
 async function attemptConnection() {
+  // One attempt at a time: a second request to connect while one is in flight
+  // (every queued call asks for one) must not open a second socket.
+  if (connectAttempt.inFlight()) return;
+
   clearReconnectBackoffTimer();
 
   // Check browser online status first
@@ -413,10 +328,12 @@ async function attemptConnection() {
     return;
   }
 
+  connectAttempt.start();
   notifyConnectionChange(ConnectionState.Connecting);
 
   // Check for captive portal
   if ((await checkCaptivePortal()) === "walled") {
+    connectAttempt.end();
     notifyConnectionChange(ConnectionState.Walled);
     scheduleNetworkRetry(attemptConnection);
     return;
@@ -472,7 +389,7 @@ function connectSocket(maybeOptions) {
   // Return existing interface if already connected
   if (__socket && __socket.readyState !== WebSocket.CLOSED)
     return buildClientInterface();
-  if (currentTransport === "polling" && streamingTransport?.isConnected())
+  if (currentTransport === "polling" && fallback.getStreamingTransport()?.isConnected())
     return buildClientInterface();
 
   // Otherwise initiate connection

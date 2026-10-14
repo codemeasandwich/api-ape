@@ -17,7 +17,8 @@ bun/
 ├── security.ts     # Origin, headers, keepalive, Bun idle timeout/pings
 ├── hot-reload.ts   # Opt-in hot reload: default off, watch.paths coherent, documented limit
 ├── scenario-runner.ts   # Runs a scenario's page half (real browser client) in a child process against a real Bun.serve
-└── client-keepalive.ts  # Keepalive user stories through the real browser client
+├── client-keepalive.ts  # Keepalive user stories through the real browser client
+└── client-connect.ts    # Connection user stories (one socket per page, restart recovery, captive portal)
 ```
 
 ## Files
@@ -37,6 +38,10 @@ Shared runner for scenarios that need the REAL browser client. The browser clien
 ### `client-keepalive.ts`
 
 Keepalive stories: a slow call resolves with its real result (not `undefined` from the first keepalive), a 12 s call survives the 10 s timeout because each keepalive restarts the timer, and two slow calls at once get their own results.
+
+### `client-connect.ts`
+
+Connection stories through the real browser client: a page that makes calls before it has connected opens exactly one socket.
 
 ### `hot-reload.ts`
 

@@ -53,13 +53,11 @@ export interface ServerControl {
     port: number;
     /** onConnect calls so far. */
     connects: number;
-    /** Sockets the server currently holds open (the operator's view of "clients"). */
-    openSockets: () => number;
     /** Close the server and every socket. */
     stop: () => void;
     /** Start the server again on the same port. */
     start: () => void;
-    /** Write or replace a controller file (a hot-reload-free way to add endpoints). */
+    /** Directory the scenario's controller fixtures were written to. */
     dir: string;
 }
 
@@ -186,7 +184,6 @@ export async function runScenarios(file: string, title: string, scenarios: Scena
     }
 
     const { apeBun } = await import(resolve(ROOT, 'server/lib/bun.js'));
-    const { clients } = await import(resolve(ROOT, 'server/lib/broadcast/index.js'));
     (await import(resolve(ROOT, 'utils/apeLogger.js'))).configureApeLogging(false); // framework chatter off
     console.log(`${title} (Bun ${Bun.version})`);
     let failures = 0;
@@ -217,7 +214,6 @@ export async function runScenarios(file: string, title: string, scenarios: Scena
         const ctl: ServerControl = {
             port, dir,
             get connects() { return connects; },
-            openSockets: () => clients.size,
             stop: () => server.stop(true),
             start: () => { server = boot(port); },
         };

@@ -47,6 +47,7 @@
  * @param {function(): ReturnType<typeof setTimeout>|null} d.getReconnectBackoffTimer
  * @param {function(ReturnType<typeof setTimeout>|null): void} d.setReconnectBackoffTimer
  * @param {function(): void} d.connectSocketRoot
+ * @param {function(): void} d.endConnectAttempt - Marks the in-flight connection attempt finished
  * @returns {function(boolean=): void}
  */
 function createTryWebSocket(d) {
@@ -75,6 +76,7 @@ function createTryWebSocket(d) {
      * @returns {void}
      */
     ws.onopen = () => {
+      d.endConnectAttempt();
       if (fallbackTimer) clearTimeout(fallbackTimer);
 
       d.setReconnectBackoffAttempt(0);
@@ -136,6 +138,7 @@ function createTryWebSocket(d) {
      * @returns {void}
      */
     ws.onerror = () => {
+      d.endConnectAttempt();
       if (fallbackTimer) clearTimeout(fallbackTimer);
       if (!isRetry && d.getConfiguredTransport() === "auto" && !d.getReadySnapshot())
         d.switchToStreaming();
@@ -146,6 +149,7 @@ function createTryWebSocket(d) {
      * @returns {void}
      */
     ws.onclose = () => {
+      d.endConnectAttempt();
       if (fallbackTimer) clearTimeout(fallbackTimer);
       d.setSocketRef(false);
       d.setReady(false);
