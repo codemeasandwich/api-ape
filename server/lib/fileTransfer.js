@@ -231,11 +231,14 @@ class FileTransferManager {
     );
 
     /**
-     * Interval timer for periodic cleanup
+     * Interval timer for periodic cleanup. Unref'd so a manager on its own
+     * never keeps the process alive (the server's own socket does that); a
+     * forgotten destroy() no longer hangs test runners or short scripts.
      * @type {NodeJS.Timeout}
      * @private
      */
     this._cleanupInterval = setInterval(() => this._cleanup(), 30000);
+    this._cleanupInterval.unref?.();
   }
 
   // ─────────────────────────────────────────────────────────────────────────

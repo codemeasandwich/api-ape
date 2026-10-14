@@ -198,4 +198,4 @@ const scenarios = [
     }
 ];
 
-module.exports = { scenarios };
+module.exports = { scenarios, messageHash };

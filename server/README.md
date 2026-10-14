@@ -120,6 +120,24 @@ This enables server-side microservice patterns while keeping the familiar api-ap
 | `authMiddleware` | `object` | Authorization middleware instance (see below) |
 | `logging` | `boolean` \| `object` | Framework diagnostics (see [Framework logging](#framework-logging) below) |
 
+### `apeBun(options)` (Bun)
+
+`require('api-ape/bun').apeBun(options)` returns `{ fetch, websocket, wss }` for `Bun.serve()`. `fetch` answers the api-ape paths and returns `null` for anything else, so your own routes can follow.
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `where` | `string` | As for `ape()` above. |
+| `urlPrefix` | `string` | As for `ape()` above. |
+| `selector` | `string[]` | _Optional._ File extensions (without dots) the controller loader scans. Defaults to `['js']`. Pass `['js', 'ts']` in a TypeScript project running under Bun so `.ts` controller files register alongside `.js` ones. |
+| `onConnect` | `function` | As for `ape()` above. |
+| `fileTransferOptions` | `object` | As for `ape()` above. |
+
+```ts
+const { apeBun } = require('api-ape/bun')
+const ape = apeBun({ where: 'api', selector: ['js', 'ts'] })
+Bun.serve({ port: 3000, fetch: (req, server) => ape.fetch(req, server) ?? new Response('Not found', { status: 404 }), websocket: ape.websocket })
+```
+
 ### Framework logging
 
 api-ape prints optional **internal** diagnostics (adapter join/leave, client add/remove, pub/sub lifecycle, wiring errors, hot-reload lines, etc.). Your own `console.log` calls in controllers and `onConnect` are unchanged.

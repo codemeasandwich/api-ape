@@ -75,6 +75,12 @@ const { BunWebSocket, BunWebSocketServer } = require("./ws/adapters/bun");
  * @property {string} where - Directory containing controller files (relative to cwd).
  *     Controllers in this directory become API endpoints.
  *     Example: 'api' means controllers in './api/' folder.
+ * @property {string} [urlPrefix] - Public URL prefix for api-ape routes.
+ *     Defaults to `where` (or its basename if absolute).
+ * @property {string[]} [selector] - File extensions (without dots) the
+ *     controller loader should scan. Defaults to `['js']`. Pass
+ *     `['js', 'ts']` from TypeScript projects running under Bun so
+ *     `.ts` controller files register alongside `.js` ones.
  * @property {Function} [onConnect] - Callback when a client connects.
  *     Receives (socket, req, send) and can return { onDisconnect, embed }.
  * @property {Object} [fileTransferOptions] - Options for the file transfer manager.
@@ -120,9 +126,13 @@ const { BunWebSocket, BunWebSocketServer } = require("./ws/adapters/bun");
  *
  * @function apeBun
  * @param {ApeBunOptions} options - Configuration options
- * @param {string} options.where - Controller directory name
+ * @param {string}   options.where - Controller directory name
+ * @param {string}   [options.urlPrefix] - Public URL prefix override
+ * @param {string[]} [options.selector] - Loader file-extension whitelist
+ *     (without dots). Defaults to `['js']`. Pass `['js','ts']` for Bun
+ *     projects whose controllers are TypeScript.
  * @param {Function} [options.onConnect] - Connection callback
- * @param {Object} [options.fileTransferOptions] - File transfer options
+ * @param {Object}   [options.fileTransferOptions] - File transfer options
  * @returns {ApeBunResult} Object with fetch, websocket, and wss properties
  *
  * @example
@@ -163,13 +173,16 @@ const { BunWebSocket, BunWebSocketServer } = require("./ws/adapters/bun");
  *     }
  * })
  */
-function apeBun({ where, urlPrefix, onConnect, fileTransferOptions }) {
+function apeBun({ where, urlPrefix, selector, onConnect, fileTransferOptions }) {
   /**
    * Load controllers from the specified directory. Absolute paths are passed
-   * verbatim; relative paths resolve against the loader's cached cwd.
+   * verbatim; relative paths resolve against the loader's cached cwd. The
+   * optional `selector` forwards to deepRequire so Bun TS projects can pass
+   * `['js','ts']` and have their `.ts` controllers register; default `['js']`
+   * preserves backwards-compatible behaviour for existing Node consumers.
    * @type {Object<string, Function>}
    */
-  const controllers = loader(where);
+  const controllers = loader(where, selector);
 
   /**
    * Public URL prefix for the api-ape routes. Decoupled from `where` so a

@@ -199,6 +199,21 @@ describe('FileTransferManager - Streaming Files', () => {
             shortManager.destroy();
         });
 
+        test('the periodic cleanup runs every 30 s and never keeps the process alive', () => {
+            jest.useFakeTimers();
+            try {
+                const timed = new FileTransferManager({});
+                const cleanup = jest.spyOn(timed, '_cleanup');
+                expect(cleanup).not.toHaveBeenCalled();
+                jest.advanceTimersByTime(30000);
+                expect(cleanup).toHaveBeenCalledTimes(1);
+                expect(timed._cleanupInterval.hasRef?.() ?? false).toBe(false);
+                timed.destroy();
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
         test('destroy clears all streaming files', () => {
             manager.registerStreamingFile('file-1', 'client-1');
             manager.registerStreamingFile('file-2', 'client-2');
