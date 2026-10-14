@@ -1,18 +1,32 @@
 /**
- * Shared Integration Test Scenarios
+ * @file Shared Integration Test Scenarios
  *
  * These scenarios test api-ape's core functionality across different runtimes.
- * Each runtime adapter imports and runs these scenarios.
+ * Each runtime adapter imports and runs these scenarios. `messageHash` is
+ * exported too, so a runner can compute the queryId of its own extra calls.
  */
 
 // Jenkins one-at-a-time hash + Base32 encoding (same as api-ape)
 const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+/**
+ * Encode a non-negative integer in api-ape's Base32 alphabet.
+ *
+ * @param {number} n - Non-negative integer
+ * @returns {string} Base32 digits, most significant first
+ */
 function toBase32(n) {
     const remainder = Math.floor(n / 32);
     const current = n % 32;
     if (0 === remainder) return alphabet[current];
     return toBase32(remainder) + alphabet[current];
 }
+/**
+ * Jenkins one-at-a-time hash of a string, as an unsigned 32-bit integer.
+ *
+ * @param {string} str - Input text
+ * @returns {number} Unsigned 32-bit hash
+ */
 function jenkinsHash(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -24,6 +38,13 @@ function jenkinsHash(str) {
     hash ^= hash >> 11;
     return ((hash + (hash << 15)) & 4294967295) >>> 0;
 }
+/**
+ * The queryId api-ape gives a request: Base32 of the Jenkins hash of the
+ * exact JSON text sent.
+ *
+ * @param {string} msg - The JSON text of the request
+ * @returns {string} The queryId the server will answer with
+ */
 function messageHash(msg) {
     return toBase32(jenkinsHash(msg));
 }

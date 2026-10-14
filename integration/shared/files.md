@@ -18,6 +18,10 @@ shared/
 
 Developer ergonomics diagnostic that prints availability of Node, Bun, Deno binaries on the local PATH (reads versions via synchronous `execSync`).
 
+### `scenarios.js`
+
+The shared scenario list (`scenarios`): WebSocket connection, RPC call, binary transfer, broadcast and error handling, each a `run({ server, WebSocket, expect, Buffer })` step. Also exports `messageHash`, api-ape's queryId function (Jenkins hash in Base32), so a runner can match the reply to an extra call of its own.
+
 ### `test-runner.js`
 
 Async harness that consumes `{ scenarios }`, drives each `{ run({ server, WebSocket })}` snippet, aggregates pass/fail counts, and emits human-readable TAP-like output for CI logs.
