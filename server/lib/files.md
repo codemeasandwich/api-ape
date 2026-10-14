@@ -53,7 +53,7 @@ Recursively loads controller files from a directory, mapping file paths to endpo
 
 ### `controllerSource.js`
 
-Where a server's controllers come from. `loadControllers(options)` returns the flat endpoint map from `where` (via `loader.js`) or from the `controllers` option (a map of endpoint path to function, for `bun build --compile` executables with no folder to scan); `publicPrefix(options)` derives the `/${prefix}/ape` URL segment (`urlPrefix`, else `where`, else `api`). A map key goes through `deepRequire`'s own `computeEndpoint` and `asController`, so it follows the folder's naming rules (`index` maps to the parent, a function `default` is unwrapped, non-functions and duplicates stop startup); where the folder scan silently skips a file, a key is refused. `watch` and `selector` are ignored with a warning for a map. Used by `main.js` and `bun.js`.
+Where a server's controllers come from. `loadControllers(options)` returns the flat endpoint map from `where` (via `loader.js`) or from the `controllers` option (a map of endpoint path to function, for `bun build --compile` executables with no folder to scan); `publicPrefix(options)` derives the `/${prefix}/ape` URL segment (`urlPrefix`, else `where`, else `api`). A map key goes through `deepRequire`'s own `computeEndpoint` and `asController`, so it follows the folder's naming rules (`index` maps to the parent, a function `default` is unwrapped, non-functions and duplicates stop startup); where the folder scan silently skips a file, a key is refused. The map must be a plain object or module namespace (a `Map`, `Set` or class instance is refused; an empty map warns). `watch` and `selector` are ignored with a warning for a map. Used by `main.js` and `bun.js`.
 
 ### `broadcast.js`
 

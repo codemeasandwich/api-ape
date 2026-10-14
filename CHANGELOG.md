@@ -5,8 +5,9 @@ GitHub release notes are generated from commit subjects by `npm run release`.
 
 ## 4.5.0
 
-Two additions, built on the 4.4.0 security release. **No breaking changes** for an app
-that passes neither new option; the two small differences are listed under "Changed".
+Two additions, built on the 4.4.0 security release. An app that passes neither new option
+behaves as on 4.4.0, except for the small differences listed under "Changed" (`ape()` now
+honours `selector`; a TypeScript type alias; a clearer start-up error).
 Each was reproduced first with a user-story test that fails on 4.4.0 (stories in
 `simulator/scenarios/stories/call-contract/`, page-side scenarios and the compiled
 binary in `integration/bun/`).
@@ -25,7 +26,10 @@ binary in `integration/bun/`).
   file (a `_private` segment, a bare `index`, a `.test` / `.spec` name) a key is refused,
   so an endpoint you list by hand cannot go missing. `where` and `controllers` are
   mutually exclusive (startup throws if both or neither); `watch` and `selector` apply to
-  `where` only (ignored with a warning); the public URL prefix defaults to `api`. Types in
+  `where` only (ignored with a warning); the public URL prefix defaults to `api`. The map
+  must be a plain object or a module namespace (a `Map`, `Set` or class instance is
+  refused; an empty map warns), and a key is an endpoint path, not a file name: the key
+  `cards/move.js` is the endpoint `cards/move.js`. Types in
   `index.d.ts` (`ApeServerOptions` is now `where` XOR `controllers`). Proved by a real
   `bun build --compile` binary started from another folder and called from the page client
   (`integration/bun/compiled-binary.ts`). See "Compiled executables" in `server/README.md`.
@@ -33,7 +37,9 @@ binary in `integration/bun/`).
   could send `{ subscribe: 'any/channel' }` and was handed the channel's retained last
   message at once, so a channel named after a user or tenant leaked to anyone who guessed
   it. `onSubscribe` (returns `boolean | Promise<boolean>`; `context` is
-  `{ clientId, sessionId, embed }`) is asked before the subscription is recorded and before
+  `{ clientId, sessionId, embed }`; **authorise on `embed`, which `onConnect` sets after
+  real authentication: `sessionId` comes from a cookie or header the client sends and can be
+  forged**) is asked before the subscription is recorded and before
   the retained message is replayed. Only exactly `true` allows: `false`, a throw, a
   rejection, `undefined` or a non-string channel refuse (fail closed). A refused client gets
   a `__subscribe_refused__` error frame (`errCode: 'SUBSCRIBE_REFUSED'`, `errData: { channel }`,
@@ -44,7 +50,9 @@ binary in `integration/bun/`).
   (`code: 'SUBSCRIBE_REFUSED'`, `data: { channel }`); without it the refusal is logged.
   Without `onSubscribe` nothing changes. The HTTP long-poll / streaming path cannot
   subscribe (its `POST` never understood `{ subscribe }`), so it cannot receive channel
-  publishes and has nothing to guard. See "Authorising subscriptions" in `server/README.md`.
+  publishes and has nothing to guard. A guard that waits on a slow service holds one pending
+  check per channel until it answers or the socket closes (no timeout of its own): keep it
+  fast and bounded. See "Authorising subscriptions" in `server/README.md`.
 - **`clearLastMessage(channel)`: forget a channel's retained message** so the next
   subscriber is sent nothing (current subscribers keep receiving; the next publish is
   retained again). Also `ape.clearLastMessage(channel)` and `this.clearLastMessage(channel)`
@@ -53,11 +61,16 @@ binary in `integration/bun/`).
 
 ### Changed
 
+- **`ape()` now honours `selector`.** It was documented for `ape()` but `main.js` never
+  forwarded it, so only `.js` controllers ever loaded on Node (`apeBun()` did forward it).
+  A Node server that passes `selector: ['js', 'ts']` now tries to `require` its `.ts`
+  controllers (which needs a loader such as `tsx`); drop `selector` to keep the old result.
 - `ape()` / `apeBun()` with neither `where` nor `controllers` now throw a message naming
   both (it was a `TypeError` from `path`).
 - TypeScript: `ApeServerOptions` is a type alias (an intersection with a union), not an
   interface, so `interface X extends ApeServerOptions` no longer compiles; use
-  `type X = ApeServerOptions & { ... }`.
+  `type X = ApeServerOptions & { ... }`. `where` is `where?: string` in the union (required
+  only when `controllers` is absent).
 
 ### Wire protocol
 

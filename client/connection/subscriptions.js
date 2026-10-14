@@ -132,7 +132,8 @@ export function dispatch(channel, data) {
  * The server refused a subscription: tell each subscriber of the channel and drop them.
  *
  * Called with the Error of a `__subscribe_refused__` frame (`code` `SUBSCRIBE_REFUSED`,
- * `data.channel`). A frame naming no channel this client holds is ignored.
+ * `data.channel`). A frame naming no channel this client holds is ignored. An
+ * `{ unsubscribe }` frame follows so the server and this client agree.
  *
  * @param {Error} err - The refusal, as decoded from the frame
  */
@@ -141,6 +142,10 @@ export function refuse(err) {
   const callbacks = typeof channel === "string" ? subscriptions.get(channel) : undefined;
   if (!callbacks) return;
   subscriptions.delete(channel);
+  // Say so to the server too: a refusal can be stale (in flight while the page left and
+  // asked again, and the server may have granted the newer ask), and the page no longer
+  // holds the subscription, so the server must not either.
+  if (_sendFn) _sendFn({ unsubscribe: channel });
   callbacks.forEach((onError) => {
     if (!onError) return apeLog.warn(`${err.message}: pass a second function to api.<channel>(callback, onError) to handle it`);
     try {

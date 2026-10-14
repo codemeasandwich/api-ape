@@ -176,7 +176,11 @@ export type ApeControllerMap = {
 export interface ApeSubscribeContext {
     /** The connection's client id (what controllers see as `this.clientId`) */
     clientId: string
-    /** The session id from the cookie, or null (what controllers see as `this.sessionId`) */
+    /**
+     * The session id from the `sessionId` cookie / `x-ape-session-id` header, or null (what
+     * controllers see as `this.sessionId`). The CLIENT supplies it, so it can be forged:
+     * authorise on `embed`, which `onConnect` sets after it has really authenticated.
+     */
     sessionId: string | null
     /** What `onConnect` returned as `embed` (`{}` when it returned none) */
     embed: Record<string, any>

@@ -35,7 +35,7 @@ The `controllers` option (4.5.0), through `ape()` and a raw socket: a nested end
 
 ### `subscribe-authorisation.test.js`
 
-`onSubscribe` (4.5.0) through raw sockets and the real server-side client: nothing changes without it; a refused client gets the `__subscribe_refused__` frame and neither the retained message nor later publishes; per-user rules from `embed`; asked again per connection; an asynchronous guard (unsubscribe, a newer subscribe or a disconnect while pending leave nothing behind, proven with a resumed client); fail closed (throw, rejection, undefined, truthy non-boolean, non-string channel) without leaking the cause; `api.channel(callback, onError)` on the server-side client; a client on the HTTP long-poll path cannot subscribe; `clearLastMessage` (function, `ape.`, `this.`).
+`onSubscribe` (4.5.0) through raw sockets and the real server-side client: nothing changes without it; a refused client gets the `__subscribe_refused__` frame and neither the retained message nor later publishes; per-user rules from `embed`; asked again per connection; an asynchronous guard (unsubscribe, a newer subscribe or a disconnect while pending leave nothing behind, proven with a resumed client); fail closed (throw, rejection, undefined, truthy non-boolean, non-string channel) without leaking the cause; `api.channel(callback, onError)` on the server-side client; a refusal in flight when the client left and asked again (unsubscribe sent so both agree); asking again after a refusal is delivered once; a throwing log sink never escapes; a client on the HTTP long-poll path cannot subscribe; `clearLastMessage` (function, `ape.`, `this.`).
 
 ### `hostile-peer.test.js`
 

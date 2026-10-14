@@ -147,7 +147,8 @@ const handler = {
         const wrappedHandler = (event) => payload(event.data);
         // Local handler for what arrives, plus the `{ subscribe }` frame that makes the server send it.
         const off = on(path, wrappedHandler);
-        const unsubscribe = subscribeChannel(path, onError);
+        // `off` goes with the subscriber so a refusal can remove the local handler too.
+        const unsubscribe = subscribeChannel(path, onError, off);
         return () => {
           off();
           unsubscribe();

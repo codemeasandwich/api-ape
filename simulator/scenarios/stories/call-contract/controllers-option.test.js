@@ -176,9 +176,41 @@ describe("controllers option", () => {
     });
 
     test("controllers must be an object keyed by endpoint path", () => {
-      expect(startupError({ controllers: [() => 1] })).toMatch(/controllers option must be an object/);
-      expect(startupError({ controllers: "api" })).toMatch(/controllers option must be an object/);
+      expect(startupError({ controllers: [() => 1] })).toMatch(/controllers option must be a plain object/);
+      expect(startupError({ controllers: "api" })).toMatch(/controllers option must be a plain object/);
       expect(startupError({ controllers: null, where: undefined })).toMatch(/need `where`/);
+    });
+
+    test("a Map, a Set and a class instance are refused: Object.keys of them would serve nothing", () => {
+      expect(startupError({ controllers: new Map([["hello", () => 1]]) })).toMatch(/controllers option must be a plain object.*Map/s);
+      expect(startupError({ controllers: new Set() })).toMatch(/plain object.*Set/s);
+      class Api { hello() { return 1; } }
+      expect(startupError({ controllers: new Api() })).toMatch(/plain object.*Api/s);
+      expect(startupError({ controllers: Object.create(Object.create(null)) })).toMatch(/plain object.*non-plain object/s);
+    });
+
+    test("a module namespace (import * as controllers) and a null-prototype map are accepted", () => {
+      const namespace = Object.create(null, { [Symbol.toStringTag]: { value: "Module" } });
+      namespace.hello = () => 1;
+      expect(startupError({ controllers: namespace })).toBeNull();
+      expect(startupError({ controllers: Object.assign(Object.create(null), { hello: () => 1 }) })).toBeNull();
+    });
+
+    test("an empty map starts but warns that nothing is served", () => {
+      const warnings = [];
+      const message = startupError({
+        controllers: {},
+        logging: { log() {}, info() {}, debug() {}, error() {}, warn: (m) => warnings.push(m) },
+      });
+      expect(message).toBeNull();
+      expect(warnings.join("\n")).toMatch(/controllers map is empty/);
+    });
+
+    test("a key keeps its dots: cards/move.js is the endpoint cards/move.js, not cards/move", async () => {
+      const raw = await serve({ "cards/move.js": () => "dotted" });
+      expect((await raw.reply(raw.call("cards/move.js", {}))).data).toBe("dotted");
+      expect(String((await raw.reply(raw.call("cards/move", {}))).err.message)).toMatch(/was not found/);
+      raw.close();
     });
 
     test("two keys that name the same endpoint are refused, listing both", () => {

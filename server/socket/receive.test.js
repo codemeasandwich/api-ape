@@ -132,6 +132,32 @@ describe("receive handler — onSubscribe guard", () => {
     expect(ape.send).not.toHaveBeenCalled();
   });
 
+  // Scenario: the logging sink itself throws (a broken log shipper). The guard's refusal
+  // must still reach the client, and nothing may escape as an unhandled rejection (which
+  // ends a Node process).
+  test("a throwing log sink does not stop a refusal, and never escapes as a rejection", async () => {
+    const { configureApeLogging, resetApeLoggingForTesting } = require("../../utils/apeLogger");
+    const escaped = [];
+    const onEscape = (e) => escaped.push(e);
+    process.on("unhandledRejection", onEscape);
+    try {
+      configureApeLogging({ log() { throw new Error("sink exploded"); }, info() {}, debug() {}, warn() {}, error() { throw new Error("sink exploded"); } });
+      const refusing = makeApe({ onSubscribe: () => { throw new Error("guard broke"); } });
+      await receiveHandler(refusing)(JSON.stringify({ subscribe: "guard/sink-a" }));
+      await settle();
+      expect(refusing.send).toHaveBeenCalledWith(false, "__subscribe_refused__", false, expect.any(Error));
+
+      const admitting = makeApe({ onSubscribe: () => true }); // pub/sub logs the subscription: the sink throws there
+      await receiveHandler(admitting)(JSON.stringify({ subscribe: "guard/sink-b" }));
+      await settle();
+      await settle();
+      expect(escaped).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onEscape);
+      resetApeLoggingForTesting();
+    }
+  });
+
   // Scenario: the guard receives the connection's identity and embed; an absent embed is {}.
   test("the guard is given clientId, sessionId and embed ({} when none)", async () => {
     const asked = [];

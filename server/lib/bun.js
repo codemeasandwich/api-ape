@@ -233,7 +233,7 @@ function apeBun(options) {
    * `bun build --compile` executable.
    * @type {Object<string, Function>}
    */
-  const { controllers } = loadControllers(options, { selector: true });
+  const { controllers } = loadControllers(options);
 
   /**
    * Public URL prefix for the api-ape routes. Decoupled from `where` so a

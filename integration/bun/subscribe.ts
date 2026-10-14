@@ -74,6 +74,38 @@ const scenarios: Scenario[] = [
         },
     },
     {
+        name: 'a stale refusal (in flight while the page left and asked again) makes the page tell the server it no longer holds the channel',
+        fixtures: { 'hello.js': `module.exports = () => 'hi';` },
+        apeOptions: { onSubscribe },
+        onEvent: { later: (ctl: any) => { ctl.publish('/open/stale', { n: 1 }); } },
+        browser: async ({ api, emit, sleep }) => {
+            await api.hello({});
+            // Record what the page sends to the server.
+            const sent: any[] = [];
+            const nativeSend = (globalThis as any).WebSocket.prototype.send;
+            (globalThis as any).WebSocket.prototype.send = function (data: any) { try { sent.push(JSON.parse(String(data))); } catch { /* not JSON */ } return nativeSend.call(this, data); };
+            const told: string[] = [];
+            const heard: any[] = [];
+            const off = api.open.stale(() => {}, () => told.push('left'));
+            await sleep(200);
+            off(); // the page leaves ...
+            api.open.stale((d: any) => heard.push(d), (e: any) => told.push(e.code)); // ... and asks again
+            // ... while a refusal of the first ask arrives (what the client sees of a stale one).
+            const handler: any = await import(`${process.env.APE_ROOT}/client/connection/messageHandler.js`);
+            const refusal = Object.assign(new Error('Subscription to "/open/stale" refused'), { code: 'SUBSCRIBE_REFUSED', data: { channel: '/open/stale' } });
+            handler.dispatchMessage('__subscribe_refused__', refusal, undefined);
+            await sleep(300);
+            await emit('later'); // the server publishes; the page must not be holding the subscription
+            await sleep(300);
+            return { told, heard, last: sent[sent.length - 1] };
+        },
+        check: ({ result }) => {
+            assert(JSON.stringify(result.told) === JSON.stringify(['SUBSCRIBE_REFUSED']), `who was told: ${JSON.stringify(result.told)}`);
+            assert(result.heard.length === 0, `the page heard ${JSON.stringify(result.heard)} on a channel it dropped`);
+            assert(JSON.stringify(result.last) === JSON.stringify({ unsubscribe: '/open/stale' }), `the page's last frame was ${JSON.stringify(result.last)}, expected an unsubscribe`);
+        },
+    },
+    {
         name: 'the server clears a channel\'s retained message: a page that subscribes afterwards gets nothing',
         fixtures: { 'hello.js': `module.exports = () => 'hi';` },
         onEvent: {

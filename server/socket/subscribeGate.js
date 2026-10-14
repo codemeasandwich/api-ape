@@ -85,7 +85,14 @@ function createSubscribeGate({ onSubscribe, socket, send, clientId, sessionId, e
    */
   function refuse(channel) {
     const named = typeof channel === "string";
-    if (named) unsubscribe(clientId, channel);
+    if (named) {
+      try {
+        unsubscribe(clientId, channel);
+      } catch (logErr) {
+        // The store is updated before the log line that a broken sink can throw from;
+        // the client must still be told.
+      }
+    }
     const err = new Error(named ? `Subscription to "${channel}" refused` : "Subscription refused: the channel must be a string");
     err.code = REFUSED_CODE;
     err.data = named ? { channel } : {};
@@ -107,7 +114,10 @@ function createSubscribeGate({ onSubscribe, socket, send, clientId, sessionId, e
     try {
       return (await onSubscribe(channel, { clientId, sessionId, embed: embedValues || {} })) === true;
     } catch (err) {
-      apeLog.error(`[api-ape] onSubscribe failed for client ${clientId} on ${JSON.stringify(channel)}, refusing: ${(err && err.message) || err}`);
+      // A log sink that throws must not turn a refusal into an unhandled rejection.
+      try {
+        apeLog.error(`[api-ape] onSubscribe failed for client ${clientId} on ${JSON.stringify(channel)}, refusing: ${(err && err.message) || err}`);
+      } catch (sinkErr) { /* the refusal still goes out */ }
       return false;
     }
   }
@@ -128,6 +138,12 @@ function createSubscribeGate({ onSubscribe, socket, send, clientId, sessionId, e
         pending.delete(channel);
         if (yes) admit(channel);
         else refuse(channel);
+      }).catch((err) => {
+        // admit() / refuse() touched a broken log sink or store: an unhandled rejection
+        // would end a Node process, and there is no caller to tell.
+        try {
+          apeLog.error(`[api-ape] subscribe handling failed for client ${clientId}:`, err);
+        } catch (sinkErr) { /* nothing left to try */ }
       });
     },
 

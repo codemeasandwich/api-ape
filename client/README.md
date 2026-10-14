@@ -205,7 +205,7 @@ const unsub = api.user.ada.inbox(
 )
 ```
 
-The refused channel never delivers its retained message or later publishes. The error function is called once per subscriber of the channel, and the channel's callbacks are then dropped: it is not retried on reconnect (call `api.user.ada.inbox(...)` again to ask again). With no second function the refusal is logged as a warning. There is no acknowledgement for a subscription the server allows. Only a subscription takes a second function; an RPC call still takes one argument. The server-side client (`api.connect(host, port)` in Node) behaves the same.
+The refused channel never delivers its retained message or later publishes. The error function is called once per subscriber of the channel, and the channel's callbacks are then dropped, with an `unsubscribe` sent so the server agrees (the refusal may be stale): it is not retried on reconnect (call `api.user.ada.inbox(...)` again to ask again). With no second function the refusal is logged as a warning. There is no acknowledgement for a subscription the server allows. Only a subscription takes a second function; an RPC call still takes one argument. The server-side client (`api.connect(host, port)` in Node) behaves the same.
 
 **Behavior:**
 - On subscribe, you receive the last published message immediately (if any), unless the server refuses the subscription

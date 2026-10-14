@@ -215,8 +215,8 @@ function createApeCore(options, defaultOriginMode) {
   } = options;
   // Controllers come from `where` (a folder scan) or `controllers` (a map the app built,
   // for compiled executables with no folder). `controllersDir` is the resolved on-disk
-  // root (null for a map). `selector` is not forwarded here, as before 4.5.0: on Node
-  // only `.js` controllers load.
+  // root (null for a map). `selector` (file extensions to load) is forwarded: before
+  // 4.5.0 `ape()` dropped it, so only `.js` controllers ever loaded on Node.
   const { controllers, controllersDir } = loadControllers(options);
   // Decouple the public URL prefix from the on-disk path. Default rules:
   //   absolute `where` → basename (so `/srv/app/api` URL-collapses to `api`)

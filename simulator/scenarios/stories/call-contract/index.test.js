@@ -574,6 +574,19 @@ describe("Call contract", () => {
       apeBun({ where: FIXTURES, logging: quiet(warn), urlPrefixx: "typo" });
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('"urlPrefixx"'));
     });
+    test("ape() on Node honours selector: a .cjs controller is served when its extension is listed, and ignored by default", async () => {
+      const files = { "hello.js": `module.exports = () => 'js';`, "hello-cjs.cjs": `module.exports = () => 'cjs';` };
+      const listed = await serveRaw(files, { selector: ["js", "cjs"] });
+      expect((await listed.reply(listed.call("hello-cjs", {}))).data).toBe("cjs");
+      expect((await listed.reply(listed.call("hello", {}))).data).toBe("js");
+      listed.close();
+      await harness.cleanup();
+
+      harness = new Harness({ basePort: 38000, connectTimeout: 10000 });
+      const byDefault = await serveRaw(files);
+      expect(String((await byDefault.reply(byDefault.call("hello-cjs", {}))).err.message)).toMatch(/was not found/);
+      byDefault.close();
+    });
     test.each([[undefined, "undefined"], [null, "null"], ["api", "string"]])(
       "starting a server with no options object (%p) names what is missing instead of a TypeError",
       (given, shown) => {

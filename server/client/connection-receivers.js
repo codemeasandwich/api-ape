@@ -104,9 +104,9 @@ function bindConnection(refs) {
 
 /**
  * Channels this client has asked the server for, each with its local subscribers (a Set of
- * `{ onError }` records). Only the first local subscriber sends `{ subscribe }`; the last
+ * `{ onError, off }` records). Only the first local subscriber sends `{ subscribe }`; the last
  * one leaving sends `{ unsubscribe }`.
- * @type {Map<string, Set<{onError: Function|undefined}>>}
+ * @type {Map<string, Set<{onError: Function|undefined, off: Function|undefined}>>}
  */
 const remoteChannels = new Map();
 
@@ -131,10 +131,11 @@ function sendChannelFrame(frame) {
  *
  * @param {string} channel - Channel path, e.g. `/news/banking`
  * @param {function(Error): void} [onError] - Called if the server refuses the subscription
+ * @param {function(): void} [off] - Removes the caller's local handler; called if the server refuses
  * @returns {function(): void} Drops this subscriber; idempotent, harmless after a refusal
  */
-function subscribeChannel(channel, onError) {
-  const entry = { onError: typeof onError === "function" ? onError : undefined };
+function subscribeChannel(channel, onError, off) {
+  const entry = { onError: typeof onError === "function" ? onError : undefined, off };
   let subscribers = remoteChannels.get(channel);
   const first = !subscribers;
   if (first) {
@@ -154,6 +155,12 @@ function subscribeChannel(channel, onError) {
 /**
  * The server refused a subscription: tell each local subscriber of that channel and drop it.
  *
+ * Each subscriber's local handler is removed too, so a callback that asks again after the
+ * refusal is called once per publish, and one that was refused hears nothing later. An
+ * `{ unsubscribe }` frame follows, so the server agrees even when this refusal was stale
+ * (in flight while the client left and asked again: the server may have granted the newer
+ * ask, which the client no longer holds).
+ *
  * @param {Error} err - The refusal (`code` `SUBSCRIBE_REFUSED`, `data.channel`)
  * @returns {void}
  */
@@ -162,7 +169,9 @@ function refuseChannel(err) {
   const subscribers = typeof channel === "string" ? remoteChannels.get(channel) : undefined;
   if (!subscribers) return;
   remoteChannels.delete(channel);
-  subscribers.forEach(({ onError }) => {
+  sendChannelFrame({ unsubscribe: channel });
+  subscribers.forEach(({ onError, off }) => {
+    if (off) off();
     if (!onError) return apeLog.warn(`${err.message}: pass a second function to api.<channel>(callback, onError) to handle it`);
     try {
       onError(err);

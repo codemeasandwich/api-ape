@@ -361,6 +361,75 @@ describe("subscribe authorisation", () => {
       }
     });
 
+    test("asking again after a refusal delivers each publish once; the refused callback hears nothing later", async () => {
+      let allow = false;
+      const server = await serve({ onSubscribe: () => allow });
+      const { api, publish: publishNow } = require("../../../../server");
+      api.connect(server.host, server.port, { logging: false });
+      try {
+        const calls = [];
+        const refused = [];
+        const first = (d) => calls.push(["first", d.n]);
+        api.room(first, (e) => refused.push(e.code));
+        await pause(500);
+        expect(refused).toEqual(["SUBSCRIBE_REFUSED"]);
+
+        allow = true; // permission granted; the docs say: call api.channel(...) again to ask again
+        api.room(first, (e) => refused.push(`again:${e.code}`));
+        const second = (d) => calls.push(["second", d.n]);
+        api.room(second);
+        await pause(500);
+        publishNow("/room", { n: 1 });
+        await pause(300);
+        expect(calls.sort()).toEqual([["first", 1], ["second", 1]]); // once each, never twice
+        expect(refused).toEqual(["SUBSCRIBE_REFUSED"]);
+      } finally {
+        api.close();
+      }
+    });
+
+    test("a refusal that was already in flight when the client left and asked again leaves client and server agreeing", async () => {
+      const { WebSocketServer } = require("ws");
+      const fake = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+      await new Promise((resolve) => fake.once("listening", resolve));
+      const received = [];
+      const sockets = [];
+      fake.on("connection", (ws) => {
+        sockets.push(ws);
+        ws.on("message", (raw) => received.push(JSON.parse(raw.toString())));
+      });
+      const { api } = require("../../../../server");
+      api.connect("127.0.0.1", fake.address().port, { logging: false });
+      try {
+        const told = [];
+        const calls = [];
+        const off = api.room(() => {}, () => told.push("left"));
+        await pause(300);
+        off(); // the client leaves ...
+        api.room((d) => calls.push(d), (e) => told.push(e.code)); // ... and asks again
+        await pause(200);
+        // ... while the server's refusal of the FIRST ask is still on its way.
+        sockets[0].send(
+          jss.stringify({
+            err: new Error('Subscription to "/room" refused'),
+            type: REFUSED,
+            queryId: false,
+            errCode: "SUBSCRIBE_REFUSED",
+            errData: { channel: "/room" },
+          }),
+        );
+        await pause(200);
+        sockets[0].send(jss.stringify({ type: "/room", data: { n: 1 }, queryId: false }));
+        await pause(200);
+        expect(told).toEqual(["SUBSCRIBE_REFUSED"]); // the one still subscribed is told; the one who left is not
+        expect(calls).toEqual([]); // the client no longer holds the subscription ...
+        expect(received[received.length - 1]).toEqual({ unsubscribe: "/room" }); // ... and says so, so the server drops any it granted
+      } finally {
+        api.close();
+        await new Promise((resolve) => fake.close(resolve));
+      }
+    });
+
     test("without an error callback a refusal is logged, not thrown", async () => {
       const server = await serve({ onSubscribe: () => false });
       const { api } = require("../../../../server");

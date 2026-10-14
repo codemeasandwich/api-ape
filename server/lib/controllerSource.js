@@ -61,6 +61,20 @@ function endpointOf(key) {
 }
 
 /**
+ * Is this a plain object (or a module namespace, `import * as controllers`) whose own keys
+ * are the endpoints? A `Map`, a `Set`, an array or a class instance would pass through
+ * `Object.keys` as zero endpoints, and every call would be "not found".
+ *
+ * @param {any} map - The `controllers` option
+ * @returns {boolean} True for `{}`, a null-prototype object and a module namespace
+ */
+function isPlainMap(map) {
+  if (typeof map !== "object" || Array.isArray(map)) return false;
+  const proto = Object.getPrototypeOf(map);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
  * Build the flat endpoint map from a `controllers` option.
  *
  * The result is a fresh object: endpoints added to the caller's map later are not served.
@@ -71,9 +85,12 @@ function endpointOf(key) {
  *   or a value is not a function
  */
 function fromMap(map) {
-  if (typeof map !== "object" || Array.isArray(map)) {
-    const found = Array.isArray(map) ? "an array" : typeof map;
-    throw new Error(`🦍 The controllers option must be an object keyed by endpoint path ({ "cards/move": fn }), got ${found}.`);
+  if (!isPlainMap(map)) {
+    const found = typeof map !== "object" ? typeof map : Array.isArray(map) ? "an array" : `a ${(map.constructor && map.constructor.name) || "non-plain object"}`;
+    throw new Error(`🦍 The controllers option must be a plain object keyed by endpoint path ({ "cards/move": fn }), got ${found}.`);
+  }
+  if (Object.keys(map).length === 0) {
+    apeLog.warn("api-ape: the controllers map is empty, so every call will be answered \"not found\".");
   }
   const loaded = {};
   const keyOf = {};
@@ -117,18 +134,17 @@ function warnFolderOnly(options) {
  * @param {Object} [options.controllers] - Map of endpoint path to function
  * @param {string[]} [options.selector] - File extensions for the folder scan
  * @param {boolean|Object} [options.watch] - Hot reload of the folder
- * @param {{selector: boolean}} [forward] - `{ selector: true }` passes `options.selector` to the folder scan
  * @returns {{controllers: Object<string, Function>, controllersDir: string|null}} The endpoint
  *   map, and the folder it came from (null for a map)
  */
-function loadControllers(options, forward = {}) {
+function loadControllers(options) {
   if (options.controllers != null) {
     warnFolderOnly(options);
     return { controllers: fromMap(options.controllers), controllersDir: null };
   }
   const { where, watch } = options;
   return {
-    controllers: loader(where, forward.selector ? options.selector : undefined, { watch }),
+    controllers: loader(where, options.selector, { watch }),
     controllersDir: path.isAbsolute(where) ? where : path.join(process.cwd(), where),
   };
 }
