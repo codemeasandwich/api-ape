@@ -39,6 +39,7 @@
     "vite/",
     "index.js",
     "index.d.ts",
+    "CHANGELOG.md",
     "!**/*.test.js"
   ],
   "scripts": {

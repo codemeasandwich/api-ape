@@ -38,14 +38,35 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
   backtracked cubically on a key such as `a<!a<!a<!...` with no closing `>`; a 6 KB key
   froze the event loop for tens of seconds, again before any endpoint is looked up. It
   is a linear scan now.
+- **Prototype pollution through pointers, found in review of this fix.** A frame could
+  make the decoder write to `Object.prototype` (so every object in the server process
+  inherits what the peer chose: `isAdmin`-style checks), to `Map`, `Set`, `Date` or
+  `Function` and their prototypes, by naming a duplicate key (`a` and `a<!M>`) and a
+  `__proto__` / `constructor` path under it. The decoder now records the object a pointer
+  sits in instead of walking a peer-supplied path later, follows source paths through own
+  properties only, and refuses a frame that decodes two keys to one name. It was reachable
+  on the WebSocket and the HTTP long-poll `POST`.
+- **Denial of service with no login, closed:**
+  - an inline-binary tag (`name<!I>`) took `{ "length": N }` and allocated N bytes (a
+    50-byte frame blocked the server for seconds, minutes at 2 GB): it takes base64 text only;
+  - the tagged-key parser backtracked cubically (above);
+  - the built-in WebSocket server had **no limit on message size** (a 1 MiB cap in the
+    source was passed to a library that was not in use) and threw out of its data handler on
+    a frame announcing a length of 4 GiB or more, which ends the process: messages are now
+    limited by `maxMessageBytes` (default 16 MiB, see Breaking) and an oversize or malformed
+    frame closes the socket with 1009 / 1002;
+  - the HTTP long-poll `POST` read any body into memory: it answers 413 over
+    `maxMessageBytes`.
 - **Related holes closed in the same change** (all reachable by the same kind of client,
   found by reading every place peer text is used as a name): a call whose endpoint name is
   one every object inherits (`valueOf`, `constructor`) was answered by that built-in
   instead of "not found", and `valueOf` handed the connection's context back to the
-  caller; pointer paths and tag names in a frame could reach `Function`, `Object` or a
-  prototype; a `__proto__` key replaced the prototype of the decoded object; and an upload
-  field name that walked through `constructor.prototype` wrote to `Object.prototype` (it
-  needed a completed upload on a server with file transfer).
+  caller; tag names in a frame could reach `Function` or `Object`; a `__proto__` key
+  replaced the prototype of the decoded object; and an upload field name that walked
+  through `constructor.prototype` wrote to `Object.prototype` (it needed a completed upload
+  on a server with file transfer). The browser client had the same two path bugs in
+  handling a server's reply (a file under a `constructor.prototype` key polluted the page);
+  it uses the same guarded code.
 - **Until you can upgrade:** do not expose the server to untrusted networks, or put an
   authenticating gateway in front of it. There is no configuration switch that avoids the
   flaw. The new scenarios fail on 4.3.0 and pass on 4.4.0
@@ -55,6 +76,13 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
 
 ### Breaking
 
+- **Messages over `maxMessageBytes` are refused.** New option, default **16 MiB**: the most
+  one inbound WebSocket message or one long-poll POST body may hold (a WebSocket gets close
+  code 1009, a POST gets HTTP 413). Under Bun the default is Bun's own (16 MiB;
+  `websocketOptions.maxPayloadLength` still overrides it); on Node the built-in server had no
+  limit at all, so a Node server that took messages over 16 MiB must raise the option.
+  Uploads are separate HTTP PUTs and are not limited. Lower it if your calls are small: it is
+  what bounds the memory and parse time a stranger can spend before any login.
 - **`authFramework` / `authMiddleware` throw at startup** in `ape()` and `apeBun()`. 4.3.0
   and earlier accepted and silently dropped them, so nothing was enforced. They are not
   wired (they would cover the WebSocket path only; the HTTP long-poll path has no auth
@@ -131,7 +159,7 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
   so the handler ran twice for every state change. It is registered once.
 - **Errors arrived as the message string only.** The caller now gets an `Error`
   with the thrown class and message and the `code` / `data` the controller attached
-  (`err.code`, `err.data`). The server stack is not sent. A thrown string arrives as an
+  (`err.code`, `err.data`). The server stack is not sent: every Error that leaves the server has the stack `Name: message`, whether it was thrown, a thrown string, an unknown endpoint, a push, or sits inside a thrown object or array. A thrown string arrives as an
   `Error`. 4.3.0 sent the message only; what 4.4.0 forwards is deliberately narrow, because
   a thrown value is whatever a controller's libraries produced: `code` only when it is a
   string or a number on the error's own enumerable properties; `data` only when it is own
@@ -159,7 +187,12 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
 - **The HTTP streaming client never reconnected its stream** after the server recycled it
   (about every 25 s) or it broke: the reconnect timer called `connect()`, which refuses to
   run while the transport is active. The page then had no pushes, and the server had
-  dropped its state (embed, keepalive target). It reopens the stream now.
+  dropped its state (embed, keepalive target). It reopens the stream now, with the 0.5 s
+  doubling to 30 s delay of the ping retry (it was a fixed 0.5 s against a server that is
+  down), logs the first failure of an outage as an error and the retries as debug, and
+  starts each stream with an empty parse buffer.
+- **A controller that threw a falsy value (`0`, `""`, `null`, `false`) was answered as a
+  success over a WebSocket.** It is an error reply on both transports now.
 - **A call with an argument that cannot be serialised (a `BigInt`)** left a timer armed
   that fired 10 s later with an uncaught exception (a crash in the Node and Bun client).
 - **On the HTTP long-poll path `this.sessionId` ignored `x-ape-session-id` and URL-encoded
@@ -208,10 +241,11 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
 - Not fixed here: binary transfer under Bun, the generated `api-ape.d.ts` type
   checking, a TypeScript controller that mixes `import` with `module.exports`
   (does not load under Bun; use `export default`), `{ subscribe }` frames over the HTTP
-  long-poll path (the POST handler only routes calls), the decoder still builds whatever
-  `RegExp` a peer sends (a pathological pattern costs CPU), calls over HTTP streaming have
-  no client-side timeout (a POST that never answers never rejects), the long-poll endpoints
-  have no Origin check and the POST body has no size cap, a call made while the live
+  long-poll path (the POST handler only routes calls), the decoder builds the `RegExp` a
+  peer sends (construction is cheap and the server never runs it; a controller that tests
+  text against a peer's pattern can be slowed by it), calls over HTTP streaming have no
+  client-side timeout (a POST that never answers never rejects), the long-poll endpoints
+  have no Origin check, a call made while the live
   socket is closing queues until the reconnect, the 30 s WebSocket-upgrade retry does not
   look at a pending handshake, and the server-side client (`server/client`) still leaves a
   call's timer armed when its `send` throws.
