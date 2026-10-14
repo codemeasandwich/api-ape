@@ -15,8 +15,10 @@ This module provides runtime-specific server initialization for api-ape. Differe
 
 ```
 runtimes/
-├── bun.js    # Bun runtime integration
-└── node.js   # Node.js/Express integration
+├── bun.js                 # Bun runtime integration
+├── bunRequest.js          # Node-shaped request + pre-upgrade Origin check for Bun
+├── bunWebSocketConfig.js  # Validated pass-through of Bun websocket options
+└── node.js                # Node.js/Express integration
 ```
 
 ## Files
@@ -30,6 +32,7 @@ Node.js and Express integration:
 - Preserves all existing request listeners (Express routes still work)
 - Handles file uploads/downloads via standard Node.js HTTP APIs
 - Creates WebSocket server in `noServer` mode for manual upgrade handling
+- Refuses a disallowed `Origin` with an HTTP 403 before the handshake (`core.originPolicy`)
 
 ### `bun.js`
 
@@ -39,6 +42,18 @@ Bun runtime integration:
 - **`initBunServer(options, core)`** — Create fresh `fetch` and `websocket` handlers for `Bun.serve()`
 - **`initBunServerWithReload(server, options, core)`** — Inject api-ape into existing Bun server via hot reload
 - Uses Bun's native WebSocket through `BunWebSocket` adapter
+- Delegates the upgrade to `bunRequest.js` (Origin check first, Node-shaped `req`) and spreads `websocketOptions` into the Bun `websocket` object
+
+### `bunRequest.js`
+
+Shared by `api-ape/bun` (`server/lib/bun.js`) and `bun.js` here, so the two Bun entry points cannot drift:
+
+- **`toNodeRequest(req, server)`** — turn a Fetch `Request` into the Node shape the rest of api-ape reads (`headers` plain object keyed by lower-case name with non-enumerable `get`/`has`, `url` as path + query, `method`, `socket.remoteAddress`, `rawRequest`)
+- **`upgradeWebSocket(req, server, { originPolicy, onError })`** — run the Origin policy (default `exact`) before `server.upgrade()`; returns `null` (not an upgrade), `undefined` (upgraded), or a 403/500 `Response`
+
+### `bunWebSocketConfig.js`
+
+`bunWebSocketConfig(options)` forwards the documented `Bun.serve` websocket tuning options (`idleTimeout`, `sendPings`, ...) and throws on any other key. Its header documents what api-ape does and does not do for keepalive under Bun.
 
 ## Routes Handled
 

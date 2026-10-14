@@ -18,6 +18,7 @@ const _messages: { user: string; text: string; time: number }[] = []
 // Initialize api-ape handlers first
 const ape = apeBun({
     where: 'api',
+    watch: true, // hot-reload controllers while developing (off by default)
     onConnect: (socket: any, req: any, send: (type: string, data: any) => void) => {
         send('init', { history: _messages, users: clients.size })
         publish.users({ count: clients.size })

@@ -131,6 +131,8 @@ api.metrics.beacon({ … }).catch(noop)  // ✅ timeout active, errors swallowed
 
 **Default timeouts**: ~10 s total request, ~5 s connect window. If the connection isn't up in time, the queued send rejects.
 
+**Slow server work**: a controller that needs longer than ~10 s must call `this.keepalive()` every few seconds. Each call sends `{ queryId, _keepalive: true }`, which resets this timer without resolving the promise. A call that waited in the client's buffer for more than 10 s (laptop sleep, long disconnect) is refused by the server's freshness check, so keep mutations idempotent. Details, and how Bun's `idleTimeout`/`sendPings` fit in: [server README, Keepalive and ping](server/README.md#keepalive-and-ping).
+
 ### What the response looks like
 
 The Promise resolves with whatever the server controller returns. Errors thrown on the server come back as rejected Promises whose error message is the server message. JSS encoding round-trips `Date`, `RegExp`, `Map`, `Set`, `Error`, `undefined`, and circular references — you don't need to JSON-stringify by hand.
@@ -232,6 +234,7 @@ api.transport            // 'websocket' | 'polling' | null
 
 - **Don't assume WebSocket** is available. Hostile networks, corporate proxies, and old load balancers strip the upgrade.
 - Use `api.transport` to surface a **degraded-mode UX**: "Slow connection mode" banner when `polling`, normal when `websocket`.
+- **Bun servers are WebSocket-only.** There is no `/ape/poll` fallback and no `/ape/data` file transfer under Bun, so the client's polling fallback has nothing to talk to; that is fine on loopback.
 - Latency is higher on polling. Subscriptions still work. Big binary uploads still work (they go over HTTP either way).
 
 ---

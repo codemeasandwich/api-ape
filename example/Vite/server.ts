@@ -71,6 +71,7 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
 // Initialize api-ape with onConnect handler from ape folder
 ape(server, {
     where: 'api',
+    watch: true, // hot-reload controllers while developing (off by default)
     onConnect: onConnect
 })
 

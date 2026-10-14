@@ -27,6 +27,8 @@ security/
 Origin validation to prevent Cross-Site Request Forgery (CSRF) attacks:
 
 - Validates the `Origin` header against the `Host` header
+- Two modes: `root-domain` (legacy, ports ignored, Node default) and `exact` (scheme-normalised host and port, Bun default), plus `allowedOrigins` and `allowedHosts`; see `resolveOriginPolicy`
+- Reads headers from Express, Node and Fetch (`Headers.get`) requests
 - Ensures WebSocket connections only come from the same origin
 - Automatically rejects cross-origin requests
 - Works with both Express.js and raw Node.js servers

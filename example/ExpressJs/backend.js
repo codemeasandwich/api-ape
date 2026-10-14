@@ -25,6 +25,7 @@ findPort(3000, port => {
   // Initialize api-ape with the HTTP server
   ape(server, {
     where: 'api',
+    watch: true, // hot-reload controllers while developing (off by default)
     onConnect: (socket, req, send) => {
       const { _messages } = require('./api/message')
       send('init', { history: _messages, users: ape.clients.size })

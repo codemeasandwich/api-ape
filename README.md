@@ -38,6 +38,20 @@ ape(server, { where: 'api' })  // Load controllers from ./api folder
 server.listen(3000)
 ```
 
+### Server on Bun (`api-ape/bun`)
+
+```js
+const { apeBun } = require('api-ape/bun')
+const ape = apeBun({ where: 'api' })           // Origin must equal Host (host:port) by default
+Bun.serve({
+  port: 3000,
+  fetch: (req, server) => ape.fetch(req, server) ?? new Response('Not found', { status: 404 }),
+  websocket: ape.websocket,
+})
+```
+
+Bun is WebSocket-only (the HTTP poll fallback and `/ape/data` file transfer are Node-only). See [Bun, Origin check, Hot reload and Keepalive](server/README.md#bun) in the server docs.
+
 ### Vite Plugin
 
 For Vite projects, use the built-in plugin for plug-and-play integration:
@@ -109,6 +123,8 @@ await api.message({ text: 'Hello' })                   // RPC call
 * **[Real-time broadcasts](server/README.md#controller-context-this)** — Built-in `broadcast()` and `broadcastOthers()` methods
 * **[Pub/Sub channels](server/README.md#pubsub-channels)** — Clients subscribe to channels, server publishes updates
 * **[Promise-based calls](client/README.md#usage)** — `api.users.list()` maps to `api/users/list.js`
+* **[Origin check](server/README.md#origin-check)** — Exact host:port matching (`origin.mode: 'exact'`, default on Bun), `allowedOrigins`, `allowedHosts`
+* **[Hot reload (opt-in)](server/README.md#hot-reload)** — `watch: true` reloads controllers and the services they import together; off by default
 * **[Automatic reconnection](client/README.md#features)** — Client reconnects with exponential backoff
 * **[HTTP fallback](server/README.md#http-streaming-endpoints)** — Falls back to long polling when WebSockets are blocked
 * **[JSS Encoding](server/README.md#troubleshooting--faq)** — Supports Date, RegExp, Error, Set, Map over the wire

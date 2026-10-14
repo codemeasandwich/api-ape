@@ -25,7 +25,7 @@ adapters/
 
 Adapters for Bun's native WebSocket:
 
-- **`BunWebSocket`** — Wraps Bun's WebSocket in an EventEmitter interface with `send()`, `close()`, and `readyState`
+- **`BunWebSocket`** — Wraps Bun's WebSocket in an EventEmitter interface with `send()`, `close()`, `destroy()` (closes 1008, used when the Origin check refuses a socket) and `readyState`
 - **`BunWebSocketServer`** — Provides `ws.WebSocketServer` compatible API with `clients` Set and `handleUpgrade()`
 - **`websocketHandlers`** — Object containing `open`, `message`, `close`, `error` handlers for `Bun.serve()`
 

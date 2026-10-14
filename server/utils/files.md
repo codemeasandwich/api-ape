@@ -17,6 +17,7 @@ This module provides server-side utility functions used throughout the api-ape s
 utils/
 ├── deepRequire.js    # Recursive module loader for controllers
 ├── genId.js          # Unique ID generator (Crockford Base32)
+├── hotReload.js      # Opt-in hot reload: watching + module-cache eviction
 ├── parseUserAgent.js # User-agent string parser
 └── userAgent/        # User-agent detection patterns
 ```
@@ -32,6 +33,12 @@ Recursively loads all JavaScript modules from a directory tree and maps file pat
 - `api/users/index.js` → `controllers['users']`
 
 Detects duplicate endpoint mappings and throws helpful errors.
+
+Hot reload is **off by default**. `deepRequire(dir, selector, { watch })` starts it; `deepRequire.stopWatching(map)` stops it.
+
+### `hotReload.js`
+
+The opt-in hot-reload machinery used by `deepRequire.js`: `normaliseWatch` (option parsing, real paths), `watchDirs` (debounced recursive `fs.watch`), `invalidateModules` (evict every cached module under the watched roots except `node_modules`). The file header states the contract and the limits (what is and is not reloaded).
 
 ### `genId.js`
 

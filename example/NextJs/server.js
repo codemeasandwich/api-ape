@@ -20,7 +20,7 @@ app.prepare().then(() => {
     })
 
     // Initialize api-ape with the raw http server
-    ape(server, { where: 'api', onConnect })
+    ape(server, { where: 'api', watch: process.env.NODE_ENV !== 'production', onConnect })
 
     server.listen(port, () => {
         console.log(`

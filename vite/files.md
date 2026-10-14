@@ -26,6 +26,7 @@ CommonJS entry point for the Vite plugin. Creates a plugin that:
 - Waits for Vite's HTTP server to start listening
 - Loads and initializes api-ape on the underlying HTTP server
 - Supports onConnect as either a function or a path to a module (TypeScript supported)
+- Turns controller hot reload on by default (`watch: true`; dev server only) and stops the previous watcher when Vite restarts
 
 ### `index.mjs`
 

@@ -119,6 +119,9 @@ This enables server-side microservice patterns while keeping the familiar api-ap
 | `authFramework` | `object` | Authentication framework instance (see below) |
 | `authMiddleware` | `object` | Authorization middleware instance (see below) |
 | `logging` | `boolean` \| `object` | Framework diagnostics (see [Framework logging](#framework-logging) below) |
+| `origin` | `object` | _Optional._ WebSocket Origin policy `{ mode, allowedOrigins, allowedHosts }` (see [Origin check](#origin-check)). Node default `root-domain` (unchanged), Bun default `exact`. |
+| `watch` | `boolean` \| `object` | _Optional, default off._ Hot-reload controllers on file change (see [Hot reload](#hot-reload)). |
+| `websocketOptions` | `object` | _Bun only._ `Bun.serve` websocket tuning: `idleTimeout`, `sendPings`, `maxPayloadLength`, `backpressureLimit`, `closeOnBackpressureLimit`, `perMessageDeflate`, `publishToSelf` (see [Keepalive and ping](#keepalive-and-ping)). |
 
 ### `apeBun(options)` (Bun)
 
@@ -246,16 +249,90 @@ api/
    Remove one of these files to fix this conflict.
 ```
 
-### Hot-Reload
+### Hot Reload
 
-Controllers are automatically hot-reloaded when files are added or changed. No server restart required during development:
+Hot reload is **off by default** (it used to be always on, which loaded files changed on disk into a running production process). Opt in during development:
+
+```js
+ape(server, { where: 'api', watch: true })                       // watch only ./api
+ape(server, { where: 'api', watch: { paths: ['services'] } })    // ...and the service modules it imports
+ape(server, { where: 'api', watch: { paths: ['services'], debounceMs: 100 } })
+```
+
+When a watched file changes, api-ape waits `debounceMs` (default 50), evicts **every module under the watched directories** from `require.cache` (except `node_modules`), re-requires **all** controllers and swaps the new set into the live controller map. Controllers and the services they import are therefore reloaded together, so a controller never keeps a stale import. If any controller fails to load (syntax error, duplicate endpoint) the previous set keeps serving and the error is logged:
 
 ```
-🦍 Hot-loaded: users/profile    # New file added
-🦍 Reloaded: users/list         # Existing file changed
+Reloaded 12 controllers (changed: users/list.js, ../services/db.js)
+[api-ape] Reload failed, still serving the previous controllers: ...
 ```
 
-This works for both new controllers and updates to existing ones. The file watcher monitors the `where` directory recursively.
+Limits, stated plainly:
+
+- Only modules under the controller directory and `watch.paths` are evicted. A module outside them (a database singleton, a shared library) stays cached and is not reloaded. Listing its directory in `watch.paths` reloads it, and a module that opens a connection at load time will open a new one and leave the old one open.
+- State captured by the old modules (connections, timers, subscriptions, objects already handed to clients) is not migrated or closed. A call already running finishes on the old code.
+- Eviction uses `require.cache`. On Node that means CommonJS only; ES modules loaded with `import` are never evicted. Bun 1.3.14 evicts `require()`d `.js` and `.ts` modules (tested); `import`ed ESM reloaded in a manual probe but is untested, so use `bun --hot` if you rely on it.
+- Recursive `fs.watch` is required: macOS, Windows, Linux with Node 20+. Elsewhere a warning is logged and nothing is watched.
+- Stop it with `close()` on the object returned by `apeBun`; for `ape(server, ...)` call `require('api-ape/server/utils/deepRequire').stopWatching(ape(...).core.controllers)`. The watchers are unref'd, so they never keep a process alive. The Vite plugin turns `watch` on by default (it only runs under `vite serve`) and stops the old watcher when Vite restarts.
+- A call that is already running mostly finishes on the old code, but a lazy `require()` inside it made after an eviction loads the new module. If a reload fails, the evicted modules are put back, so old controllers that `require()` lazily keep getting the old modules.
+- `watch.paths` is resolved against `process.cwd()` when `ape` starts (`where` uses the cwd captured at module load); pass absolute paths. api-ape's own modules are never evicted. Any `.js .cjs .mjs .ts .mts .cts .jsx .tsx .json` change under a watched directory triggers a reload. Do not point `paths` at the app root: it would watch `node_modules`.
+
+Deleting a controller file now removes its endpoint (the old watcher ignored deletes).
+
+### Origin check
+
+A WebSocket upgrade carrying an `Origin` header is checked against the request's `Host`. A request without `Origin` (non-browser clients) is always allowed.
+
+| `origin.mode` | Rule | Default on |
+|---|---|---|
+| `root-domain` | Root domains must match; **ports are ignored**, so `http://localhost:9999` passes for a server on `localhost:3000`. Subdomains of one root match each other. | Node (unchanged) |
+| `exact` | Scheme-normalised host **and port** must match (`https://x` equals `x:443`). Another port of localhost is a different origin and is refused. `127.0.0.1` is not `localhost`. | Bun |
+
+Extra controls, valid in either mode:
+
+- `allowedOrigins: ['http://localhost:5173']` admits those exact origins (a Vite dev server, for example).
+- `allowedHosts: ['localhost:4318', '127.0.0.1:4318']` refuses any request whose `Host` is not listed, even with no `Origin`. Use it on loopback servers to defeat DNS rebinding, where `evil.test` resolves to `127.0.0.1` and sends a matching `Origin` and `Host`.
+
+A refused upgrade gets an HTTP `403` before the handshake completes on both Node and Bun, so `onConnect` and controllers are never reached (tested on both).
+
+What `exact` does not give you:
+
+- **The scheme is not checked against the real transport.** The `Origin` scheme is used to normalise the `Host` (so `https://x` equals `x:443`), but api-ape cannot see whether the connection itself was TLS. `http://example.com` against an HTTPS-served `example.com` passes. Do not rely on `Origin` for cookie-less secrecy; use `Secure`/`SameSite` cookies and your own auth.
+- **DNS rebinding.** A rebound page at `evil.test:4318` sends a matching `Origin` and `Host`, so `exact` alone accepts it. On a loopback server, set `allowedHosts` (for example `['localhost:4318', '127.0.0.1:4318']`).
+- **Reverse proxies that rewrite `Host`** (`Origin: https://app.example.com`, `Host: 127.0.0.1:3000`) are refused, because the two no longer match. Preserve `Host` at the proxy, or list the public origin in `allowedOrigins`.
+- Options are validated at start-up: an unknown key (a misspelt `allowedHosts` would silently remove the guard), a non-string entry, or an `allowedOrigins` entry that is not an `http(s)` origin throws.
+
+```js
+ape(server, { where: 'api', origin: { mode: 'exact' } })                       // strict on Node
+apeBun({ where: 'api', origin: { mode: 'root-domain' } })                      // legacy rule on Bun
+apeBun({ where: 'api', origin: { allowedHosts: ['localhost:4318'] } })
+```
+
+### Bun
+
+```js
+const { apeBun } = require('api-ape/bun')
+const ape = apeBun({ where: 'api', origin: { allowedHosts: ['localhost:4318'] } })
+Bun.serve({
+  port: 4318,
+  fetch: (req, server) => ape.fetch(req, server) ?? new Response('Not found', { status: 404 }),
+  websocket: ape.websocket,
+})
+```
+
+`ape(server, ...)` on a `Bun.serve()` server works too and shares the same code. Under Bun:
+
+- **Controllers see the same request as under Node.** `this.req.headers.cookie`, `this.req.headers['user-agent']`, `this.req.url` (path plus query), `this.req.socket.remoteAddress`, `this.agent` and `this.sessionId` (cookie or `x-ape-session-id`) are populated, and resume pairing works. `this.req.headers.get(name)` and `.has(name)` still work; other `Headers` methods (`entries`, `forEach`, `getSetCookie`) do not, so read those from `this.req.rawRequest.headers` (the original Fetch `Request` is `this.req.rawRequest`). Before 4.3.0 a Fetch `Request` was passed through, so all of the Node-style reads were `undefined`: the Origin check never ran, every connect minted a new session, and `this.agent` was empty.
+- **Transport is WebSocket only.** The HTTP long-poll fallback (`/{prefix}/ape/poll`), file transfer over HTTP (`/{prefix}/ape/data/...`) and the schema endpoint exist only in the Node runtime. `fetch` handles `/{prefix}/ape` (upgrade), `/{prefix}/ape.js` and `/{prefix}/ape/ping`, and returns `null` for everything else so your own routes can follow. This is fine on loopback; do not rely on the polling fallback behind hostile proxies.
+- **State is a module singleton.** Under `bun --hot`, create the handlers once, for example `globalThis.__ape ??= apeBun({ where: 'api' })`.
+- **Not provided:** HTTP/REST routing, validation, a database layer. The Vite plugin runs api-ape inside Vite's Node dev server, so controllers would run in Vite's process rather than in Bun; proxy the WebSocket to your Bun server instead.
+
+### Keepalive and ping
+
+Three separate mechanisms, often confused:
+
+1. **`this.keepalive()` in a controller** resets the *client's* per-call timer (10 s by default) for a slow call. It sends `{ queryId, _keepalive: true }`; the call is not resolved. Call it at least every few seconds from long work. It does **not** extend the server's own freshness check on the incoming call (the server refuses a call whose `createdAt` is more than 10 s old, in the future, or a repeated `queryId`; this is checked once, on arrival). A call buffered by the client across a sleep or disconnect of more than 10 s is therefore refused, and pending calls are rejected when the socket closes, so there is no exactly-once delivery: keep mutations idempotent or revision-guarded.
+2. **`GET /{prefix}/ape/ping`** is an HTTP reachability probe returning `{ ok, ts }`. The client uses it to detect captive portals (`walled`). It is not a WebSocket heartbeat.
+3. **WebSocket liveness** belongs to the runtime. api-ape sends no ping frames of its own. Under Bun, the runtime sends protocol pings (`sendPings`, default `true`) and closes a socket that has been silent for `idleTimeout` seconds (default 120); browsers answer pings automatically, so an idle tab stays connected. Tune it with `websocketOptions: { idleTimeout, sendPings }`. Bun enforces the timeout on a coarse timer: measured on Bun 1.3.14, an `idleTimeout` of 2 or 5 both closed a silent socket at about 8 s, so treat it as approximate. Verified by `integration/bun/security.ts` (pings keep an idle socket open; without pings it closes).
 
 ## Pub/Sub Channels
 

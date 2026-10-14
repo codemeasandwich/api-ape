@@ -18,7 +18,7 @@ lib/
 ├── main.js              # Server initialization entry point
 ├── loader.js            # Controller file auto-loader
 ├── broadcast.js         # Client tracking & broadcast utilities
-├── bun.js               # Bun.serve() high-level integration
+├── bun.js               # Bun.serve() high-level integration (apeBun)
 ├── fileTransfer.js      # Binary file transfer manager
 ├── fileTransfer.test.js # File transfer test suite
 ├── httpUtils.js         # Shared HTTP utilities
