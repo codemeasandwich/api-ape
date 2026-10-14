@@ -21,7 +21,7 @@
 npm install api-ape
 ```
 
-**Requirements:** Node.js 14+ (for server), modern browsers (for client)
+**Requirements:** Node.js 22 or newer (server and the server-side client), or Bun; modern browsers (for client)
 
 > **Security: use 4.4.0 or later.** Every earlier version let any client that could open a socket make the server construct arbitrary globals through a crafted error in a frame (code execution under Bun, outbound connections under Node and Bun). See the [CHANGELOG](CHANGELOG.md#security) before upgrading: 4.4.0 also lists the breaking changes.
 

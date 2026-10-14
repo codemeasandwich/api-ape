@@ -596,6 +596,23 @@ describe("Call contract", () => {
       },
     );
   });
+  describe("server-side client without a global WebSocket (Node before 22)", () => {
+    test("api.connect says the server-side client needs Node 22 or newer, instead of failing later inside a socket", () => {
+      const saved = Object.getOwnPropertyDescriptor(globalThis, "WebSocket");
+      delete globalThis.WebSocket;
+      try {
+        let api;
+        jest.isolateModules(() => {
+          ({ api } = require("../../../../server"));
+        });
+
+        expect(() => api.connect("localhost", 1)).toThrow(/server-side client needs Node 22 or newer \(a global WebSocket\)/);
+      } finally {
+        if (saved) Object.defineProperty(globalThis, "WebSocket", saved);
+      }
+    });
+  });
+
   describe("server-side client subscriptions", () => {
     test("a service that subscribes with api.news.banking(cb) receives what the other server publishes until it unsubscribes", async () => {
       const server = await harness.createServer({ where: FIXTURES, apeOptions: { urlPrefix: "api" } });

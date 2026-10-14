@@ -53,18 +53,20 @@ const {
 const jss = require("../../utils/jss");
 const messageHash = require("../../utils/messageHash");
 const { attachErrorDetails } = require("../../utils/wireError");
-const { WebSocket: WsPolyfill } = require("../lib/ws");
 const receivers = require("./connection-receivers");
 const reconnect = require("./connection-reconnect");
 const { createSend } = require("./connection-send");
 const { buildWsConnectUrl: buildWsConnectUrlWithResume } = require("./connection-ws-url");
 const { queueOrSend: queueOrSendImpl } = require("./connection-queue-send");
 /**
- * WebSocket constructor - uses native if available, falls back to polyfill.
+ * The runtime's global WebSocket client (Node 22+, Bun, Deno). There is no fallback: the
+ * built-in `lib/ws` class is the SERVER side of a connection (it wraps an already
+ * upgraded socket) and cannot dial out, so on Node before 22 `connect()` throws a clear
+ * error instead of failing later with `this._socket.on is not a function`.
  * @private
- * @type {typeof WebSocket}
+ * @type {typeof WebSocket|undefined}
  */
-const WebSocket = globalThis.WebSocket || WsPolyfill;
+const WebSocket = globalThis.WebSocket;
 
 /**
  * Connection state enumeration.
@@ -244,6 +246,7 @@ receivers.bindConnection({
  * connect()
  */
 function connect(host, port, options) {
+  if (typeof WebSocket !== "function") throw new Error("api-ape: the server-side client needs Node 22 or newer (a global WebSocket); this runtime has none.");
   if (options && typeof options === "object" && "logging" in options) {
     configureApeLogging(options.logging);
   }
@@ -501,6 +504,6 @@ module.exports = {
   isReady: receivers.isReady,
   /** Get WebSocket instance (delegated to connection-receivers) */
   getWs: receivers.getWs,
-  /** WebSocket constructor (native or polyfill) */
+  /** WebSocket constructor (the runtime global; Node 22+) */
   WebSocket,
 };

@@ -5,12 +5,27 @@ GitHub release notes are generated from commit subjects by `npm run release`.
 
 ## 4.5.0
 
+**4.4.0 never reached npm** (the tag and the GitHub release exist, but its publish run failed
+its tests on Node 20), so everything in the 4.4.0 entry below, including the security fixes,
+ships in this release. Upgrade from 4.3.0 straight to 4.5.0; read both entries.
+
 Two additions, built on the 4.4.0 security release. An app that passes neither new option
 behaves as on 4.4.0, except for the small differences listed under "Changed" (`ape()` now
 honours `selector`; a TypeScript type alias; a clearer start-up error).
 Each was reproduced first with a user-story test that fails on 4.4.0 (stories in
 `simulator/scenarios/stories/call-contract/`, page-side scenarios and the compiled
 binary in `integration/bun/`).
+
+### Breaking
+
+- **Node 22 or newer** (`engines: { "node": ">=22" }`; CI runs 22 and 24). Node 18 and 20 are
+  end-of-life. The server-side client (`api.connect(host, port)`) needs the runtime's global
+  `WebSocket`, which Node has from 22: before, on Node 20 and older it silently fell back to the
+  built-in server-side socket class, which cannot dial out, and failed later with
+  `this._socket.on is not a function`. It now throws at `connect()` with "the server-side client
+  needs Node 22 or newer (a global WebSocket)".
+- Known limit: **Deno does not enforce `maxMessageBytes` yet** (the option is applied on Node and
+  Bun; Deno's own WebSocket limits apply).
 
 ### Added
 
@@ -77,7 +92,7 @@ binary in `integration/bun/`).
 New server-to-client frame `{ type: '__subscribe_refused__', err, errCode, errData }`.
 Older clients ignore it (they never receive the refused channel and cannot say why).
 
-## 4.4.0
+## 4.4.0 (tagged, not published to npm: see 4.5.0)
 
 **Security fix, plus call-path fixes** found while mapping api-ape onto Bluey's Bun +
 React build and then reviewed independently. The version is 4.4.0 because it adds
