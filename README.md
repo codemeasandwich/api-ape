@@ -127,6 +127,7 @@ await api.message({ text: 'Hello' })                   // RPC call
 * **[Hot reload (opt-in)](server/README.md#hot-reload)** — `watch: true` reloads controllers and the services they import together; off by default
 * **[Automatic reconnection](client/README.md#features)** — Client reconnects with exponential backoff
 * **[HTTP fallback](server/README.md#http-streaming-endpoints)** — Falls back to long polling when WebSockets are blocked
+* **[Wire protocol](server/README.md#wire-protocol)** — The frames on the socket, with `api-ape/jss` and `api-ape/messageHash` exported so other programs can speak it
 * **[JSS Encoding](server/README.md#troubleshooting--faq)** — Supports Date, RegExp, Error, Set, Map over the wire
 * **[🌲 Forest](server/README.md#-forest-distributed-mesh)** — Distributed mesh for horizontal scaling
 * **[🔐 Authentication](server/README.md#authentication)** — OPAQUE/PAKE auth with tiered access control

@@ -17,8 +17,10 @@ This module provides shared serialization and hashing utilities used by both cli
 utils/
 ├── apeLogger.js             # Centralized configurable framework logging (see configureApeLogging)
 ├── jss.js                   # JSS main entry point (encode/decode/stringify/parse)
+├── jss.d.ts                 # Types for `api-ape/jss`
 ├── jss.test.js              # JSS test suite
 ├── messageHash.js           # Jenkins hash with Crockford Base32 encoding
+├── messageHash.d.ts         # Types for `api-ape/messageHash`
 ├── wireError.js             # How a failed call travels: Error via JSS + code/data
 ├── messageHash.test.js      # Message hash test suite
 ├── parseUserAgent.test.js   # User-Agent parser test suite
@@ -34,6 +36,14 @@ Internal logging facade for api-ape on both browser and Node. Exports `configure
 ### `wireError.js`
 
 How a failed call travels from a controller to its caller. `errorFrame(thrown, type, queryId)` (server) builds the reply `{ err: <Error via JSS>, errCode?, errData?, type, queryId }`: name and message are kept, the stack is replaced by `"Name: message"` so no server paths leak, and unserialisable `data` is dropped rather than losing the reply. `attachErrorDetails(err, frame)` (browser and Node clients) puts `code` / `data` back on the Error. `toWireError` normalises strings and Error-shaped objects.
+
+### `jss.d.ts`
+
+Types for the `api-ape/jss` entry point (`stringify`, `parse`, `encode`, `decode`).
+
+### `messageHash.d.ts`
+
+Types for the `api-ape/messageHash` entry point: `messageHash(message): string`, the `queryId` of a call.
 
 ### `jss.js`
 

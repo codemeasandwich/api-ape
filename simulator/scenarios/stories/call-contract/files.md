@@ -15,7 +15,8 @@ call-contract/
 ├── README.md       # Overview
 ├── files.md        # This file
 ├── index.test.js   # The stories
-└── raw-client.js   # Raw-socket client that records every frame
+├── raw-client.js   # Raw-socket client that records every frame
+└── wire-protocol.test.js  # The documented wire protocol, spoken with api-ape/jss and api-ape/messageHash
 ```
 
 ## Files
@@ -23,6 +24,10 @@ call-contract/
 ### `index.test.js`
 
 The call-contract stories (keepalive, identical calls, replies, errors, controller files). Starts a harness server over `simulator/test-api-contract/` or over controller files written to a temp directory for the test, and talks to it with the raw client.
+
+### `wire-protocol.test.js`
+
+Conformance of every frame in the "Wire protocol" section of `server/README.md`, from an outside program's point of view: it imports `api-ape/jss` and `api-ape/messageHash` by their published names and talks to a real server over a raw WebSocket (`__connected__`, call and reply, `data<!U>`, keepalive, error frames with code/data, subscribe, push, unsubscribe, last-message replay). Fails if either helper is not exported.
 
 ### `raw-client.js`
 

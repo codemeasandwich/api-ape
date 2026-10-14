@@ -928,6 +928,35 @@ See detailed adapter implementations in [`server/adapters/`](adapters/):
 
 ---
 
+## Wire protocol
+
+Everything is text frames over one WebSocket at `/{urlPrefix}/ape`, encoded with **JSS** (JSON plus `<!X>`-tagged keys for `Date`, `RegExp`, `Error`, `Set`, `Map`, `undefined` and circular references). Programs that are not api-ape clients (test probes, other languages) can speak it with the two published helpers:
+
+```js
+import jss from 'api-ape/jss'                 // stringify / parse / encode / decode
+import messageHash from 'api-ape/messageHash' // queryId of a message
+```
+
+**Client to server**
+
+| Frame | Meaning |
+|-------|---------|
+| `{ type, data, createdAt, requestedAt, nonce }` | A call to endpoint `type` (a leading `/` is ignored). `createdAt` must not be in the future or older than 10 s. The `queryId` is **`messageHash(<the exact text sent>)`** and must not repeat within 10 s on one socket (a repeat is refused as a replay), so identical calls need something that differs: the clients add a counter `nonce`. |
+| `{ subscribe: '/channel' }` | Receive everything published to `/channel`; a new subscriber gets the last published message at once. |
+| `{ unsubscribe: '/channel' }` | Stop. |
+
+**Server to client**
+
+| Frame | Meaning |
+|-------|---------|
+| `{ type: '__connected__', data: { clientId, sessionId } }` | First frame after the upgrade. Send `?resume=<clientId>` plus the `sessionId` cookie on a reconnect (see above). |
+| `{ queryId, data }` | The reply to the call with that `queryId`. A controller that returns nothing gives `data` as `undefined` (encoded `"data<!U>": 0`). |
+| `{ queryId, err, errCode?, errData? }` | The call failed. `err` is an `Error` (JSS keeps `name` and `message`; the stack is `"Name: message"` only); `errCode` / `errData` carry the `code` / `data` the controller attached. |
+| `{ queryId, _keepalive: true }` | `this.keepalive()` was called: the call is still running. Not a reply; restart the call's timer and wait for the real one. |
+| `{ type: '/channel', data }` | A publish to a subscribed channel, or `this.send` / `this.broadcast` push (`type` is whatever the server named it). No `queryId`. |
+
+Conformance of every row above is tested in `simulator/scenarios/stories/call-contract/wire-protocol.test.js`, written against `api-ape/jss` and `api-ape/messageHash`.
+
 ## Troubleshooting & FAQ
 
 ### Controller Not Found

@@ -14,6 +14,10 @@ These utilities are the foundation that allows api-ape to feel like native funct
 
 > **Contributing?** See [`files.md`](./files.md) for directory structure and file descriptions.
 
+## Public entry points
+
+`api-ape/jss` (`stringify`, `parse`, `encode`, `decode`) and `api-ape/messageHash` are in the package `exports` with types, so programs outside api-ape can speak the [wire protocol](../server/README.md#wire-protocol).
+
 ## See Also
 
 - [`jss/README.md`](./jss/README.md) — JSS encoder/decoder implementation details
