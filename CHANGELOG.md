@@ -3,6 +3,89 @@
 All notable changes to api-ape. Versions follow semantic versioning; the
 GitHub release notes are generated from commit subjects by `npm run release`.
 
+## 4.3.1
+
+Call-path fixes found while mapping api-ape onto Bluey's Bun + React build. All eight
+fixes below were reproduced first with a user-story scenario against 4.3.0 (page-side
+scenarios run the real browser client against a real `Bun.serve`:
+`integration/bun/client-*.ts`; wire-side scenarios are in
+`simulator/scenarios/stories/call-contract/`).
+
+### Fixed
+
+- **`this.keepalive()` resolved the call early with `undefined`.** The browser
+  client took the keepalive frame for the reply. It now restarts that call's timer
+  and waits for the real reply, so a 12 s call with a keepalive every 3 s works.
+  Every call also runs on its own context (`Object.create` over the connection's),
+  so two concurrent calls no longer overwrite each other's `this.keepalive` and
+  send each other's frames.
+- **N calls before the first connect opened N+1 sockets** (each queued call asked to
+  connect while the reachability ping was still in flight). One connection attempt
+  runs at a time now.
+- **A restarted server read as `walled` for about 30 s.** A ping that fails or times
+  out (or a 5xx gateway) is now `unreachable`: the state is `disconnected` and the
+  client re-pings with backoff (0.5 s up to 30 s). `walled` stays for an HTTP answer
+  that is not the ape ping (login page, redirect, stale replay).
+- **Calls made while the page was reconnecting were never sent** after the first
+  flush (the queue array was replaced instead of emptied). Found by the restart
+  scenarios.
+- **Two identical calls in the same millisecond produced one 10 s timeout** (same
+  message, same `queryId`, refused as a replay). The browser and the Node/Bun client
+  add a per-client counter `nonce` to each call.
+- **`await api.x()` never armed the timeout, `.then(ok, err)` dropped `err`, and a
+  controller returning `undefined` sent no reply** (the call hung). The timeout is
+  armed when the call is made, the promise is a plain promise, `undefined` is
+  answered (`data<!U>`), a call nobody awaits raises no unhandled rejection, and a
+  queued call that expires rejects instead of throwing from a timer.
+- **`import api from 'api-ape'` was a flat proxy**: `api.dir.thing` was undefined,
+  `api.on` was an RPC to `/on`, and a subscribe before connecting returned a
+  Promise. It now uses the same `wrap()` as `connectSocket().sender`; a subscribe
+  returns its unsubscribe function synchronously and is sent when the socket opens
+  (and again on every reconnect).
+- **Errors arrived as the message string only.** The caller now gets an `Error`
+  with the thrown class and message and the `code` / `data` the controller attached
+  (`err.code`, `err.data`). The server stack is not sent. A thrown string arrives as
+  an `Error`.
+- **`export default` controllers failed** with "controller.call is not a function";
+  a function `default` is now unwrapped. `*.d.ts`, `*.test.*` and `*.spec.*` files in
+  the controller folder are no longer registered as endpoints.
+- **`authFramework` / `authMiddleware` were accepted and silently dropped** by
+  `ape()` and `apeBun()`. They are not wired (wiring would cover WebSocket only while
+  the Node long-poll path stays unauthenticated), so both functions now **throw at
+  startup** naming the option. Any other unknown option logs a warning.
+- **`apeBun()` ignored `logging`.**
+- **`this.broadcast` and `this.broadcastOthers` were documented but absent**; they
+  now exist on the controller context. `index.d.ts` no longer lists `online()` and
+  `getClients()` (never real; use `this.clients`).
+- **The server-side client's `api.chan.x(cb)` never subscribed** on the server.
+  The first local subscriber now sends `{ subscribe }`, the last leaving sends
+  `{ unsubscribe }`, and every reconnect subscribes again.
+
+### Added
+
+- `api-ape/jss` and `api-ape/messageHash` exports (with types) and a "Wire protocol"
+  section in the server README, so programs outside api-ape can speak the protocol.
+- Types: `apeBun` (`api-ape/bun`), `ApeBunHandlers`, `this.broadcast` /
+  `broadcastOthers` / `send` / `keepalive` / `clients`, and the `selector`,
+  `urlPrefix`, `fileTransferOptions` and `longPollingOptions` options.
+- `integration/bun/client-*.ts` + `scenario-runner.ts` (the real browser client against
+  a real `Bun.serve`) and `integration/bun/options.ts`, run in CI.
+
+### Behaviour changes
+
+- `this.foo = x` inside a controller is now private to that call (it used to land on
+  a context shared by the connection's calls by accident). Keep per-connection state
+  in `onConnect`'s `embed`.
+- A controller file that exports something that is not a function now stops
+  startup, naming the file (it used to fail at the first call).
+- A controller that returns nothing now sends a reply (`undefined`).
+- An unreachable server is `disconnected`, not `walled`; check for `walled` only for
+  captive portals.
+- `ape()` / `apeBun()` throw on `authFramework` / `authMiddleware`.
+- Not fixed here: binary transfer under Bun, the generated `api-ape.d.ts` type
+  checking, and a TypeScript controller that mixes `import` with `module.exports`
+  (does not load under Bun; use `export default`).
+
 ## 4.3.0
 
 The first release after 4.1.1 (the local 4.2.0 was never tagged or published, so
