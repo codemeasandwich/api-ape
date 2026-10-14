@@ -304,4 +304,23 @@ describe("JSS decode: tag names and keys from a peer are data, never lookups", (
       expect(Buffer.from(got.blob).toString()).toBe("hello");
     });
   });
+
+  test("a 10 MB frame of tagged keys nested 490 deep decodes in well under a few seconds", () => {
+    const leaves = {};
+    for (let j = 0; j < 1500; j++) leaves[`k${j}<!D>`] = 0;
+    const root = { ...leaves };
+    let cursor = root;
+    for (let depth = 0; depth < 489; depth++) {
+      cursor.c = { ...leaves };
+      cursor = cursor.c;
+    }
+    const text = JSON.stringify(root);
+    expect(text.length).toBeGreaterThan(9000000);
+    const started = Date.now();
+
+    const got = jss.parse(text);
+
+    expect(Date.now() - started).toBeLessThan(5000); // about 0.4 s on a quiet machine
+    expect(got.k0).toEqual(new Date(0));
+  });
 });

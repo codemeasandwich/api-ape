@@ -33,8 +33,8 @@ Converts JavaScript objects containing extended types into JSON-compatible forma
 
 **Exports:**
 
-- `encode(obj)` — Returns JSS-encoded plain object (for inspection or custom serialization)
-- `stringify(obj)` — Returns JSS-encoded JSON string (encode + JSON.stringify)
+- `encode(obj, options)` — Returns JSS-encoded plain object (for inspection or custom serialization); `{ errorStacks: false }` encodes every Error's stack as `Name: message` (what the server uses for everything it sends)
+- `stringify(obj, options)` — Returns JSS-encoded JSON string (encode + JSON.stringify), same options
 
 **Tag Reference:**
 

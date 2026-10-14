@@ -32,6 +32,9 @@ const { hasOwn, setKey } = require("./safeKeys");
 /** Deepest nesting `errData` may have and still be forwarded. */
 const MAX_DATA_DEPTH = 32;
 
+/** Encoder option for everything that leaves the server: an Error's stack is `"Name: message"`, never a real one. */
+const NO_STACKS = { errorStacks: false };
+
 /** Most distinct objects `errData` may hold and still be forwarded. */
 const MAX_DATA_NODES = 10000;
 
@@ -62,49 +65,24 @@ function ensureThrown(thrown) {
 }
 
 /**
- * Copy a thrown value so that no Error inside it carries a real stack: JSS encodes the
- * `stack` of every Error it meets, and a plain object or array may hold some.
- *
- * @param {any} value - Value inside what was thrown
- * @param {{seen: Map<Object, any>, budget: number}} state - Copies made so far, and how many objects may still be copied
- * @param {number} depth - Nesting so far
- * @returns {any} The same primitive, or a copy with every Error replaced by a wire Error
- */
-function scrub(value, state, depth) {
-  if (value === null || typeof value !== "object") return value;
-  if (state.seen.has(value)) return state.seen.get(value);
-  if (depth > MAX_DATA_DEPTH || --state.budget < 0) throw new Error("thrown value too large to send");
-  const kind = Object.prototype.toString.call(value);
-  let copy;
-  if (kind === "[object Error]") {
-    copy = plainError(String(value.name || "Error"), String(value.message));
-    state.seen.set(value, copy);
-    return copy;
-  }
-  if (Array.isArray(value)) copy = [];
-  else if (kind === "[object Object]") copy = {};
-  else return value; // Date, typed arrays, Map, Set: JSS meets no Error inside them (it does not encode a Map's or Set's members)
-  state.seen.set(value, copy);
-  for (const key of Object.keys(value)) setKey(copy, key, scrub(value[key], state, depth + 1));
-  return copy;
-}
-
-/**
  * Make the Error that goes on the wire for whatever a controller threw.
  *
  * @param {any} thrown - An Error, a string, an Error-shaped object (`{name, message}`) or anything else
  * @returns {any} A fresh Error (name and message kept, stack `"Name: message"`, never a real
- *   one); values with no message (numbers, plain objects) are returned as a copy in which
- *   every Error inside is fresh the same way, and the object's own `stack` is dropped
+ *   one); values with no message (numbers, plain objects) are returned as they are, without the
+ *   object's own `stack` (Errors inside them are made stackless by the encoder, `errorStacks: false`)
  */
 function toWireError(thrown) {
   thrown = ensureThrown(thrown);
   if (typeof thrown === "string") return plainError("Error", thrown);
-  if (typeof thrown.message === "string") return plainError(String(thrown.name || "Error"), thrown.message);
-  if (typeof thrown !== "object") return thrown;
-  const copy = scrub(thrown, { seen: new Map(), budget: MAX_DATA_NODES }, 0);
-  if (copy !== thrown && !(copy instanceof Error)) delete copy.stack;
-  return copy;
+  if (typeof thrown.message === "string" || Object.prototype.toString.call(thrown) === "[object Error]") {
+    return plainError(String(thrown.name || "Error"), String(thrown.message));
+  }
+  if (typeof thrown === "object" && hasOwn(thrown, "stack")) {
+    const { stack, ...rest } = thrown;
+    return rest;
+  }
+  return thrown;
 }
 
 /**
@@ -195,13 +173,13 @@ function errorDetails(thrown) {
  */
 function errorFrame(thrown, type, queryId) {
   try {
-    return jss.stringify({ err: toWireError(thrown), type, queryId, ...errorDetails(thrown) });
+    return jss.stringify({ err: toWireError(thrown), type, queryId, ...errorDetails(thrown) }, NO_STACKS);
   } catch (_) {
     // Whatever was thrown cannot be read or serialised (a BigInt, a getter that throws,
     // a Proxy ...). The caller still gets a reply, with a stack that names no path.
     const err = new Error("The controller threw a value that cannot be sent");
     err.stack = `Error: ${err.message}`;
-    return jss.stringify({ err, type, queryId });
+    return jss.stringify({ err, type, queryId }, NO_STACKS);
   }
 }
 
@@ -217,7 +195,7 @@ function errorFrame(thrown, type, queryId) {
  * @returns {string} JSS text ready for `socket.send` or an SSE `data:` line
  */
 function dataFrame(data, type, queryId) {
-  return jss.stringify(data === undefined ? { "data<!U>": 0, type, queryId } : { data, type, queryId });
+  return jss.stringify(data === undefined ? { "data<!U>": 0, type, queryId } : { data, type, queryId }, NO_STACKS);
 }
 
 /**

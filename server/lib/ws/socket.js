@@ -115,6 +115,13 @@ const READY_STATES = {
 };
 
 /**
+ * Most fragments one message may be made of; more closes the connection with 1009. 4096
+ * fragments of 4 KiB reach 16 MiB, far beyond what real clients do (they send one frame).
+ * @constant {number}
+ */
+const MAX_FRAGMENTS = 4096;
+
+/**
  * WebSocket connection class that wraps a TCP socket with the WebSocket frame protocol.
  *
  * This class handles:
@@ -223,6 +230,14 @@ class WebSocket extends EventEmitter {
      * @private
      */
     this._fragmentOpcode = null;
+
+    /**
+     * Bytes held in `_fragments`, kept as a running total (summing the array on every
+     * fragment is quadratic: 100,000 one-byte fragments blocked the event loop for a minute).
+     * @type {number}
+     * @private
+     */
+    this._fragmentBytes = 0;
 
     // Expose ready states as instance properties for convenience
     /**
@@ -431,6 +446,7 @@ class WebSocket extends EventEmitter {
         // announced, and a 64-bit length threw out of the socket's data handler.
         this._buffer = Buffer.alloc(0);
         this._fragments = [];
+        this._fragmentBytes = 0;
         this.close(1009, "Message too big");
         return;
       }
@@ -477,6 +493,7 @@ class WebSocket extends EventEmitter {
         } else {
           // First frame of fragmented message
           this._fragments = [payload];
+          this._fragmentBytes = payload.length;
           this._fragmentOpcode = opcode;
         }
         break;
@@ -510,7 +527,7 @@ class WebSocket extends EventEmitter {
    * @param {Buffer} payload - Fragment payload
    * @private
    */
-  /* istanbul ignore next 18 - WebSocket fragmentation rarely used by modern clients */
+  /* istanbul ignore next 25 - WebSocket fragmentation rarely used by modern clients */
   _handleContinuation(fin, payload) {
     // Continuation without a starting frame is an error
     if (!this._fragmentOpcode) {
@@ -518,11 +535,16 @@ class WebSocket extends EventEmitter {
       return;
     }
 
-    // Add fragment to collection; all the fragments of one message count against the limit
+    // Add fragment to collection. All the fragments of one message count against the limit,
+    // and so does their NUMBER: the byte total bounds memory but not the per-fragment cost
+    // of a stream of one-byte frames.
     this._fragments.push(payload);
-    if (this._fragments.reduce((bytes, part) => bytes + part.length, 0) > this._maxPayload) {
+    this._fragmentBytes += payload.length;
+    if (this._fragmentBytes > this._maxPayload || this._fragments.length > MAX_FRAGMENTS) {
       this._fragments = [];
+      this._fragmentBytes = 0;
       this._fragmentOpcode = null;
+      this._buffer = Buffer.alloc(0); // stop parsing what the peer already sent
       this.close(1009, "Message too big");
       return;
     }
@@ -531,6 +553,7 @@ class WebSocket extends EventEmitter {
     if (fin) {
       this.emit("message", Buffer.concat(this._fragments));
       this._fragments = [];
+      this._fragmentBytes = 0;
       this._fragmentOpcode = null;
     }
   }

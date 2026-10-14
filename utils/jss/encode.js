@@ -131,6 +131,9 @@ const tagLookup = {
  * with the stored path.
  *
  * @param {any} obj - The object to encode
+ * @param {Object} [options] - Encoding options
+ * @param {boolean} [options.errorStacks=true] - `false` encodes every Error's stack as `"Name: message"`
+ *        instead of its real one (a server sending data to a peer: real stacks hold absolute paths)
  * @returns {Object} Encoded object with tagged keys for extended types
  *
  * @example
@@ -177,7 +180,7 @@ const tagLookup = {
  * encode({ dates: [new Date(), new Date()] })
  * // { "dates<![D,D]>": [1704067200000, 1704067300000] }
  */
-function encode(obj) {
+function encode(obj, { errorStacks = true } = {}) {
   /**
    * WeakMap tracking visited objects to detect circular references
    * Maps each visited object to its path in the object tree
@@ -201,7 +204,9 @@ function encode(obj) {
     // Handle special types with known tags
     if (tag !== undefined) {
       if ("D" === tag) return [tag, value.valueOf()];
-      if ("E" === tag) return [tag, [value.name, value.message, value.stack]];
+      if ("E" === tag) {
+        return [tag, [value.name, value.message, errorStacks ? value.stack : `${value.name || "Error"}: ${value.message}`]];
+      }
       if ("R" === tag) return [tag, value.toString()];
       if ("U" === tag) return [tag, null];
       if ("S" === tag) return [tag, Array.from(value)];
@@ -282,6 +287,7 @@ function encode(obj) {
  * This is the high-level API - use this for most cases.
  *
  * @param {any} obj - The object to stringify
+ * @param {Object} [options] - Passed to `encode` (`errorStacks: false` sends stacks as `"Name: message"`)
  * @returns {string} JSS-encoded JSON string
  *
  * @example
@@ -305,8 +311,8 @@ function encode(obj) {
  * // Ready for WebSocket transmission
  * socket.send(stringify({ type: '/chat', data: { text: 'Hi!' } }))
  */
-function stringify(obj) {
-  return JSON.stringify(encode(obj));
+function stringify(obj, options) {
+  return JSON.stringify(encode(obj, options));
 }
 
 module.exports = { encode, stringify };

@@ -118,14 +118,16 @@ const ERROR_CLASSES = Object.freeze({
  * Tag decoder lookup table
  *
  * Maps single-character tags to their decoder functions.
- * Each decoder takes the encoded value and returns the decoded JavaScript value.
+ * Each decoder takes the encoded value (and, for `P`, the decoded object and key it sits in)
+ * and returns the decoded JavaScript value. No decoder is handed the path: copying it for every
+ * tagged node multiplied the cost of a deep frame by its depth.
  *
- * @type {Object.<string, function(any, string[]?): any>}
+ * @type {Object.<string, function(any, Object=, (string|number)=): any>}
  * @private
  *
  * @property {function(string): RegExp} R - Decode RegExp from string pattern
  * @property {function(number): Date} D - Decode Date from timestamp
- * @property {function(string[], string[]): null} P - Register pointer for later resolution
+ * @property {function(string[], Object, (string|number)): null} P - Register pointer for later resolution
  * @property {function([string, string, string]): Error} E - Decode Error with name, message, stack
  * @property {function(): undefined} U - Return undefined
  * @property {function(any[]): Set} S - Decode Set from array
@@ -162,12 +164,11 @@ const tagLookup = {
    * `Object`. The write lands on an object this decoder just created.
    *
    * @param {string[]} sourcePath - Path to the referenced object
-   * @param {string[]} currentPath - Unused (kept for the decoder signature)
    * @param {Object|Array} parent - The decoded object or array holding the pointer
    * @param {string|number} key - The pointer's key (or index) in `parent`
    * @returns {null} Placeholder (will be replaced during resolution)
    */
-  P: (sourcePath, currentPath, parent, key) => {
+  P: (sourcePath, parent, key) => {
     pointers2Res.push([sourcePath, parent, key]);
     return null;
   },
@@ -329,7 +330,7 @@ function decodeValue(val, tag, path, parent, key) {
 
   // If we have a known tag, use the appropriate decoder
   if (hasOwn(tagLookup, tag)) {
-    return tagLookup[tag](val, path.slice(), parent, key);
+    return tagLookup[tag](val, parent, key);
   }
 
   // Check custom plugins

@@ -53,8 +53,7 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
   - the built-in WebSocket server had **no limit on message size** (a 1 MiB cap in the
     source was passed to a library that was not in use) and threw out of its data handler on
     a frame announcing a length of 4 GiB or more, which ends the process: messages are now
-    limited by `maxMessageBytes` (default 16 MiB, see Breaking) and an oversize or malformed
-    frame closes the socket with 1009 / 1002;
+    limited by `maxMessageBytes` (default 16 MiB, see Breaking). All fragments of one message count against it, and so does their number (at most 4096: the byte total bounds memory but not the per-frame cost, and re-summing the fragments on each one made 100,000 one-byte fragments block the loop for a minute); an oversize or malformed frame closes the socket with 1009;
   - the HTTP long-poll `POST` read any body into memory: it answers 413 over
     `maxMessageBytes`.
 - **Related holes closed in the same change** (all reachable by the same kind of client,
@@ -159,7 +158,7 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
   so the handler ran twice for every state change. It is registered once.
 - **Errors arrived as the message string only.** The caller now gets an `Error`
   with the thrown class and message and the `code` / `data` the controller attached
-  (`err.code`, `err.data`). The server stack is not sent: every Error that leaves the server has the stack `Name: message`, whether it was thrown, a thrown string, an unknown endpoint, a push, or sits inside a thrown object or array. A thrown string arrives as an
+  (`err.code`, `err.data`). The server stack is not sent: every Error that leaves the server has the stack `Name: message`: thrown, a thrown string, an unknown endpoint, one a controller returns or pushes (`this.broadcast`, `this.send`, a publish), or one nested anywhere in a reply or a thrown object (the JSS encoder takes `errorStacks: false`, which the WebSocket, POST and SSE senders all use). Error **messages** are forwarded as written, so a message that carries a path (a `Cannot find module '/srv/app/...'`) still reaches the caller: catch and rewrap library errors. A thrown string arrives as an
   `Error`. 4.3.0 sent the message only; what 4.4.0 forwards is deliberately narrow, because
   a thrown value is whatever a controller's libraries produced: `code` only when it is a
   string or a number on the error's own enumerable properties; `data` only when it is own

@@ -41,7 +41,7 @@ Origin check (exact host:port accepted, another port and a foreign domain refuse
 
 ### `security-decode.ts`
 
-The decoder as a security boundary under real Bun: a raw peer sends a frame whose error tag names `Worker` (carrying a `data:` script that would write a marker file) or `WebSocket` (carrying the address of a local listener). Nothing may run and nothing may connect; honest calls and a standard `TypeError` still work. Also: a pointer that would land on a prototype changes nothing in the server process, an inline binary tag that only claims a length allocates nothing, an unknown endpoint and a thrown string answer stacks with no server path, and `maxMessageBytes` closes the socket on an oversize message. `APE_ROOT=/older/checkout` shows it failing on 4.4.0 and earlier.
+The decoder as a security boundary under real Bun: a raw peer sends a frame whose error tag names `Worker` (carrying a `data:` script that would write a marker file) or `WebSocket` (carrying the address of a local listener). Nothing may run and nothing may connect; honest calls and a standard `TypeError` still work. Also: a pointer that would land on a prototype changes nothing in the server process, an inline binary tag that only claims a length allocates nothing, an unknown endpoint and a thrown string answer stacks with no server path, an Error a controller returns arrives with the stack `Name: message`, and `maxMessageBytes` closes the socket on an oversize message. `APE_ROOT=/older/checkout` shows it failing on 4.4.0 and earlier.
 
 ### `scenario-runner.ts`
 

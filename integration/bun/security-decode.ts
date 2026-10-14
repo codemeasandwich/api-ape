@@ -23,6 +23,7 @@ const { apeBun } = await import(resolve(ROOT, 'server/lib/bun.js'));
 
 const dir = mkdtempSync(join(tmpdir(), 'ape-bun-hostile-'));
 writeFileSync(join(dir, 'echo.js'), `module.exports = (d) => ({ echo: d });`);
+writeFileSync(join(dir, 'retErr.js'), `module.exports = () => ({ failed: new Error('returned'), list: [new TypeError('in a list')] });`);
 writeFileSync(join(dir, 'strthrow.js'), `module.exports = () => { throw 'plain string'; };`);
 const prefix = basename(dir);
 
@@ -120,6 +121,13 @@ await test('an unknown endpoint and a thrown string answer stacks with no server
         const text = JSON.stringify(reply);
         assert(reply?.['err<!E>'] && !/\\n\s+at /.test(text) && !text.includes(dir), `${type}: the reply carried a server stack: ${text.slice(0, 300)}`);
     }
+});
+
+await test('an Error a controller returns, even nested in the reply, arrives with the stack Name: message', async () => {
+    const reply = await peer(call('retErr', {}));
+    const text = JSON.stringify(reply);
+    assert(reply?.data?.['failed<!E>'][2] === 'Error: returned', `the stack was ${JSON.stringify(reply?.data?.['failed<!E>'])}`);
+    assert(!/\\n\s+at /.test(text) && !text.includes(dir), `the reply carried a server stack: ${text.slice(0, 300)}`);
 });
 
 await test('maxMessageBytes closes the socket on a bigger message and answers a smaller one', async () => {

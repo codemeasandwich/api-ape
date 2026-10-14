@@ -25,6 +25,7 @@ const CONTROLLERS = {
     throw new Error('generic');
   };`,
   "echo.js": "module.exports = (d) => ({ echo: d });",
+  "retErr.js": "module.exports = () => ({ failed: new Error('returned'), list: [new TypeError('in a list')] });",
   "strthrow.js": "module.exports = () => { throw 'plain string'; };",
   "falsy.js": "module.exports = (d) => { throw d.v; };",
   "who.js": "module.exports = function () { return { clientId: this.clientId, sessionId: this.sessionId }; };",
@@ -34,6 +35,7 @@ const CONTROLLERS = {
     this.send('private', { ok: true });
     this.send('failure', undefined, Object.assign(new TypeError('pushed'), { code: 'P' }));
     this.send('failure2', undefined, 'pushed string');
+    this.send('evt', { e: new Error('pushed') });
     return { hasPublish: typeof this.publish, hasOthers: typeof this.broadcastOthers, clients: typeof this.clients };
   };`,
 };
@@ -151,7 +153,7 @@ describe("Long poll", () => {
     await readFor("__connected__");
 
     const { frame } = await post("context", {}, cookie);
-    await readFor("failure2");
+    await readFor("evt");
 
     expect(frame.data.hasOthers).toBe("function");
     const frames = seen.split("\n\n").filter((line) => line.startsWith("data: ")).map((line) => jss.parse(line.slice(6)));
@@ -163,6 +165,7 @@ describe("Long poll", () => {
     expect(failure.err.stack).toBe("TypeError: pushed");
     expect(failure.errCode).toBe("P");
     expect(frames.find((f) => f.type === "failure2").err.stack).toBe("Error: pushed string"); // no server path
+    expect(frames.find((f) => f.type === "evt").data.e.stack).toBe("Error: pushed"); // a pushed Error too
     await reader.cancel().catch(() => {});
   });
 
@@ -263,5 +266,13 @@ describe("Long poll", () => {
     const refused = await send("x".repeat(2000));
     expect(refused.status).toBe(413);
     expect((await refused.json()).error).toMatch(/maxMessageBytes/);
+  });
+
+  test("Errors in a returned object arrive with the stack Name: message, no server path", async () => {
+    const { frame } = await post("retErr", {}, "apeClientId=ABC");
+
+    expect(frame.data.failed.stack).toBe("Error: returned");
+    expect(frame.data.list[0].stack).toBe("TypeError: in a list");
+    expect(require("util").inspect(frame, { depth: null })).not.toContain(dir);
   });
 });

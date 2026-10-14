@@ -390,10 +390,10 @@ describe("Call contract", () => {
       expect(frame.err.b.stack).toBe("Error: same");
     });
 
-    test("a thrown object nested 40 levels deep arrives as an error reply, not a hang", async () => {
+    test("a thrown object nested 40 levels deep arrives as thrown", async () => {
       const frame = await failWith("too-deep-thrown");
 
-      expect(frame.err.message).toMatch(/cannot be sent/);
+      expect(JSON.stringify(frame.err).match(/"v"/g)).toHaveLength(40);
     });
 
     test("a thrown Date, and Dates and Buffers inside a thrown object, are sent as they are", async () => {
@@ -404,7 +404,9 @@ describe("Call contract", () => {
     });
 
     test("an Error with no name inside a thrown object arrives as an Error, and an Error whose message is a number keeps it as text", async () => {
-      expect((await failWith("nameless-error-inside")).err.e.name).toBe("Error");
+      const nameless = (await failWith("nameless-error-inside")).err.e;
+      expect(nameless.message).toBe("x");
+      expect(nameless.stack).toBe("Error: x");
       expect((await failWith("numeric-message")).err.message).toBe("5");
     });
 

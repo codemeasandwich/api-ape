@@ -51,7 +51,7 @@ WebSocket connection class:
 
 - Wraps raw TCP socket with WebSocket frame protocol
 - Handles message fragmentation and reassembly
-- Enforces `maxPayload` (one frame on its header, or all fragments of a message): over it, or a malformed header, closes with 1009 / 1002 instead of buffering or throwing out of the data handler
+- Enforces `maxPayload` (one frame on its header, or all fragments of a message, with a running byte total) and at most 4096 fragments per message: over it, or a malformed header, closes with 1009 / 1002 instead of buffering or throwing out of the data handler
 - Automatically responds to ping frames with pong
 - Manages connection state transitions (OPEN → CLOSING → CLOSED)
 - Emits `message`, `close`, and `error` events

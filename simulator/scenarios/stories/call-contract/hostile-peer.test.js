@@ -32,6 +32,9 @@ const CONTROLLERS = {
   });`,
   "upload.js": "module.exports = (d) => ({ keys: Object.keys(d) });",
   "strthrow.js": "module.exports = () => { throw 'plain string'; };",
+  "retErr.js": "module.exports = () => new Error('returned');",
+  "retNested.js": "module.exports = () => ({ failed: new Error('deep'), list: [new TypeError('in a list')] });",
+  "pushErr.js": "module.exports = function () { this.broadcast('evt', { e: new Error('pushed') }); return 'sent'; };",
   "falsy.js": "module.exports = (d) => { throw d.v; };",
   "nested.js": "module.exports = () => { throw { why: new Error('inner'), list: [new RangeError('in a list')] }; };",
 };
@@ -263,6 +266,38 @@ describe("Hostile peer", () => {
     });
   });
 
+  describe("Errors in what a controller returns or pushes", () => {
+    const inspect = (frame) => require("util").inspect(frame, { depth: null }); // prints an Error's stack
+
+    test("a returned Error, and Errors nested in a returned object, arrive with the stack Name: message", async () => {
+      const raw = await peer();
+
+      const one = await raw.reply(raw.call("retErr", {}));
+      const nested = await raw.reply(raw.call("retNested", {}));
+
+      expect(one.data.stack).toBe("Error: returned");
+      expect(nested.data.failed.stack).toBe("Error: deep");
+      expect(nested.data.list[0].stack).toBe("TypeError: in a list");
+      for (const text of [inspect(one), inspect(nested)]) {
+        expect(text).not.toMatch(/\n\s+at /);
+        expect(text).not.toContain(dir);
+      }
+      raw.close();
+    });
+
+    test("an Error in a this.broadcast push arrives with the stack Name: message", async () => {
+      const raw = await peer();
+
+      await raw.reply(raw.call("pushErr", {}));
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const pushed = raw.frames.find((f) => f.type === "evt");
+      expect(pushed.data.e.stack).toBe("Error: pushed");
+      expect(inspect(pushed)).not.toContain(dir);
+      raw.close();
+    });
+  });
+
   describe("falsy throws", () => {
     test.each([[0, "0"], ["", "empty"], [null, "null"], [false, "false"]])("a controller that throws %p is an error reply, not a success", async (value) => {
       const raw = await peer();
@@ -311,6 +346,33 @@ describe("Hostile peer", () => {
 
       expect(await closed).toBe(1009);
     });
+
+    test("100,000 one-byte fragments (300 KB, far under the byte limit) close the socket with 1009 at once, and another client stays responsive", async () => {
+      const net = require("net");
+      const sock = net.connect(server.port, server.host);
+      const received = [];
+      sock.on("data", (chunk) => received.push(chunk));
+      sock.on("error", () => {}); // the server drops the connection while this side is still writing
+      const closed = new Promise((resolve) => sock.on("close", resolve));
+      sock.write(
+        "GET /hostile/ape HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+          "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const first = Buffer.from([0x01, 0x01, 0x78]); // text frame, not final, "x"
+      const more = Buffer.from([0x00, 0x01, 0x78]); // continuation, not final, "x"
+      const started = Date.now();
+
+      sock.write(Buffer.concat([first, ...Array.from({ length: 100000 }, () => more)]));
+      const other = await peer();
+      const answered = await other.reply(other.call("echo", { ok: 1 }));
+      await closed;
+
+      expect(Date.now() - started).toBeLessThan(5000); // it took about a minute when each fragment re-summed the others
+      expect(answered.data).toEqual({ echo: { ok: 1 } });
+      expect(Buffer.concat(received).includes(Buffer.from([0x03, 0xf1]))).toBe(true); // close code 1009
+      other.close();
+    }, 30000);
 
     test("a frame announcing a 64-bit length closes the connection with 1009 and the server keeps running", async () => {
       const net = require("net");
