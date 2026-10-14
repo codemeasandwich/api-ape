@@ -37,7 +37,7 @@ Module entry point that re-exports client and pub/sub functions:
 
 - Wires `removeClient` to automatically call `cleanupClientSubscriptions`
 - Exports `broadcast(type, data, excludeClientId)` for messaging all clients
-- Re-exports pub/sub functions: `subscribe`, `unsubscribe`, `publish`
+- Re-exports pub/sub functions: `subscribe`, `unsubscribe`, `publish`, `clearLastMessage`
 
 ### `pubsub.js`
 
@@ -46,6 +46,7 @@ Channel-based pub/sub system for targeted messaging:
 - `subscribe(clientId, channel)` — Subscribe client, returns last message if available
 - `unsubscribe(clientId, channel)` — Remove client from channel
 - `publish(channel, data)` — Send message to all channel subscribers
+- `clearLastMessage(channel)` — Forget the channel's retained last message (the next subscriber gets nothing; current subscribers are unaffected)
 - `cleanupClientSubscriptions(clientId)` — Remove all subscriptions on disconnect
 - Stores last published message per channel for late-joining subscribers
 

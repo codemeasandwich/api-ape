@@ -154,8 +154,15 @@ function _resetForTesting() {
  * - URL path patterns for all endpoints
  *
  * @param {Object} options - Configuration options
- * @param {string} options.where - Directory containing API controllers (relative to CWD)
+ * @param {string} [options.where] - Directory containing API controllers (relative to CWD).
+ *     Give `where` or `controllers`, not both.
+ * @param {Object<string, Function|{default: Function}>} [options.controllers] - Map of endpoint
+ *     path to controller, used instead of scanning `where` (for `bun build --compile`
+ *     executables, which have no folder). URL prefix defaults to `api`.
  * @param {Function} [options.onConnect] - Connection lifecycle callback
+ * @param {Function} [options.onSubscribe] - `(channel, context) => boolean | Promise<boolean>`:
+ *     who may subscribe to a channel (`context` is `{ clientId, sessionId, embed }`); only
+ *     `true` allows. Absent: any client may subscribe to any channel.
  * @param {Object} [options.fileTransferOptions] - File transfer configuration
  * @param {number} [options.fileTransferOptions.startTimeout=60000] - Timeout before upload starts
  * @param {number} [options.fileTransferOptions.completeTimeout=60000] - Timeout for upload completion
@@ -203,6 +210,7 @@ function createApeCore(options, defaultOriginMode) {
     fileTransferOptions,
     longPollingOptions,
     origin,
+    onSubscribe,
     maxMessageBytes = DEFAULT_MAX_MESSAGE_BYTES,
   } = options;
   // Controllers come from `where` (a folder scan) or `controllers` (a map the app built,
@@ -223,6 +231,7 @@ function createApeCore(options, defaultOriginMode) {
   const originPolicy = resolveOriginPolicy(origin, defaultOriginMode);
   const wiringHandler = wiring(controllers, onConnect, fileTransfer, {
     originPolicy,
+    onSubscribe,
   });
   const { handleStreamGet, handleStreamPost } = createLongPollingHandler(
     controllers,
@@ -265,7 +274,9 @@ function createApeCore(options, defaultOriginMode) {
  * | Option               | Type     | Description                                |
  * |----------------------|----------|--------------------------------------------|
  * | `where`              | string   | Directory containing API controllers       |
+ * | `controllers`        | Object   | Map of endpoint path to function (instead of `where`) |
  * | `onConnect`          | Function | Called when a client connects              |
+ * | `onSubscribe`        | Function | Decides who may subscribe to a channel     |
  * | `fileTransferOptions`| Object   | Binary file transfer configuration         |
  * | `transport`          | string   | Force transport: 'websocket' or 'longpolling' |
  * | `logging`            | boolean\|Object | `false` silences api-ape internal logs; object sets custom log/warn/error sinks |
@@ -287,8 +298,10 @@ function createApeCore(options, defaultOriginMode) {
  *
  * @param {http.Server|Object} server - HTTP server instance (Node.js or Bun)
  * @param {Object} options - Configuration options
- * @param {string} options.where - Directory containing API controller files
+ * @param {string} [options.where] - Directory containing API controller files (or `controllers`)
+ * @param {Object<string, Function|{default: Function}>} [options.controllers] - Endpoint path to function, instead of `where`
  * @param {Function} [options.onConnect] - Connection lifecycle callback
+ * @param {Function} [options.onSubscribe] - Subscribe authorisation, see `createApeCore`
  * @param {Object} [options.fileTransferOptions] - File transfer settings
  * @param {string} [options.transport] - Force specific transport mode
  * @returns {Object} Server information including WebSocket server instance

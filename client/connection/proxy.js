@@ -76,13 +76,14 @@ const reservedKeys = new Set([
  *
  * The returned proxy intercepts every property access to extend an
  * accumulated path (`_path`). Calling any wrapped node dispatches:
- * - `wrapped(callback)`  → `subscribe(_path, callback)` and returns the unsubscribe fn
+ * - `wrapped(callback, onError?)` → `subscribe(_path, callback, onError)` and returns the unsubscribe fn;
+ *   `onError(err)` runs if the server refuses the subscription (`err.code === 'SUBSCRIBE_REFUSED'`)
  * - `wrapped(payload)`   → `api(_path, payload)` and returns the sender's Promise
  * - `wrapped()`          → `api(_path, undefined)` (no payload)
  *
  * Dynamic path segments are expressed with bracket access — e.g.
  * `api.users[userId](body)` — so the call itself always receives the
- * payload (or callback) only. There is no two-argument form.
+ * payload (or callback) only; the one second argument is a subscription's `onError`.
  *
  * @param {Function} api - The sender function. Signature: `(path, data) => Promise`.
  * @param {Function|Object} [root=api] - The object that carries the reserved members
@@ -149,12 +150,13 @@ export function wrap(api, root = api) {
       // segment regardless of dispatch mode (RPC vs subscribe).
       const path = (target._path || "") + joinKey + key;
 
-      // Dispatch function: single argument is either a subscription
-      // callback or an RPC payload. No second argument is accepted —
-      // dynamic segments belong on the proxy chain via bracket access.
-      const wrapper = function (payload) {
+      // Dispatch function: the first argument is either a subscription callback or an
+      // RPC payload. A second argument exists only for a subscription: the function
+      // called if the server refuses it. Dynamic segments belong on the proxy chain via
+      // bracket access.
+      const wrapper = function (payload, onError) {
         if (typeof payload === "function") {
-          return subscribe(path, payload);
+          return subscribe(path, payload, onError);
         }
         return api(path, payload);
       };

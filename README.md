@@ -126,6 +126,7 @@ await api.message({ text: 'Hello' })                   // RPC call
 * **[Auto-wiring](server/README.md#auto-routing)** — Drop JS files in a folder, they become API endpoints
 * **[Real-time broadcasts](server/README.md#controller-context-this)** — Built-in `broadcast()` and `broadcastOthers()` methods
 * **[Pub/Sub channels](server/README.md#pubsub-channels)** — Clients subscribe to channels, server publishes updates
+* **[Subscribe authorisation](server/README.md#authorising-subscriptions-onsubscribe)** — `onSubscribe(channel, context)` decides who may subscribe; `clearLastMessage(channel)` forgets a channel's retained message
 * **[Compiled executables](server/README.md#compiled-executables-controllers)** — `controllers: { 'cards/move': fn }` in place of `where`, for `bun build --compile` binaries
 * **[Promise-based calls](client/README.md#usage)** — `api.users.list()` maps to `api/users/list.js`
 * **[Origin check](server/README.md#origin-check)** — Exact host:port matching (`origin.mode: 'exact'`, default on Bun), `allowedOrigins`, `allowedHosts`

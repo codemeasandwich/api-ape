@@ -88,4 +88,4 @@ Handles incoming message processing and dispatch. Processes binary data hydratio
 
 ### `subscriptions.js`
 
-Manages channel subscriptions for the chained subscription syntax. Tracks local callbacks per channel, sends subscribe/unsubscribe messages to server, dispatches incoming data to callbacks, and handles resubscription on reconnect.
+Manages channel subscriptions for the chained subscription syntax. Tracks local callbacks per channel, sends subscribe/unsubscribe messages to server, dispatches incoming data to callbacks, and handles resubscription on reconnect. A subscription may carry an `onError`; when the server refuses it (`__subscribe_refused__`, from the server's `onSubscribe`) `refuse(err)` calls each subscriber's `onError` once and drops the channel.

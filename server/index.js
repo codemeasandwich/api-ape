@@ -118,7 +118,7 @@
 
 const { configureApeLogging } = require("../utils/apeLogger");
 const serverApe = require("./lib/main");
-const { clients, publish, broadcast, broadcastOthers } = require("./lib/broadcast");
+const { clients, publish, clearLastMessage, broadcast, broadcastOthers } = require("./lib/broadcast");
 const createPublishProxy = require("./lib/broadcast/publishProxy");
 const api = require("./client");
 const { _queueOrSend } = require("./client");
@@ -140,6 +140,7 @@ const publishProxy = createPublishProxy();
  */
 serverApe.clients = clients;
 serverApe.publish = publishProxy;
+serverApe.clearLastMessage = clearLastMessage;
 serverApe.broadcast = broadcast;
 serverApe.broadcastOthers = broadcastOthers;
 
@@ -246,6 +247,25 @@ function ape(firstArg, ...rest) {
 ape.publish = publishProxy;
 
 /**
+ * Forget a channel's retained last message
+ *
+ * `publish` keeps the last message of each channel and hands it to every new subscriber.
+ * Call this to stop that for a channel (a private message, a session that ended). Current
+ * subscribers are not affected; the next publish is retained again. It is a function of
+ * its own, not `ape.publish.clearLastMessage`, because the publish proxy turns every
+ * property name into a channel.
+ *
+ * @function clearLastMessage
+ * @param {string} channel - Channel path, e.g. `/dm/ada`
+ * @returns {void}
+ *
+ * @example
+ * ape.publish.dm.ada({ text: 'for Ada only' })   // subscribers get it now
+ * ape.clearLastMessage('/dm/ada')                 // nobody who subscribes later does
+ */
+ape.clearLastMessage = clearLastMessage;
+
+/**
  * Read-only Map of connected clients
  *
  * Provides access to all currently connected clients. Each client entry
@@ -343,6 +363,7 @@ module.exports = api;
 module.exports.ape = ape;
 module.exports.api = api;
 module.exports.publish = publishProxy;
+module.exports.clearLastMessage = clearLastMessage;
 module.exports.broadcast = broadcast;
 module.exports.broadcastOthers = broadcastOthers;
 module.exports.clients = clients;

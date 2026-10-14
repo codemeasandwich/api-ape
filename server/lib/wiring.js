@@ -309,7 +309,7 @@ module.exports = function wiring(controllers, onConnect, fileTransfer, options =
   onConnect = onConnect || (() => {});
 
   // Extract auth framework and middleware from options
-  const { authFramework = null, authMiddleware = null, originPolicy } = options;
+  const { authFramework = null, authMiddleware = null, originPolicy, onSubscribe } = options;
 
   /**
    * WebSocket connection handler
@@ -512,6 +512,7 @@ module.exports = function wiring(controllers, onConnect, fileTransfer, options =
           socketAuth,
           authFramework,
           authMiddleware,
+          onSubscribe,
         };
 
         /**

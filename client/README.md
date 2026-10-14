@@ -191,8 +191,24 @@ unsub1()
 unsub2()
 ```
 
+### Subscriptions the server refuses
+
+A server started with an `onSubscribe` guard (see the [server docs](../server/README.md#authorising-subscriptions-onsubscribe)) may refuse a subscription. Pass a second function to hear of it:
+
+```js
+const unsub = api.user.ada.inbox(
+  data => console.log('Received:', data),
+  err => {
+    // err.code === 'SUBSCRIBE_REFUSED', err.data.channel === '/user/ada/inbox'
+    console.warn(err.message)   // Subscription to "/user/ada/inbox" refused
+  },
+)
+```
+
+The refused channel never delivers its retained message or later publishes. The error function is called once per subscriber of the channel, and the channel's callbacks are then dropped: it is not retried on reconnect (call `api.user.ada.inbox(...)` again to ask again). With no second function the refusal is logged as a warning. There is no acknowledgement for a subscription the server allows. Only a subscription takes a second function; an RPC call still takes one argument. The server-side client (`api.connect(host, port)` in Node) behaves the same.
+
 **Behavior:**
-- On subscribe, you receive the last published message immediately (if any)
+- On subscribe, you receive the last published message immediately (if any), unless the server refuses the subscription
 - Subscriptions are automatically restored on reconnect
 - Subscriptions are automatically cleaned up on disconnect
 

@@ -20,6 +20,7 @@ socket/
 ├── open.js            # Connection validation & security check
 ├── pluginHooks.js     # Plugin onSend/onReceive hooks around JSS (resolve plugin-tagged values)
 ├── receive.js         # Incoming message handler
+├── subscribeGate.js   # Subscribe authorisation (`onSubscribe`) for one connection
 ├── receiveContext.js  # Controller context factory
 ├── send.js            # Outgoing message handler
 └── tagUtils.js        # Binary data tag parsing utilities
@@ -50,7 +51,7 @@ Connection open handler called when a new WebSocket connection is established:
 Incoming message handler that processes client requests:
 
 - Parses incoming WebSocket messages (JSS encoded JSON)
-- Handles `subscribe` and `unsubscribe` messages for pub/sub channels
+- Routes `subscribe` and `unsubscribe` messages for pub/sub channels to `subscribeGate.js`
 - Extracts `type`, `data`, and `queryId` from the message
 - Detects binary upload tags (`<!B>`, `<!A>`, `<!F>`) in the message
 - Coordinates with `fileTransfer` to wait for HTTP uploads
@@ -71,6 +72,10 @@ Outgoing message handler that serializes and sends responses:
 ### `pluginHooks.js`
 
 Runs JSS plugin hooks around the wire: `processPluginSend` before a reply is encoded, `processPluginReceive` after a frame is decoded (finds `<!X>` plugin tags, calls the plugin's `onReceive`, injects the result with `setValueAtPath` from `tagUtils.js`), plus `findPluginTags` and `cleanPluginTags`. Peer keys are written with `setKey`, so a `__proto__` key cannot replace a prototype.
+
+### `subscribeGate.js`
+
+Per-connection handler for `{ subscribe }` / `{ unsubscribe }` frames. Without the `onSubscribe` option it subscribes and replays the retained message at once (the 4.4.0 behaviour). With it, it asks `onSubscribe(channel, { clientId, sessionId, embed })` first and subscribes and replays only on exactly `true` (fail closed: false, undefined, a throw, a rejection, a non-boolean or a non-string channel all refuse). A refusal sends `__subscribe_refused__` (an error frame: `errCode` `SUBSCRIBE_REFUSED`, `errData` `{ channel }`, no cause) and drops a subscription already held on the channel. Pending checks hold a token per channel so a late answer after an unsubscribe, a newer subscribe or a socket close records nothing.
 
 ### `receiveContext.js`
 

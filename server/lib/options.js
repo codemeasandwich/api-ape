@@ -22,6 +22,7 @@ const { apeLog } = require("../../utils/apeLogger");
 const KNOWN_OPTIONS = [
   "where",
   "controllers",
+  "onSubscribe",
   "urlPrefix",
   "selector",
   "onConnect",
@@ -74,6 +75,22 @@ function checkControllerSource(options) {
 }
 
 /**
+ * Reject an `onSubscribe` that is not a function: a guard that silently does not run
+ * would leave every channel open.
+ *
+ * @param {Object} options - The options object passed to `ape()` / `apeBun()`
+ * @returns {void}
+ * @throws {Error} If `onSubscribe` is present and not a function
+ */
+function checkOnSubscribe(options) {
+  if (options.onSubscribe != null && typeof options.onSubscribe !== "function") {
+    throw new Error(
+      `api-ape: onSubscribe must be a function (channel, context) => boolean | Promise<boolean>, got ${typeof options.onSubscribe}.`,
+    );
+  }
+}
+
+/**
  * Reject options that are not supported and warn about unknown ones.
  *
  * @param {Object} options - The options object passed to `ape()` / `apeBun()`
@@ -97,6 +114,7 @@ function checkOptions(options) {
     );
   }
   checkControllerSource(options);
+  checkOnSubscribe(options);
   const unknown = given.filter((key) => !KNOWN_OPTIONS.includes(key));
   if (unknown.length > 0) {
     apeLog.warn(

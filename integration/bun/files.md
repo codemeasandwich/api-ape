@@ -28,7 +28,8 @@ bun/
 ├── client-errors.ts     # Errors (class, code, data) and controller files (export default, .d.ts, tests)
 ├── options.ts           # apeBun options: unsupported auth options throw, typos warn, logging honoured, where/controllers refusals
 ├── controllers.ts       # `apeBun({ controllers })` through the real browser client, no controller folder
-└── compiled-binary.ts   # A `bun build --compile` binary started from another folder answers an RPC from the page client
+├── compiled-binary.ts   # A `bun build --compile` binary started from another folder answers an RPC from the page client
+└── subscribe.ts         # `onSubscribe` through the real browser client: refusal callback, no retained leak, `clearLastMessage`, streaming cannot subscribe
 ```
 
 ## Files
@@ -44,6 +45,10 @@ Entry point for the core Bun integration tests. Mounts `apeBun()` over `integrat
 ### `compiled-binary.ts`
 
 Writes a tiny server that imports two controllers and passes `controllers`, runs `bun build --compile`, starts the binary with an empty folder as its working directory, reads its port from stdout, and makes `cards/move` and `hello` calls with the real browser client. Skips (exit 0, with a message) only when this Bun cannot `build --compile`. `CONTROL=1` also builds the `where: 'api'` variant and shows its crash in `walkDir`; `APE_ROOT=/older/checkout` fails.
+
+### `subscribe.ts`
+
+`apeBun({ onSubscribe })` through the real browser client: a refused page's `onError` hears `SUBSCRIBE_REFUSED` and the page gets neither the retained message nor a later publish (the context has `clientId`, `embed`, `sessionId`); a page with no error callback keeps running; `clearLastMessage` leaves a later subscriber with nothing; a page on HTTP streaming (WebSockets blocked, served by `ape()` on Node) cannot subscribe, so it never receives a publish and the guard is never asked.
 
 ### `security.ts`
 

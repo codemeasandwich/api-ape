@@ -145,6 +145,10 @@ jobs:
         if: matrix.runtime == 'bun'
         run: bun run integration/bun/compiled-binary.ts
 
+      - name: Run Bun subscribe authorisation integration
+        if: matrix.runtime == 'bun'
+        run: bun run integration/bun/subscribe.ts
+
       - name: Run Deno integration
         if: matrix.runtime == 'deno'
         run: deno run --allow-all integration/deno/run.ts

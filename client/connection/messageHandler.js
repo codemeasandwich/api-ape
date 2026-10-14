@@ -15,6 +15,7 @@ import {
 import {
   hasSubscribers,
   dispatch as dispatchToSubscribers,
+  refuse as refuseSubscription,
 } from "./subscriptions";
 
 /**
@@ -61,6 +62,7 @@ export async function processIncomingData(data, err) {
  * Dispatch a received message to all registered handlers
  *
  * Messages are delivered to:
+ * 0. A `__subscribe_refused__` frame first tells the channel's subscribers of the refusal
  * 1. Chained subscription callbacks (new v2 syntax)
  * 2. Type-specific handlers registered via setOnReceiver(type, handler)
  * 3. Universal handlers registered via setOnReceiver(handler)
@@ -70,6 +72,10 @@ export async function processIncomingData(data, err) {
  * @param {any} data - Message data payload
  */
 export function dispatchMessage(type, err, data) {
+  // The server refused a subscription (its `onSubscribe`): the frame is an error frame
+  // whose `data.channel` says which; each subscriber's error callback hears of it.
+  if (type === "__subscribe_refused__" && err) refuseSubscription(err);
+
   // Dispatch to chained subscription callbacks (v2 syntax)
   if (hasSubscribers(type)) {
     dispatchToSubscribers(type, data);

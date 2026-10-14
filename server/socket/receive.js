@@ -9,7 +9,7 @@
 
 const { apeLog } = require("../../utils/apeLogger");
 const messageHash = require("../../utils/messageHash");
-const { subscribe, unsubscribe } = require("../lib/broadcast");
+const { createSubscribeGate } = require("./subscribeGate");
 const jss = require("../../utils/jss");
 const { hasOwn } = require("../../utils/safeKeys");
 const { ensureThrown } = require("../../utils/wireError");
@@ -43,10 +43,15 @@ module.exports = function receiveHandler(ape) {
     fileTransfer,
     socketAuth,
     authMiddleware,
+    socket,
+    onSubscribe,
   } = ape;
 
   const sessionId = getSessionId(sharedValues.req);
   const that = createControllerContext({ sharedValues, embedValues, clientId, sessionId, socketAuth });
+
+  // Subscribe / unsubscribe frames go through the gate (`onSubscribe`, see subscribeGate.js).
+  const subscriptions = createSubscribeGate({ onSubscribe, socket, send, clientId, sessionId, embedValues });
 
   // Create auth message handler if auth is configured
   const handleAuthMessage = socketAuth
@@ -63,20 +68,12 @@ module.exports = function receiveHandler(ape) {
 
       // Handle subscribe/unsubscribe messages
       if (rawParsed.subscribe) {
-        const channel = rawParsed.subscribe;
-        const result = subscribe(clientId, channel);
-        if (result?.lastMessage) {
-          try {
-            send(false, result.channel, result.lastMessage, false);
-          } catch (sendErr) {
-            // Socket likely closed
-          }
-        }
+        subscriptions.subscribe(rawParsed.subscribe);
         return;
       }
 
       if (rawParsed.unsubscribe) {
-        unsubscribe(clientId, rawParsed.unsubscribe);
+        subscriptions.unsubscribe(rawParsed.unsubscribe);
         return;
       }
 

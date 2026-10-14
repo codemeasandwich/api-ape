@@ -73,10 +73,11 @@ When `window` / `document` are missing (Next.js server render, etc.), the defaul
 | `api.foo[id].bar(data)`                 | RPC to `/foo/<id>/bar`                     | `Promise<response>`           |
 | `api.foo()`                             | RPC to `/foo` with no body                 | `Promise<response>`           |
 | `api.foo(callback)` *(arg is fn)*       | **Subscribe** to channel `/foo`            | `() => void` (unsubscribe)    |
+| `api.foo(callback, onError)`            | **Subscribe**; `onError(err)` runs if the server refuses (`err.code === 'SUBSCRIBE_REFUSED'`) | `() => void` |
 | `api.foo.bar(callback)`                 | **Subscribe** to `/foo/bar`                | `() => void`                  |
 | `api.stock[ticker](callback)`           | **Subscribe** to `/stock/<ticker>`         | `() => void`                  |
 
-The call itself always takes **one argument** — either a payload or a subscription callback. Dynamic path segments are expressed via bracket access on the proxy chain; they never live inside the call.
+The call itself takes **one argument** — either a payload or a subscription callback (a subscription may add a second function, `onError`, for a server that refuses it with `onSubscribe`). Dynamic path segments are expressed via bracket access on the proxy chain; they never live inside the call.
 
 ### Reserved keys (these don't build paths)
 
@@ -93,7 +94,7 @@ Subscriptions are inferred purely from **the type of the single argument**:
 
 ```js
 api.users(data)     // RPC      — data is anything except a function
-api.users(callback) // SUBSCRIBE — exactly one arg, and it is a function
+api.users(callback) // SUBSCRIBE — the first arg is a function (a second function, onError, hears of a refusal by the server's onSubscribe)
 ```
 
 If you ever need to send a function-shaped payload (you don't, JSON can't carry it) you'd be stuck — but in practice this disambiguation is fine.

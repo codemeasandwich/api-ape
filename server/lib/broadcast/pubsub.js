@@ -142,6 +142,19 @@ function publish(channel, data) {
 }
 
 /**
+ * Forget a channel's retained last message, so the next subscriber is sent nothing.
+ *
+ * Current subscribers are not touched and keep receiving publishes; the next publish is
+ * retained again. A channel nobody published to is a no-op.
+ *
+ * @param {string} channel - The channel name
+ * @returns {void}
+ */
+function clearLastMessage(channel) {
+  _lastMessages.delete(channel);
+}
+
+/**
  * Clean up all subscriptions for a disconnected client
  *
  * @param {string} clientId - The client's unique identifier
@@ -164,5 +177,6 @@ module.exports = {
   subscribe,
   unsubscribe,
   publish,
+  clearLastMessage,
   cleanupClientSubscriptions,
 };

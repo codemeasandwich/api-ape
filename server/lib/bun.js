@@ -78,9 +78,18 @@ const { bunWebSocketConfig } = require("./runtimes/bunWebSocketConfig");
  * @typedef {Object} ApeBunOptions
  * Configuration options for the Bun api-ape integration.
  *
- * @property {string} where - Directory containing controller files (relative to cwd).
+ * @property {string} [where] - Directory containing controller files (relative to cwd).
  *     Controllers in this directory become API endpoints.
  *     Example: 'api' means controllers in './api/' folder.
+ *     Give `where` or `controllers`, not both.
+ * @property {Object<string, Function|{default: Function}>} [controllers] - Map of endpoint
+ *     path to controller function, used instead of scanning `where`. For a
+ *     `bun build --compile` executable, which has no folder to scan:
+ *     `{ 'cards/move': move }`. The URL prefix then defaults to `api`.
+ * @property {Function} [onSubscribe] - `(channel, context) => boolean | Promise<boolean>`:
+ *     who may subscribe to a channel (`context` is `{ clientId, sessionId, embed }`). Only
+ *     `true` allows; a refused client gets a `__subscribe_refused__` frame. Absent: any
+ *     client may subscribe to any channel.
  * @property {string} [urlPrefix] - Public URL prefix for api-ape routes.
  *     Defaults to `where` (or its basename if absolute).
  * @property {string[]} [selector] - File extensions (without dots) the
@@ -151,7 +160,9 @@ const { bunWebSocketConfig } = require("./runtimes/bunWebSocketConfig");
  *
  * @function apeBun
  * @param {ApeBunOptions} options - Configuration options
- * @param {string}   options.where - Controller directory name
+ * @param {string}   [options.where] - Controller directory name (or `controllers`)
+ * @param {Object}   [options.controllers] - Endpoint path to function, instead of `where`
+ * @param {Function} [options.onSubscribe] - Subscribe authorisation
  * @param {string}   [options.urlPrefix] - Public URL prefix override
  * @param {string[]} [options.selector] - Loader file-extension whitelist
  *     (without dots). Defaults to `['js']`. Pass `['js','ts']` for Bun
@@ -209,6 +220,7 @@ function apeBun(options) {
     fileTransferOptions,
     origin,
     websocketOptions,
+    onSubscribe,
     maxMessageBytes = DEFAULT_MAX_MESSAGE_BYTES,
   } = options;
   /**
@@ -260,7 +272,7 @@ function apeBun(options) {
   // Exact host:port Origin matching is the default under Bun; resolved once so a
   // bad option throws at start-up, not on the first connection.
   const originPolicy = resolveOriginPolicy(origin, "exact");
-  const wiringHandler = wiring(controllers, onConnect, fileTransfer, { originPolicy });
+  const wiringHandler = wiring(controllers, onConnect, fileTransfer, { originPolicy, onSubscribe });
 
   // Handle WebSocket connections through the wiring layer
   wss.on("connection", wiringHandler);

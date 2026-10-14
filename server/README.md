@@ -119,6 +119,7 @@ This enables server-side microservice patterns while keeping the familiar api-ap
 |--------|------|-------------|
 | `where` | `string` | Directory containing controller files. **Give either `where` or `controllers`, not both** (startup throws if both or neither is given). Relative paths (e.g. `'api'`) are resolved against `process.cwd()` captured at module-load time. Absolute paths (e.g. `'/srv/myapp/api'`) are used verbatim — pass an absolute path when the calling process cannot guarantee a stable `cwd` (embedded servers, multi-tenant runners, test harnesses spawned from arbitrary directories). |
 | `controllers` | `object` | _Alternative to `where` (4.5.0)._ A map from endpoint path to controller function, `{ 'cards/move': move }`, used instead of scanning a folder. For a `bun build --compile` executable, which has no folder to scan (see [Compiled executables](#compiled-executables-controllers)). |
+| `onSubscribe` | `function` | _Optional (4.5.0)._ `(channel, context) => boolean \| Promise<boolean>`: decides who may subscribe to a channel (see [Authorising subscriptions](#authorising-subscriptions-onsubscribe)). Absent: any client may subscribe to any channel, as before. |
 | `urlPrefix` | `string` | _Optional._ Public URL segment for api-ape routes (`/${urlPrefix}/ape`, `/${urlPrefix}/ape.js`, etc.). Defaults to `where` when `where` is relative (preserving the historical `/api/ape` shape), or to `path.basename(where)` when `where` is absolute, or to `api` with `controllers` (where the browser client dials). Override when the on-disk controller path and the public URL segment must differ. |
 | `onConnect` | `function` | Connection lifecycle hook |
 | `fileTransferOptions` | `object` | Binary transfer settings (see below) |
@@ -133,7 +134,7 @@ This enables server-side microservice patterns while keeping the familiar api-ap
 
 ### `apeBun(options)` (Bun)
 
-`require('api-ape/bun').apeBun(options)` returns `{ fetch, websocket, wss, close }` for `Bun.serve()`. It takes the same options as `ape()` (`where` or `controllers`, `urlPrefix`, `selector`, `onConnect`, `fileTransferOptions`, `origin`, `watch`, `websocketOptions`, `maxMessageBytes`, `logging`). `fetch` answers the api-ape paths and returns `null` for anything else, so your own routes can follow.
+`require('api-ape/bun').apeBun(options)` returns `{ fetch, websocket, wss, close }` for `Bun.serve()`. It takes the same options as `ape()` (`where` or `controllers`, `urlPrefix`, `selector`, `onConnect`, `onSubscribe`, `fileTransferOptions`, `origin`, `watch`, `websocketOptions`, `maxMessageBytes`, `logging`). `fetch` answers the api-ape paths and returns `null` for anything else, so your own routes can follow.
 
 | Option | Type | Description |
 |--------|------|-------------|
@@ -451,6 +452,53 @@ unsub2()
 - **Chat rooms** — Subscribe to `/chat/room/123`, receive messages for that room only
 - **User-specific updates** — Subscribe to `/user/123/notifications`
 
+### Retained last message and `clearLastMessage`
+
+Every `publish` is kept as the channel's **last message** and handed to each new subscriber. To stop that for a channel (a private message, a session that ended), forget it:
+
+```js
+const { ape } = require('api-ape')
+ape.publish.dm.ada({ text: 'for Ada only' })   // current subscribers get it now
+ape.clearLastMessage('/dm/ada')                 // nobody who subscribes later does
+// also: `this.clearLastMessage(channel)` in a controller, and `require('api-ape').clearLastMessage`
+```
+
+Current subscribers are not affected and keep receiving publishes; the next publish is retained again; clearing a channel nobody published to does nothing. It is a function of its own rather than `publish(channel, data, { retain: false })` because the chained publish syntax (`ape.publish.a.b(data)`) has no place for options, and `ape.publish.clearLastMessage` would be a channel named `/clearLastMessage`.
+
+### Authorising subscriptions (`onSubscribe`)
+
+Without a guard, any client that can open a socket may send `{ subscribe: '/any/channel' }` and is handed that channel's retained last message at once, so a channel named after a user or a tenant leaks its latest payload to anyone who guesses the name. Pass `onSubscribe` to decide:
+
+```js
+ape(server, {
+  where: 'api',
+  onConnect: async (socket, req) => ({ embed: { user: await userFrom(req) } }),
+  onSubscribe: (channel, { embed }) => channel === `/user/${embed.user}/inbox` || channel.startsWith('/public/'),
+})
+```
+
+`onSubscribe(channel, context)` returns `true`, `false` or a Promise of either. `channel` is the string the client sent. `context` is the connection: `{ clientId, sessionId, embed }` (the same `clientId` and `sessionId` controllers see as `this`, and the `embed` that `onConnect` returned, `{}` if none).
+
+- It is asked **before** the subscription is recorded and **before** the retained message is replayed. A refused client gets neither that message nor any later publish.
+- **Fail closed:** only exactly `true` allows. `false`, `undefined` (a forgotten `return`), a truthy non-boolean, a throw, a rejected Promise, or a channel that is not a string all refuse. A throw or rejection is logged with `apeLog.error`; the client is never told the cause (a guard's exception can name a database or a token).
+- A refused client receives a `__subscribe_refused__` frame (see [Wire protocol](#wire-protocol)). A refusal also drops a subscription the client already held on that channel, so revoked permission takes effect when the client next subscribes (clients subscribe again on every reconnect, so the guard is asked again per connection). The guard is **not** re-asked on each publish: an allowed subscription stays until the client unsubscribes or disconnects.
+- Slow guards are safe: if the client unsubscribes, subscribes again (the later answer decides) or disconnects while a check is pending, the late answer is dropped and records nothing.
+- **WebSocket only.** The HTTP long-poll / streaming path cannot subscribe at all (its `POST` does not understand `{ subscribe }`, and never did), so a client on that path receives no channel publishes and `onSubscribe` is never asked for it. Publishing to a channel therefore cannot reach a streaming client. The server-side client (`api.connect`) and `apeBun()` use the WebSocket path and are guarded the same way.
+- `broadcast`, `this.send` and `client.send` are not channels and are not affected: they push to clients without a subscription, so do not use them for data a guard is meant to protect.
+
+On the client, a subscription takes a second function that hears of a refusal (browser client and the server-side client alike):
+
+```js
+const off = api.user.ada.inbox(
+  (data) => render(data),
+  (err) => {                                  // err.code === 'SUBSCRIBE_REFUSED'
+    console.warn(err.message, err.data.channel) // 'Subscription to "/user/ada/inbox" refused' '/user/ada/inbox'
+  },
+)
+```
+
+`err` is an `Error` with `code: 'SUBSCRIBE_REFUSED'` and `data: { channel }`. It is called once per subscriber of that channel, and the channel's callbacks are then dropped (a refused subscription is not retried on reconnect; call `api.channel(...)` again to ask again). Without the second function the refusal is logged as a warning. There is no success acknowledgement: a subscription the server allows is silent, as before.
+
 ### Comparison with Broadcast
 
 | Method | Sends To | Use Case |
@@ -654,6 +702,8 @@ Send messages to server when using HTTP streaming transport.
 - **Body**: JSS-encoded message
 - **Response**: the same frame a WebSocket gets, JSS text: `{ data, type: false, queryId }` (`data<!U>` for a controller that returns nothing), or, with HTTP 500, `{ err, errCode?, errData?, type: false, queryId }`, and with HTTP 404 the "was not found" error. Before 4.4.0 an error was `{ err: "<message>", queryId }`, and `code` / `data` were lost.
 - **Context**: the controller's `this` is built by the same code as on a WebSocket (`this.broadcast`, `this.broadcastOthers`, `this.publish`, `this.send`, `this.clients`, embed values, a per-call `this.keepalive()` that writes `{ queryId, _keepalive: true }` to the client's open GET stream, a private `this.foo`). One difference: an `embed` that names `clientId` or `sessionId` replaces them on this transport, as it always did; on a WebSocket the connection's own win.
+
+- **No subscriptions.** `POST` does not accept `{ subscribe }` / `{ unsubscribe }` frames (the call fails as an unknown message), so a client on this transport receives `broadcast` and `this.send` pushes but never channel publishes. `onSubscribe` has nothing to guard here (see [Authorising subscriptions](#authorising-subscriptions-onsubscribe)).
 
 ### How It Works
 
@@ -976,7 +1026,7 @@ import messageHash from 'api-ape/messageHash' // queryId of a message
 |-------|---------|
 | `{ type, data, createdAt, requestedAt, nonce }` | A call to endpoint `type` (a leading `/` is ignored). `createdAt` must not be in the future or older than 10 s. The `queryId` is **`messageHash(<the exact text sent>)`** and must not repeat within 10 s on one socket (a repeat is refused as a replay), so identical calls need something that differs: the clients add a counter `nonce`. |
 | `{ subscribe: '/channel' }` | Receive everything published to `/channel`; a new subscriber gets the last published message at once. |
-| `{ unsubscribe: '/channel' }` | Stop. |
+| `{ unsubscribe: '/channel' }` | Stop. Also cancels a subscribe whose `onSubscribe` check is still pending. |
 
 **Server to client**
 
@@ -986,6 +1036,7 @@ import messageHash from 'api-ape/messageHash' // queryId of a message
 | `{ queryId, data }` | The reply to the call with that `queryId`. A controller that returns nothing gives `data` as `undefined` (encoded `"data<!U>": 0`). |
 | `{ queryId, err, errCode?, errData? }` | The call failed. `err` is an `Error` (JSS keeps `name` and `message`; the stack is `"Name: message"` only; read with plain `JSON.parse` the key is `err<!E>` = `[name, message, stack]`); `errCode` / `errData` carry the `code` / `data` the controller attached, under the rules in [Errors](#errors) (a value thrown with no message, such as a plain object, arrives as itself without its own `stack`). Only the standard Error classes are rebuilt from an `err` tag; any other class name arrives as a plain `Error` carrying that name. The HTTP long-poll `POST` answers with this same frame (HTTP 500, or 404 for an unknown endpoint). |
 | `{ queryId, _keepalive: true }` | `this.keepalive()` was called: the call is still running. Not a reply; restart the call's timer and wait for the real one. |
+| `{ type: '__subscribe_refused__', err, errCode: 'SUBSCRIBE_REFUSED', errData: { channel } }` | The server's `onSubscribe` refused `{ subscribe: channel }` (4.5.0). An error frame with no `queryId`; `err.message` is `Subscription to "<channel>" refused` and nothing else about why. The client never gets the retained message or later publishes of that channel. A channel that was not a string gets `errData: {}`. |
 | `{ type: '/channel', data }` | A publish to a subscribed channel, or `this.send` / `this.broadcast` push (`type` is whatever the server named it). No `queryId`. |
 
 Conformance of every row above is tested in `simulator/scenarios/stories/call-contract/wire-protocol.test.js`, written against `api-ape/jss` and `api-ape/messageHash`.
@@ -1004,9 +1055,10 @@ Old clients keep working against a 4.4.0 server (upgrade the server first), with
 
 ## Upgrading to 4.5.0
 
-4.5.0 adds the `controllers` option and breaks nothing: an app that does not pass it behaves as on 4.4.0.
+4.5.0 adds two options and breaks nothing: an app that passes neither behaves as on 4.4.0.
 
 - **`controllers`**: a map of endpoint path to function in place of `where`, for `bun build --compile` executables. See [Compiled executables](#compiled-executables-controllers). One thing to know: `ape()` / `apeBun()` now throw if neither `where` nor `controllers` is given (a missing `where` used to fail with a TypeError from `path`).
+- **`onSubscribe`** and **`clearLastMessage`**: subscribe authorisation and a way to forget a channel's retained message. See [Authorising subscriptions](#authorising-subscriptions-onsubscribe). An old client against a server with `onSubscribe` is refused with a `__subscribe_refused__` frame it does not recognise: it simply never receives that channel (and cannot report why). Upgrade the clients to get `api.channel(callback, onError)`.
 
 ## Troubleshooting & FAQ
 

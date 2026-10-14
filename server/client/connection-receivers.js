@@ -20,6 +20,7 @@
  */
 
 const jss = require("../../utils/jss");
+const { apeLog } = require("../../utils/apeLogger");
 
 // ============================================================================
 // RECEIVER STATE
@@ -102,9 +103,10 @@ function bindConnection(refs) {
 }
 
 /**
- * Channels this client has asked the server for, with the number of local subscribers each.
- * Only the first local subscriber sends `{ subscribe }`; the last one leaving sends `{ unsubscribe }`.
- * @type {Map<string, number>}
+ * Channels this client has asked the server for, each with its local subscribers (a Set of
+ * `{ onError }` records). Only the first local subscriber sends `{ subscribe }`; the last
+ * one leaving sends `{ unsubscribe }`.
+ * @type {Map<string, Set<{onError: Function|undefined}>>}
  */
 const remoteChannels = new Map();
 
@@ -121,24 +123,53 @@ function sendChannelFrame(frame) {
 }
 
 /**
- * Subscribe to a channel on the server (not just locally): `api.news.banking(cb)`.
+ * Subscribe to a channel on the server (not just locally): `api.news.banking(cb, onError)`.
+ *
+ * If the server refuses (its `onSubscribe`), `onError(err)` is called with an Error whose
+ * `code` is `SUBSCRIBE_REFUSED` and whose `data` is `{ channel }`; without `onError` the
+ * refusal is logged. A refused channel is dropped here (no retry on reconnect).
  *
  * @param {string} channel - Channel path, e.g. `/news/banking`
- * @returns {function(): void} Drops this subscriber; idempotent
+ * @param {function(Error): void} [onError] - Called if the server refuses the subscription
+ * @returns {function(): void} Drops this subscriber; idempotent, harmless after a refusal
  */
-function subscribeChannel(channel) {
-  const count = remoteChannels.get(channel) || 0;
-  remoteChannels.set(channel, count + 1);
-  if (count === 0) sendChannelFrame({ subscribe: channel });
-  let active = true;
+function subscribeChannel(channel, onError) {
+  const entry = { onError: typeof onError === "function" ? onError : undefined };
+  let subscribers = remoteChannels.get(channel);
+  const first = !subscribers;
+  if (first) {
+    subscribers = new Set();
+    remoteChannels.set(channel, subscribers);
+  }
+  subscribers.add(entry);
+  if (first) sendChannelFrame({ subscribe: channel });
   return () => {
-    if (!active) return;
-    active = false;
-    const left = remoteChannels.get(channel) - 1;
-    if (left > 0) return remoteChannels.set(channel, left);
+    const current = remoteChannels.get(channel);
+    if (!current || !current.delete(entry) || current.size > 0) return;
     remoteChannels.delete(channel);
     sendChannelFrame({ unsubscribe: channel });
   };
+}
+
+/**
+ * The server refused a subscription: tell each local subscriber of that channel and drop it.
+ *
+ * @param {Error} err - The refusal (`code` `SUBSCRIBE_REFUSED`, `data.channel`)
+ * @returns {void}
+ */
+function refuseChannel(err) {
+  const channel = err && err.data && err.data.channel;
+  const subscribers = typeof channel === "string" ? remoteChannels.get(channel) : undefined;
+  if (!subscribers) return;
+  remoteChannels.delete(channel);
+  subscribers.forEach(({ onError }) => {
+    if (!onError) return apeLog.warn(`${err.message}: pass a second function to api.<channel>(callback, onError) to handle it`);
+    try {
+      onError(err);
+    } catch (handlerErr) {
+      apeLog.error(`Subscription refusal handler error for "${channel}":`, handlerErr);
+    }
+  });
 }
 
 // ============================================================================
@@ -222,6 +253,8 @@ function flushBufferedReceivers() {
  * @param {*} data - Data payload from the message
  */
 function dispatchToReceivers(type, err, data) {
+  // The server refused a subscription (its `onSubscribe`): tell that channel's subscribers.
+  if (type === "__subscribe_refused__" && err) refuseChannel(err);
   // Dispatch to type-specific receivers
   if (ofTypesOb[type]) ofTypesOb[type].forEach((h) => h({ err, type, data }));
   // Dispatch to general receivers

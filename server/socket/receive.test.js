@@ -82,6 +82,70 @@ describe("receive handler — subscribe/unsubscribe", () => {
   });
 });
 
+describe("receive handler — onSubscribe guard", () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+  // Scenario: the guard refuses while the socket is already failing to send (CLOSING,
+  // close event not yet fired). The refusal is best effort: nothing is raised.
+  test("a refusal whose frame cannot be sent is swallowed", async () => {
+    const ape = makeApe({
+      send: jest.fn(() => { throw new Error("socket closing"); }),
+      onSubscribe: () => false,
+    });
+    const onReceive = receiveHandler(ape);
+    await expect(onReceive(JSON.stringify({ subscribe: "guard/send-fails" }))).resolves.toBeUndefined();
+    await settle();
+    expect(ape.send).toHaveBeenCalledWith(false, "__subscribe_refused__", false, expect.any(Error));
+    expect(ape.events.onError).not.toHaveBeenCalled();
+  });
+
+  // Scenario: the guard says yes while the replay's send fails: swallowed, as without a guard.
+  test("an allowed subscription whose replay cannot be sent is swallowed", async () => {
+    const { publish } = require("../lib/broadcast");
+    publish("guard/replay-fails", { x: 1 });
+    const ape = makeApe({
+      send: jest.fn(() => { throw new Error("socket closing"); }),
+      onSubscribe: () => true,
+    });
+    const onReceive = receiveHandler(ape);
+    await onReceive(JSON.stringify({ subscribe: "guard/replay-fails" }));
+    await settle();
+    expect(ape.send).toHaveBeenCalledWith(false, "guard/replay-fails", { x: 1 }, false);
+    expect(ape.events.onError).not.toHaveBeenCalled();
+  });
+
+  // Scenario: the socket closes while the guard is still thinking, then the guard says yes.
+  // Nothing is sent and nothing is subscribed: a subscription for a dead client would be
+  // inherited by a resumed connection with the same clientId.
+  test("an answer that arrives after the socket closed is dropped", async () => {
+    const { publish } = require("../lib/broadcast");
+    publish("guard/closed", { x: 1 });
+    let closeSocket;
+    const socket = { on: jest.fn((event, fn) => { if (event === "close") closeSocket = fn; }) };
+    let release;
+    const ape = makeApe({ socket, onSubscribe: () => new Promise((resolve) => (release = resolve)) });
+    const onReceive = receiveHandler(ape);
+    await onReceive(JSON.stringify({ subscribe: "guard/closed" }));
+    closeSocket();
+    release(true);
+    await settle();
+    expect(ape.send).not.toHaveBeenCalled();
+  });
+
+  // Scenario: the guard receives the connection's identity and embed; an absent embed is {}.
+  test("the guard is given clientId, sessionId and embed ({} when none)", async () => {
+    const asked = [];
+    const ape = makeApe({
+      embedValues: undefined,
+      sharedValues: { req: { headers: { cookie: "sessionId=s-1" } } },
+      onSubscribe: (channel, context) => (asked.push([channel, context]), true),
+    });
+    await receiveHandler(ape)(JSON.stringify({ subscribe: "guard/ctx" }));
+    await settle();
+    expect(asked).toEqual([["guard/ctx", { clientId: "client-1", sessionId: "s-1", embed: {} }]]);
+  });
+});
+
 describe("receive handler — controller dispatch and result handling", () => {
   // Scenario: a controller resolves successfully and returns a value. The
   // handler must call send() with the result and invoke onReceive's onFinish

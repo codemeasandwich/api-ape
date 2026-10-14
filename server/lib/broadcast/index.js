@@ -24,6 +24,7 @@ const {
   subscribe,
   unsubscribe,
   publish,
+  clearLastMessage,
   cleanupClientSubscriptions,
 } = require("./pubsub");
 
@@ -125,6 +126,7 @@ function broadcastOthers(channel, data, excludeClientId) {
 module.exports = {
   clients,
   publish,
+  clearLastMessage,
   broadcast,
   broadcastOthers,
   subscribe,

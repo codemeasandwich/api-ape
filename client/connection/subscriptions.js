@@ -20,8 +20,8 @@
 import { apeLog } from "../../utils/apeLogger.js";
 
 /**
- * Map of channel to Set of callback functions
- * @type {Map<string, Set<Function>>}
+ * Map of channel to its callbacks: callback function -> its refusal handler (or undefined)
+ * @type {Map<string, Map<Function, Function|undefined>>}
  * @private
  */
 const subscriptions = new Map();
@@ -45,30 +45,37 @@ export function setSendFn(sendFn) {
 /**
  * Subscribe to a channel with a callback
  *
+ * The server may refuse the subscription (its `onSubscribe` option). It then sends a
+ * `__subscribe_refused__` frame, and `onError` is called with an Error whose `code` is
+ * `SUBSCRIBE_REFUSED` and whose `data` is `{ channel }`. The channel's callbacks are
+ * dropped (it will not retry on reconnect); subscribe again to ask again. Without an
+ * `onError` the refusal is logged as a warning.
+ *
  * @param {string} channel - The channel path (e.g., '/news/banking')
  * @param {Function} callback - Function to call when data is published
+ * @param {Function} [onError] - Function to call with the Error if the server refuses
  * @returns {Function} Unsubscribe function
  *
  * @example
  * const unsub = subscribe('/news/banking', (data) => {
  *   console.log(data.headline)
- * })
+ * }, (err) => console.warn(err.code))
  *
  * // Later: unsubscribe
  * unsub()
  */
-export function subscribe(channel, callback) {
+export function subscribe(channel, callback, onError) {
   // Get or create the callback set for this channel
   let callbacks = subscriptions.get(channel);
   const isFirstSubscriber = !callbacks;
 
   if (isFirstSubscriber) {
-    callbacks = new Set();
+    callbacks = new Map();
     subscriptions.set(channel, callbacks);
   }
 
-  // Add the callback
-  callbacks.add(callback);
+  // Add the callback (and its refusal handler)
+  callbacks.set(callback, typeof onError === "function" ? onError : undefined);
 
   // If first subscriber, send subscribe message to server
   if (isFirstSubscriber && _sendFn) {
@@ -111,7 +118,7 @@ export function hasSubscribers(channel) {
 export function dispatch(channel, data) {
   const callbacks = subscriptions.get(channel);
   if (callbacks) {
-    callbacks.forEach((callback) => {
+    callbacks.forEach((_onError, callback) => {
       try {
         callback(data);
       } catch (err) {
@@ -119,6 +126,29 @@ export function dispatch(channel, data) {
       }
     });
   }
+}
+
+/**
+ * The server refused a subscription: tell each subscriber of the channel and drop them.
+ *
+ * Called with the Error of a `__subscribe_refused__` frame (`code` `SUBSCRIBE_REFUSED`,
+ * `data.channel`). A frame naming no channel this client holds is ignored.
+ *
+ * @param {Error} err - The refusal, as decoded from the frame
+ */
+export function refuse(err) {
+  const channel = err && err.data && err.data.channel;
+  const callbacks = typeof channel === "string" ? subscriptions.get(channel) : undefined;
+  if (!callbacks) return;
+  subscriptions.delete(channel);
+  callbacks.forEach((onError) => {
+    if (!onError) return apeLog.warn(`${err.message}: pass a second function to api.<channel>(callback, onError) to handle it`);
+    try {
+      onError(err);
+    } catch (handlerErr) {
+      apeLog.error(`Subscription refusal handler error for "${channel}":`, handlerErr);
+    }
+  });
 }
 
 /**

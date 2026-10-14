@@ -30,6 +30,8 @@ export interface ApeWebSocket {
 export interface ControllerContext {
     /** Publish to channel subscribers */
     publish(channel: string, data: any): void
+    /** Forget a channel's retained last message (the next subscriber gets nothing) */
+    clearLastMessage(channel: string): void
     /** Push `type` to every connected client */
     broadcast(type: string, data: any): void
     /** Push `type` to every connected client except the caller */
@@ -169,6 +171,27 @@ export type ApeControllerMap = {
 }
 
 /**
+ * What `onSubscribe` is told about the connection that asks to subscribe.
+ */
+export interface ApeSubscribeContext {
+    /** The connection's client id (what controllers see as `this.clientId`) */
+    clientId: string
+    /** The session id from the cookie, or null (what controllers see as `this.sessionId`) */
+    sessionId: string | null
+    /** What `onConnect` returned as `embed` (`{}` when it returned none) */
+    embed: Record<string, any>
+}
+
+/**
+ * Subscribe authorisation. Return exactly `true` (or a Promise of `true`) to allow the
+ * subscription; anything else, a throw or a rejection refuses it (fail closed).
+ */
+export type OnSubscribeCallback = (
+    channel: string,
+    context: ApeSubscribeContext
+) => boolean | Promise<boolean>
+
+/**
  * Options shared by both ways of providing controllers
  */
 export interface ApeServerOptionsBase {
@@ -191,6 +214,14 @@ export interface ApeServerOptionsBase {
     maxMessageBytes?: number
     /** Connection lifecycle hook */
     onConnect?: OnConnectCallback
+    /**
+     * Decide who may subscribe to a channel. Asked before a subscription is recorded and
+     * before the channel's retained message is sent. A refused client gets a
+     * `__subscribe_refused__` error frame (its `api.channel(callback, onError)` calls
+     * `onError`). Absent: every client may subscribe to any channel (as before 4.5.0).
+     * WebSocket only: the HTTP streaming path cannot subscribe.
+     */
+    onSubscribe?: OnSubscribeCallback
     /** Origin policy for WebSocket upgrades (default: `root-domain` on Node, `exact` on Bun) */
     origin?: ApeOriginPolicy
     /** Hot-reload controllers on change. Off by default. */
@@ -386,6 +417,13 @@ declare namespace ape {
     }
 
     /**
+     * Forget a channel's retained last message so the next subscriber is sent nothing.
+     * Current subscribers are unaffected; the next publish is retained again.
+     * (A function of its own: `ape.publish.clearLastMessage` would be a channel.)
+     */
+    export function clearLastMessage(channel: string): void
+
+    /**
      * Read-only Map of connected clients
      * Each ClientWrapper provides: clientId, sessionId (Phase 1 pairing scope — often minted server-side), embed, agent, send(type, data)
      */
@@ -554,7 +592,12 @@ export type MessageHandler<T = any> = (message: ReceivedMessage<T>) => void
  * Example: sender.users.list() calls type="/users/list"
  */
 export interface ApeSender {
-    [key: string]: ApeSender & (<T = any, R = any>(data?: T) => Promise<R>)
+    [key: string]: ApeSender &
+        // Subscribe: a function argument. `onError` runs if the server refuses the
+        // subscription (its `onSubscribe`): `err.code === 'SUBSCRIBE_REFUSED'`, `err.data.channel`.
+        ((callback: (data: any) => void, onError?: (err: Error & { code?: string; data?: any }) => void) => () => void) &
+        // Call: any other argument
+        (<T = any, R = any>(data?: T) => Promise<R>)
 }
 
 /**
@@ -607,6 +650,11 @@ export { connectSocket }
 // =============================================================================
 
 export declare const clients: ReadonlyMap<string, ClientWrapper>
+
+/**
+ * Forget a channel's retained last message (same as `ape.clearLastMessage`)
+ */
+export declare function clearLastMessage(channel: string): void
 
 /**
  * Chainable send function for client.send

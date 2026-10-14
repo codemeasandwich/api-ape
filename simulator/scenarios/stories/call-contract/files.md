@@ -19,6 +19,7 @@ call-contract/
 ├── index.test.js   # The stories
 ├── long-poll.test.js   # A call over HTTP (SSE stream + POST) behaves as over a WebSocket
 ├── raw-client.js   # Raw-socket client that records every frame
+├── subscribe-authorisation.test.js   # `onSubscribe`, the refusal frame, `clearLastMessage`
 └── wire-protocol.test.js  # The documented wire protocol, spoken with api-ape/jss and api-ape/messageHash
 ```
 
@@ -31,6 +32,10 @@ The call-contract stories (keepalive, identical calls, replies, errors and what 
 ### `controllers-option.test.js`
 
 The `controllers` option (4.5.0), through `ape()` and a raw socket: a nested endpoint, an `export default` module namespace, a leading slash, `users/index`, `this` (embed, `clientId`, `broadcast`, `publish`), names every object inherits, the map copied at start, the `api` URL prefix and `urlPrefix`; start-up refusals (both or neither of `where` / `controllers`, a non-function value, `_private` / bare `index` / `.test` / empty-segment keys, duplicate endpoints); `watch` and `selector` ignored with a warning.
+
+### `subscribe-authorisation.test.js`
+
+`onSubscribe` (4.5.0) through raw sockets and the real server-side client: nothing changes without it; a refused client gets the `__subscribe_refused__` frame and neither the retained message nor later publishes; per-user rules from `embed`; asked again per connection; an asynchronous guard (unsubscribe, a newer subscribe or a disconnect while pending leave nothing behind, proven with a resumed client); fail closed (throw, rejection, undefined, truthy non-boolean, non-string channel) without leaking the cause; `api.channel(callback, onError)` on the server-side client; a client on the HTTP long-poll path cannot subscribe; `clearLastMessage` (function, `ape.`, `this.`).
 
 ### `hostile-peer.test.js`
 

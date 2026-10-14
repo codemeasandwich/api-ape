@@ -61,6 +61,7 @@ Manages connected clients and provides messaging utilities:
 - `broadcast(type, data)` — Send to all clients
 - `broadcastOthers(type, data, excludeClientId)` — Send to all except one
 - `publish(channel, data)` — Send to all subscribers of a channel
+- `clearLastMessage(channel)` — Forget a channel's retained last message
 - `subscribe(clientId, channel)` — Subscribe a client to a channel
 - `unsubscribe(clientId, channel)` — Unsubscribe a client from a channel
 - `clients` — Read-only Map of connected clients with `send()` method
@@ -75,7 +76,7 @@ TypeScript declarations for the `api-ape/bun` entry point (`apeBun(options): Ape
 
 ### `options.js`
 
-`checkOptions(options)` runs at the start of `ape()` and `apeBun()`. A missing or non-object `options` throws a message naming what is needed (`{ where: "api" }`) instead of a TypeError. `where` and `controllers` are mutually exclusive (both or neither throws). `authFramework` and `authMiddleware` throw (they were never applied; wiring them would leave the Node long-poll path unauthenticated). Any other unknown key logs a warning naming it.
+`checkOptions(options)` runs at the start of `ape()` and `apeBun()`. A missing or non-object `options` throws a message naming what is needed (`{ where: "api" }`) instead of a TypeError. `where` and `controllers` are mutually exclusive (both or neither throws), and an `onSubscribe` that is not a function throws. `authFramework` and `authMiddleware` throw (they were never applied; wiring them would leave the Node long-poll path unauthenticated). Any other unknown key logs a warning naming it.
 
 ### `fileTransfer.js`
 

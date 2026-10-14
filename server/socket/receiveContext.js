@@ -7,7 +7,7 @@
  * @see {@link module:server/socket/receive} for the message handler
  */
 
-const { clients, publish, broadcast, broadcastOthers } = require("../lib/broadcast");
+const { clients, publish, clearLastMessage, broadcast, broadcastOthers } = require("../lib/broadcast");
 const { parseSessionIdFromReq } = require("../lib/sessionIdentity");
 
 /**
@@ -48,6 +48,7 @@ function createControllerContext({ sharedValues, embedValues, clientId, sessionI
     broadcastOthers: (type, data) => broadcastOthers(type, data, clientId),
     ...embedValues,
     publish: (channel, data) => publish(channel, data),
+    clearLastMessage: (channel) => clearLastMessage(channel),
     clients,
     clientId,
     sessionId,

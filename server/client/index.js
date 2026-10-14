@@ -130,9 +130,11 @@ const handler = {
      *   (which may be undefined).
      *
      * @param {Object|Function} [payload] - RPC body or subscription callback
+     * @param {function(Error): void} [onError] - Subscription only: called if the server
+     *     refuses it (`err.code === 'SUBSCRIBE_REFUSED'`, `err.data.channel`)
      * @returns {Promise|Function} Promise of the response, or unsubscribe function
      */
-    const wrapperFn = function (payload) {
+    const wrapperFn = function (payload, onError) {
       if (typeof payload === "function") {
         /**
          * Adapter that strips the websocket envelope so the user callback
@@ -145,7 +147,7 @@ const handler = {
         const wrappedHandler = (event) => payload(event.data);
         // Local handler for what arrives, plus the `{ subscribe }` frame that makes the server send it.
         const off = on(path, wrappedHandler);
-        const unsubscribe = subscribeChannel(path);
+        const unsubscribe = subscribeChannel(path, onError);
         return () => {
           off();
           unsubscribe();
