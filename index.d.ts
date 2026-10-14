@@ -120,6 +120,32 @@ export type ApeLoggingOption = boolean | ApeLoggingHandlers
 export declare function configureApeLogging(logging: ApeLoggingOption): void
 
 /**
+ * WebSocket Origin policy. See server/README.md "Origin check".
+ */
+export interface ApeOriginPolicy {
+    /**
+     * `root-domain` compares root domains and ignores ports (Node default).
+     * `exact` compares scheme-normalised host and port (Bun default).
+     */
+    mode?: 'root-domain' | 'exact'
+    /** Extra exact origins to admit, e.g. `['http://localhost:5173']` */
+    allowedOrigins?: string[]
+    /** When non-empty, refuse any request whose Host is not listed (DNS-rebinding guard) */
+    allowedHosts?: string[]
+}
+
+/**
+ * Opt-in controller hot reload. `true` watches the controller directory;
+ * the object form also evicts and watches the listed service directories.
+ */
+export type ApeWatchOption = boolean | {
+    /** Extra directories whose modules are reloaded together with the controllers */
+    paths?: string[]
+    /** Quiet period before a reload, in ms (default 50) */
+    debounceMs?: number
+}
+
+/**
  * Server options for ape()
  */
 export interface ApeServerOptions {
@@ -127,6 +153,20 @@ export interface ApeServerOptions {
     where: string
     /** Connection lifecycle hook */
     onConnect?: OnConnectCallback
+    /** Origin policy for WebSocket upgrades (default: `root-domain` on Node, `exact` on Bun) */
+    origin?: ApeOriginPolicy
+    /** Hot-reload controllers on change. Off by default. */
+    watch?: ApeWatchOption
+    /** Bun only: Bun.serve websocket tuning (idleTimeout, sendPings, maxPayloadLength, ...) */
+    websocketOptions?: {
+        idleTimeout?: number
+        sendPings?: boolean
+        maxPayloadLength?: number
+        backpressureLimit?: number
+        closeOnBackpressureLimit?: boolean
+        perMessageDeflate?: boolean | object
+        publishToSelf?: boolean
+    }
     /**
      * Internal framework logging: `false` silences api-ape diagnostics; omit or `true` keeps `console`.
      */

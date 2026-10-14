@@ -8,17 +8,21 @@
  */
 
 const { clients, publish } = require("../lib/broadcast");
+const { parseSessionIdFromReq } = require("../lib/sessionIdentity");
 
 /**
- * Extract session ID from request cookies
+ * Extract the session ID from the request (`sessionId` cookie, else the
+ * `x-ape-session-id` header).
  *
  * @param {http.IncomingMessage} req - The HTTP request object
  * @returns {string|null} The session ID if found, null otherwise
  */
 function getSessionId(req) {
-  const cookies = req?.headers?.cookie || "";
-  const match = cookies.match(/(?:^|;\\s*)sessionId=([^;]*)/);
-  return match ? match[1] : null;
+  if (!req || !req.headers) return null;
+  // Same parser the wiring layer uses, so `this.sessionId` equals the session
+  // the connection was paired with (cookie anywhere in the header, or
+  // `x-ape-session-id`).
+  return parseSessionIdFromReq(req);
 }
 
 /**

@@ -75,6 +75,8 @@
 const path = require("path");
 const fs = require("fs");
 const { isBun } = require("../wsProvider");
+const { upgradeWebSocket } = require("./bunRequest");
+const { bunWebSocketConfig } = require("./bunWebSocketConfig");
 
 /**
  * Check if a server object is a Bun server instance.
@@ -232,14 +234,12 @@ function initBunServer(options, core) {
     const url = new URL(req.url);
     const pathname = url.pathname;
 
-    // WebSocket upgrade endpoint
+    // WebSocket upgrade endpoint: Origin policy first, then a Node-shaped req
     if (pathname === core.wsPath) {
-      const upgrade = req.headers.get("upgrade");
-      if (upgrade?.toLowerCase() === "websocket") {
-        const success = server.upgrade(req, { data: { req } });
-        if (success) return undefined;
-        return new Response("WebSocket upgrade failed", { status: 500 });
-      }
+      const upgraded = upgradeWebSocket(req, server, {
+        originPolicy: core.originPolicy,
+      });
+      if (upgraded !== null) return upgraded;
     }
 
     // Client JavaScript bundle
@@ -284,6 +284,7 @@ function initBunServer(options, core) {
    * @type {BunWebSocketHandlers}
    */
   const websocket = {
+    ...bunWebSocketConfig(options.websocketOptions),
     /**
      * Handle WebSocket connection open.
      * Creates a BunWebSocket wrapper and passes to wiring handler.
@@ -469,14 +470,12 @@ If you only want HTTP long-polling, pass: ape(server, { where: 'api', transport:
     const url = new URL(req.url);
     const pathname = url.pathname;
 
-    // WebSocket upgrade endpoint
+    // WebSocket upgrade endpoint: Origin policy first, then a Node-shaped req
     if (pathname === core.wsPath) {
-      const upgrade = req.headers.get("upgrade");
-      if (upgrade?.toLowerCase() === "websocket") {
-        const success = server.upgrade(req, { data: { req } });
-        if (success) return undefined;
-        return new Response("WebSocket upgrade failed", { status: 500 });
-      }
+      const upgraded = upgradeWebSocket(req, server, {
+        originPolicy: core.originPolicy,
+      });
+      if (upgraded !== null) return upgraded;
     }
 
     // Client JavaScript bundle
@@ -524,6 +523,7 @@ If you only want HTTP long-polling, pass: ape(server, { where: 'api', transport:
    * @type {BunWebSocketHandlers}
    */
   const websocket = {
+    ...bunWebSocketConfig(options.websocketOptions),
     /**
      * Handle WebSocket connection open.
      * @param {Object} ws - Bun WebSocket instance

@@ -100,6 +100,8 @@ const {
   serveSourceMap,
 } = require("../httpUtils");
 const { createSchemaHandler } = require("../schema");
+const originSecurity = require("../../security/origin");
+const { apeLog } = require("../../../utils/apeLogger");
 
 /**
  * @typedef {Object} NodeServerResult
@@ -241,6 +243,13 @@ function initNodeServer(server, options, core) {
     const { pathname } = parseUrl(req.url);
 
     if (pathname === core.wsPath) {
+      // Refuse a disallowed Origin with a 403 before the handshake completes,
+      // so onConnect and controllers are never reached
+      if (!originSecurity(null, req, (m) => apeLog.error(m), core.originPolicy)) {
+        socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+        return;
+      }
+
       // Handle api-ape WebSocket upgrade
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit("connection", ws, req);

@@ -80,3 +80,26 @@ describe("loader — `dirname` resolution", () => {
     }
   });
 });
+
+describe("loader — hot reload is opt-in", () => {
+  let dir;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "api-ape-loader-watch-"));
+    fs.writeFileSync(path.join(dir, "ping.js"), "module.exports = () => 'pong';\n");
+  });
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  test("no watcher by default; `options.watch` reaches deepRequire", () => {
+    const watchSpy = jest.spyOn(fs, "watch");
+    try {
+      loader(dir);
+      loader(dir, undefined, { watch: false });
+      expect(watchSpy).not.toHaveBeenCalled();
+      const controllers = loader(dir, undefined, { watch: true });
+      expect(watchSpy).toHaveBeenCalledTimes(1);
+      require("../utils/deepRequire").stopWatching(controllers);
+    } finally {
+      watchSpy.mockRestore();
+    }
+  });
+});

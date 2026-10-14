@@ -52,6 +52,19 @@ if (!global.process) {
 var fs = require("fs");
 var path = require("path");
 const { apeLog } = require("../../utils/apeLogger");
+const {
+  normaliseWatch,
+  invalidateModules,
+  restoreModules,
+  watchDirs,
+  SOURCE_EXTENSIONS,
+} = require("./hotReload");
+
+/**
+ * Active watchers keyed by the controller map they reload.
+ * @type {WeakMap<Object, {close: Function}>}
+ */
+const watchers = new WeakMap();
 
 /**
  * Recursively collects all files with specified extensions from a directory.
@@ -174,6 +187,11 @@ function computeEndpoint(file) {
  * @function deepRequire
  * @param {string} dirname - The root directory containing controller files
  * @param {string[]} [selector=['js']] - File extensions to include (without dots)
+ * @param {Object} [options]
+ * @param {boolean|{paths?: string[], debounceMs?: number}} [options.watch=false] - Opt-in hot
+ *     reload. Off by default. When on, a change evicts every cached module under the
+ *     controller directory (and `watch.paths`) and reloads ALL controllers into the returned
+ *     object in place. See {@link module:server/utils/hotReload} for the contract and limits.
  * @returns {Object<string, *>} Object mapping endpoint paths to loaded modules
  * @throws {Error} If two files map to the same endpoint path
  *
@@ -209,78 +227,95 @@ function computeEndpoint(file) {
  *     return deepRequire(apiDir)
  * }
  */
-module.exports = function (dirname, selector) {
+module.exports = function (dirname, selector, options = {}) {
   // Default to JavaScript files
   selector = selector || ["js"];
 
   /**
-   * Track which file defines each endpoint for error messages.
-   * @type {Object<string, string>}
+   * Scan the directory and require every controller into a fresh endpoint map.
+   * @returns {Object<string, *>} New endpoint-keyed map
+   * @throws {Error} On a duplicate endpoint or a controller that fails to load
    */
-  const endpointSources = {};
+  function loadAll() {
+    // Track which file defines each endpoint for error messages.
+    const endpointSources = {};
+    const loaded = {};
 
-  /**
-   * Object mapping endpoint paths to loaded modules.
-   * Kept in outer scope so the file watcher can add new controllers.
-   * @type {Object<string, *>}
-   */
-  const packages = {};
-
-  // Get all matching files and load them
-  getFilesFromDir(dirname, selector.map((ext) => `.${ext}`)).forEach((file) => {
-    const endpoint = computeEndpoint(file);
-    if (!endpoint) return;
-
-    // Check for duplicate endpoints
-    /* istanbul ignore next 8 - startup error, would break all tests if triggered */
-    if (packages[endpoint] !== undefined) {
-      throw new Error(
-        `🦍 Duplicate endpoint detected: "${endpoint}"\n` +
-          `   - ${endpointSources[endpoint]}\n` +
-          `   - ${file}\n` +
-          `   Remove one of these files to fix this conflict.`,
-      );
-    }
-
-    // Track source for error messages and load the module
-    endpointSources[endpoint] = file;
-    packages[endpoint] = require(dirname + `/${file}`);
-  });
-
-  // Watch for new and changed controller files and hot-load them
-  // Note: recursive watch is only supported on macOS/Windows, or Linux with Node 20+
-  const platform = process.platform;
-  const nodeVersion = parseInt(process.versions.node.split(".")[0], 10);
-  const supportsRecursiveWatch =
-    platform === "darwin" ||
-    platform === "win32" ||
-    (platform === "linux" && nodeVersion >= 20);
-
-  if (supportsRecursiveWatch) {
-    fs.watch(dirname, { recursive: true }, (eventType, filename) => {
-      // Handle both new files (rename) and changes (change)
-      if (!filename) return;
-
-      // Check extension matches selector
-      if (!selector.some((ext) => filename.endsWith(`.${ext}`))) return;
-
-      const filePath = path.join(dirname, filename);
-
-      // Check file exists (rename fires for both add and delete)
-      if (!fs.existsSync(filePath)) return;
-
-      // Normalize to /foo/bar.js format for computeEndpoint
-      const normalizedFile = "/" + filename.split(path.sep).join("/");
-      const endpoint = computeEndpoint(normalizedFile);
+    getFilesFromDir(dirname, selector.map((ext) => `.${ext}`)).forEach((file) => {
+      const endpoint = computeEndpoint(file);
       if (!endpoint) return;
 
-      // Clear require cache to ensure fresh module load
-      delete require.cache[require.resolve(filePath)];
-      const isNew = !packages[endpoint];
-      packages[endpoint] = require(filePath);
-      apeLog.log(`${isNew ? "Hot-loaded" : "Reloaded"}: ${endpoint}`);
+      // Check for duplicate endpoints
+      if (loaded[endpoint] !== undefined) {
+        throw new Error(
+          `🦍 Duplicate endpoint detected: "${endpoint}"\n` +
+            `   - ${endpointSources[endpoint]}\n` +
+            `   - ${file}\n` +
+            `   Remove one of these files to fix this conflict.`,
+        );
+      }
+
+      // Track source for error messages and load the module
+      endpointSources[endpoint] = file;
+      loaded[endpoint] = require(dirname + `/${file}`);
     });
+    return loaded;
+  }
+
+  /**
+   * Object mapping endpoint paths to loaded modules. Reload swaps its contents
+   * in place so references held by the wiring layer stay valid.
+   * @type {Object<string, *>}
+   */
+  const packages = loadAll();
+
+  const watch = normaliseWatch(options.watch, dirname);
+  if (watch) {
+    watchers.set(
+      packages,
+      watchDirs({
+        roots: watch.roots,
+        extensions: [...new Set([...selector, ...SOURCE_EXTENSIONS])],
+        debounceMs: watch.debounceMs,
+        onChange: (files) => {
+          const saved = new Map();
+          invalidateModules(watch.roots, undefined, saved);
+          let next;
+          try {
+            next = loadAll();
+          } catch (err) {
+            restoreModules(watch.roots, saved);
+            apeLog.error(
+              `[api-ape] Reload failed, still serving the previous controllers: ${err.message}`,
+            );
+            return;
+          }
+          const before = Object.keys(packages);
+          before.filter((k) => !(k in next)).forEach((k) => delete packages[k]);
+          Object.assign(packages, next);
+          apeLog.log(
+            `Reloaded ${Object.keys(next).length} controllers` +
+              (files.length ? ` (changed: ${files.map((f) => path.relative(watch.roots[0], f)).join(", ")})` : ""),
+          );
+        },
+      }),
+    );
   }
 
   return packages;
+};
+
+/**
+ * Stop the hot-reload watcher belonging to a controller map returned by
+ * `deepRequire(..., { watch })`. A no-op for maps that are not being watched.
+ *
+ * @param {Object<string, *>} packages - The map returned by deepRequire
+ * @returns {void}
+ */
+module.exports.stopWatching = function (packages) {
+  const handle = watchers.get(packages);
+  if (handle) {
+    handle.close();
+    watchers.delete(packages);
+  }
 };

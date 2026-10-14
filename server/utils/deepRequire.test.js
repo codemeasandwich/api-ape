@@ -2,8 +2,8 @@
  * @fileoverview Tests for deepRequire convention-based controller loader.
  *
  * Each test creates a temporary directory of controllers, calls deepRequire,
- * and verifies the endpoint→module map. The fs.watch tests exercise the
- * hot-reload code paths by mutating files after the initial load.
+ * and verifies the endpoint→module map. The hot-reload tests (opt-in `watch`)
+ * mutate files after the initial load and emit watch events directly.
  */
 
 const fs = require("fs");
@@ -148,272 +148,296 @@ describe("deepRequire — endpoint mapping", () => {
 });
 
 // ============================================================================
-// fs.watch hot-reload coverage. We spy on `fs.watch` to capture every watcher
-// the SUT creates so the test file can explicitly close them in afterAll —
-// without that, jest hangs waiting for the watcher to exit. With explicit
-// teardown, hot-reload behavior is testable end-to-end.
+// Hot reload is OPT-IN (`options.watch`). These tests spy on `fs.watch` to
+// capture each watcher so it can be closed (otherwise jest would hang), and
+// emit watch events directly to avoid platform fs.watch timing flakes.
+//
+// Jest owns its module registry and ignores `delete require.cache[...]`, so the
+// tests use `jest.resetModules()` as the stand-in for cache eviction. True
+// `require.cache` semantics (including the stale-import problem this feature
+// fixes) are proven in a real Node process by deepRequire.reload.test.js and
+// under Bun by integration/bun/hot-reload.ts.
 // ============================================================================
-describe("deepRequire — fs.watch hot-reload", () => {
-  const openWatchers = new Set();
+describe("deepRequire — opt-in hot reload", () => {
+  const openWatchers = [];
   let watchSpy;
+  const logger = require("../../utils/apeLogger");
+  const errors = [];
+  const logs = [];
 
   beforeAll(() => {
     const realWatch = fs.watch.bind(fs);
     watchSpy = jest.spyOn(fs, "watch").mockImplementation((...args) => {
       const w = realWatch(...args);
-      openWatchers.add(w);
+      openWatchers.push(w);
       return w;
+    });
+    logger.configureApeLogging({
+      error: (m) => errors.push(m),
+      log: (m) => logs.push(m),
+      warn() {},
+      info() {},
+      debug() {},
     });
   });
 
-  afterAll(() => {
-    for (const w of openWatchers) {
-      try { w.close(); } catch { /* watcher already closed */ }
-    }
-    openWatchers.clear();
-    watchSpy.mockRestore();
+  // Every watched map is stopped after its test so a late debounce timer from
+  // one test cannot reload (and log into) the next.
+  const watchedMaps = [];
+  function load(root, options, selector) {
+    const packages = deepRequire(root, selector, options);
+    watchedMaps.push(packages);
+    return packages;
+  }
+
+  beforeEach(() => watchSpy.mockClear());
+
+  afterEach(() => {
+    watchedMaps.splice(0).forEach((m) => deepRequire.stopWatching(m));
+    openWatchers.splice(0).forEach((w) => {
+      try { w.close(); } catch { /* already closed */ }
+    });
+    errors.length = 0;
+    logs.length = 0;
   });
 
-  // Helper: wait for a polled condition with a timeout cap.
+  afterAll(() => {
+    watchSpy.mockRestore();
+    logger.resetApeLoggingForTesting();
+  });
+
   async function waitFor(cond, timeoutMs = 1500) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       if (cond()) return true;
-      await new Promise((r) => setTimeout(r, 30));
+      await new Promise((r) => setTimeout(r, 10));
     }
     return false;
   }
 
-  // Real-world scenario: a developer adds a new controller while the server
-  // is running. We synthesize the watch event directly to avoid platform-
-  // specific fs.watch coalescing / debouncing timing flakes in jest. The
-  // production hot-add path is covered end-to-end by simulator stories.
-  test("synthetic event for newly added file hot-loads it into packages", async () => {
+  const fire = (file, type = "change") => openWatchers[0].emit("change", type, file);
+
+  // Scenario: nobody asked for hot reload. Nothing may watch the filesystem,
+  // in production in particular.
+  test("default: no watcher is created", () => {
     const root = tmpDir({ "users.js": "module.exports = () => 'v1';" });
     try {
-      const packages = deepRequire(root);
-      expect(packages["new/route"]).toBeUndefined();
+      deepRequire(root);
+      deepRequire(root, ["js"], {});
+      deepRequire(root, ["js"], { watch: false });
+      expect(watchSpy).not.toHaveBeenCalled();
+    } finally {
+      cleanup(root);
+    }
+  });
+
+  // Scenario: `watch: true` watches the controller directory recursively.
+  test("watch:true opens one recursive watcher on the controller directory", () => {
+    const root = tmpDir({ "users.js": "module.exports = () => 'v1';" });
+    try {
+      const packages = load(root, { watch: true });
+      expect(watchSpy).toHaveBeenCalledTimes(1);
+      expect(watchSpy.mock.calls[0][0]).toBe(fs.realpathSync(root));
+      expect(watchSpy.mock.calls[0][1]).toEqual({ recursive: true });
+      deepRequire.stopWatching(packages);
+    } finally {
+      watchSpy.mockClear();
+      cleanup(root);
+    }
+  });
+
+  // Scenario: a controller is added while the server runs.
+  test("a new controller is hot-loaded", async () => {
+    const root = tmpDir({ "users.js": "module.exports = () => 'v1';" });
+    try {
+      const packages = load(root, { watch: { debounceMs: 1 } });
       fs.mkdirSync(path.join(root, "new"), { recursive: true });
-      fs.writeFileSync(
-        path.join(root, "new/route.js"),
-        "module.exports = () => 'new-hot';",
-      );
-      // Synthesize the watch event
-      const watcher = [...openWatchers].pop();
-      watcher.emit("change", "rename", path.join("new", "route.js"));
-      await new Promise((r) => setTimeout(r, 100));
-      expect(typeof packages["new/route"]).toBe("function");
+      fs.writeFileSync(path.join(root, "new/route.js"), "module.exports = () => 'new-hot';");
+      fire(path.join("new", "route.js"), "rename");
+      expect(await waitFor(() => packages["new/route"])).toBeTruthy();
       expect(packages["new/route"]()).toBe("new-hot");
+      expect(logs.join("\n")).toMatch(/Reloaded 2 controllers \(changed: new[\\/]route.js\)/);
     } finally {
       cleanup(root);
     }
   }, 10000);
 
-  // Scenario: a developer edits an existing controller. The watcher's edit
-  // path is covered via the synthetic event tests below; this is exercised
-  // end-to-end by the simulator stories at runtime. Skipped here because
-  // platform-specific fs.watch coalescing makes the real edit timing flaky
-  // in jest (macOS FSEvents in particular).
-  test.skip("reloads an edited controller (require cache cleared) — covered via simulator E2E", async () => {});
-
-  // Scenario: the watcher emits a rename event for an existing controller.
-  // This exercises the full hot-reload path including the require.cache
-  // delete + require() reload + packages[endpoint] reassignment. We only
-  // assert that the code path executed without error — actually verifying
-  // the swapped module would require jest's module registry to honor
-  // `delete require.cache[...]`, which it doesn't (jest manages its own).
-  // The full-fidelity reload behavior is covered by the simulator stories
-  // running in real Node.
-  test("synthetic rename event for existing file traverses the reload path without error", async () => {
+  // Scenario: an existing controller is edited. All controllers are reloaded
+  // together (the stand-in for cache eviction is jest.resetModules).
+  test("an edited controller is swapped in place; the map identity is stable", async () => {
     const root = tmpDir({
-      "reload-target.js": "module.exports = () => 'initial';",
+      "a.js": "module.exports = () => 'a1';",
+      "b.js": "module.exports = () => 'b1';",
     });
     try {
-      const packages = deepRequire(root);
-      expect(packages["reload-target"]()).toBe("initial");
-      fs.writeFileSync(
-        path.join(root, "reload-target.js"),
-        "module.exports = () => 'edited';",
-      );
-      const watcher = [...openWatchers].pop();
-      // Should not throw — covers `delete require.cache[...]; require(filePath);`
-      expect(() => {
-        watcher.emit("change", "rename", "reload-target.js");
-      }).not.toThrow();
-      await new Promise((r) => setTimeout(r, 100));
-      // The endpoint is still registered (with either cached or new content).
-      expect(typeof packages["reload-target"]).toBe("function");
+      const packages = load(root, { watch: { debounceMs: 1 } });
+      const held = packages;
+      fs.writeFileSync(path.join(root, "a.js"), "module.exports = () => 'a2';");
+      fs.writeFileSync(path.join(root, "b.js"), "module.exports = () => 'b2';");
+      jest.resetModules();
+      fire("a.js");
+      expect(await waitFor(() => packages.a() === "a2")).toBe(true);
+      expect(held.b()).toBe("b2");
+      expect(packages).toBe(held);
     } finally {
       cleanup(root);
     }
   }, 10000);
 
-  // Scenario: editing a non-controller sibling (e.g. README.md) must NOT
-  // mutate packages. The extension-filter `selector.some(...)` short-circuit
-  // engages and returns early.
-  test("ignores changes to files with non-matching extensions", async () => {
-    const root = tmpDir({ "x.js": "module.exports = () => 'x';" });
-    try {
-      const packages = deepRequire(root, ["js"]);
-      const before = Object.keys(packages).sort();
-      fs.writeFileSync(path.join(root, "notes.md"), "some notes");
-      await new Promise((r) => setTimeout(r, 200));
-      expect(Object.keys(packages).sort()).toEqual(before);
-    } finally {
-      cleanup(root);
-    }
-  }, 10000);
-
-  // Scenario: an underscore-prefixed private file is added. computeEndpoint
-  // returns null, so the watcher's `if (!endpoint) return` engages.
-  test("ignores hot-add of underscore-prefixed files", async () => {
-    const root = tmpDir({ "y.js": "module.exports = () => 'y';" });
-    try {
-      const packages = deepRequire(root);
-      fs.writeFileSync(
-        path.join(root, "_private.js"),
-        "module.exports = () => 'priv';",
-      );
-      await new Promise((r) => setTimeout(r, 200));
-      expect(packages._private).toBeUndefined();
-    } finally {
-      cleanup(root);
-    }
-  }, 10000);
-
-  // Scenario: a watched file is deleted. The watcher fires a `rename` event
-  // but `fs.existsSync(filePath)` returns false; the handler must
-  // short-circuit before attempting to `require()` the missing file.
-  test("ignores rename events when the target file no longer exists", async () => {
+  // Scenario: a controller file is deleted. Unlike the old watcher, its
+  // endpoint is removed from the map.
+  test("a deleted controller's endpoint is removed", async () => {
     const root = tmpDir({
       "keep.js": "module.exports = () => 'keep';",
       "drop.js": "module.exports = () => 'drop';",
     });
     try {
-      const packages = deepRequire(root);
-      expect(packages.drop).toBeDefined();
+      const packages = load(root, { watch: { debounceMs: 1 } });
       fs.unlinkSync(path.join(root, "drop.js"));
-      await new Promise((r) => setTimeout(r, 300));
-      // We don't expect the watcher to unregister (it doesn't); we just
-      // assert that no error/log/crash followed the delete.
-      expect(packages.keep).toBeDefined();
+      jest.resetModules();
+      fire("drop.js", "rename");
+      expect(await waitFor(() => packages.drop === undefined)).toBe(true);
+      expect(packages.keep()).toBe("keep");
     } finally {
       cleanup(root);
     }
   }, 10000);
 
-  // Scenario: a watch event arrives with `filename = null` (rare on some
-  // platforms — kqueue/inotify return null when the kernel can't determine
-  // the changed entry). The `if (!filename) return` guard short-circuits.
-  test("ignores watch events with null filename", async () => {
-    const root = tmpDir({ "z.js": "module.exports = () => 'z';" });
+  // Scenario: the developer saves a half-typed file. The previous controllers
+  // must keep serving and the error must be reported, not thrown.
+  test("a controller that fails to load keeps the previous set and logs the error", async () => {
+    const root = tmpDir({ "a.js": "module.exports = () => 'a1';" });
     try {
-      const packages = deepRequire(root);
-      const watcher = [...openWatchers].pop();
-      watcher.emit("change", "rename", null);
-      await new Promise((r) => setTimeout(r, 100));
-      expect(Object.keys(packages)).toEqual(["z"]);
+      const packages = load(root, { watch: { debounceMs: 1 } });
+      fs.writeFileSync(path.join(root, "a.js"), "module.exports = () => {");
+      jest.resetModules();
+      fire("a.js");
+      expect(await waitFor(() => errors.length > 0)).toBe(true);
+      expect(errors[0]).toMatch(/Reload failed, still serving the previous controllers/);
+      expect(packages.a()).toBe("a1");
     } finally {
       cleanup(root);
     }
   }, 10000);
 
-  // Scenario: the watcher emits a rename for a filename that no longer
-  // exists on disk. The `fs.existsSync(filePath) === false` branch must
-  // engage so the handler doesn't try to require() a missing file.
-  test("synthetic rename for nonexistent file triggers existsSync false branch", async () => {
-    const root = tmpDir({ "a.js": "module.exports = () => 'a';" });
+  // Scenario: a duplicate endpoint appears mid-session (users.js and
+  // users/index.js). Same protection as a failed load.
+  test("a duplicate endpoint on reload keeps the previous set", async () => {
+    const root = tmpDir({ "users.js": "module.exports = () => 'u1';" });
     try {
-      const packages = deepRequire(root);
-      const watcher = [...openWatchers].pop();
-      watcher.emit("change", "rename", "ghost-route.js");
-      await new Promise((r) => setTimeout(r, 100));
-      expect(packages["ghost-route"]).toBeUndefined();
+      const packages = load(root, { watch: { debounceMs: 1 } });
+      fs.mkdirSync(path.join(root, "users"));
+      fs.writeFileSync(path.join(root, "users/index.js"), "module.exports = () => 'dup';");
+      jest.resetModules();
+      fire(path.join("users", "index.js"), "rename");
+      expect(await waitFor(() => errors.length > 0)).toBe(true);
+      expect(errors[0]).toMatch(/Duplicate endpoint/);
+      expect(packages.users()).toBe("u1");
     } finally {
       cleanup(root);
     }
   }, 10000);
 
-  // Scenario: the watcher emits an event for a synthesized filename that
-  // computeEndpoint returns null for (e.g. "/_helpers.js" — underscore
-  // prefixed). The `if (!endpoint) return` branch engages.
-  test("synthetic event for underscore-prefixed filename triggers !endpoint branch", async () => {
-    const root = tmpDir({ "b.js": "module.exports = () => 'b';" });
-    try {
-      const packages = deepRequire(root);
-      // Create the actual underscore file so existsSync passes, then emit
-      // a synthetic rename for it. computeEndpoint returns null because
-      // file path includes `/_`.
-      fs.writeFileSync(
-        path.join(root, "_helper.js"),
-        "module.exports = () => 'priv';",
-      );
-      const watcher = [...openWatchers].pop();
-      watcher.emit("change", "rename", "_helper.js");
-      await new Promise((r) => setTimeout(r, 100));
-      expect(packages._helper).toBeUndefined();
-    } finally {
-      cleanup(root);
-    }
-  }, 10000);
-});
-
-// ============================================================================
-// Platform-detection branch coverage. The recursive-watch capability check
-// `darwin || win32 || (linux && nodeVer >= 20)` has three OR arms; we mock
-// `process.platform` to exercise the win32 and linux-old branches.
-// ============================================================================
-describe("deepRequire — platform detection", () => {
-  function withPlatform(plat, nodeVersionMajor, fn) {
-    const realPlat = process.platform;
-    const realVersions = process.versions;
-    Object.defineProperty(process, "platform", { value: plat, configurable: true });
-    Object.defineProperty(process, "versions", {
-      value: { ...realVersions, node: `${nodeVersionMajor}.0.0` },
-      configurable: true,
+  // Scenario: initial load also refuses a duplicate endpoint, loudly.
+  test("startup refuses duplicate endpoints", () => {
+    const root = tmpDir({
+      "users.js": "module.exports = () => 1;",
+      "users/index.js": "module.exports = () => 2;",
     });
     try {
-      fn();
+      expect(() => deepRequire(root)).toThrow(/Duplicate endpoint detected: "users"/);
     } finally {
-      Object.defineProperty(process, "platform", { value: realPlat, configurable: true });
-      Object.defineProperty(process, "versions", { value: realVersions, configurable: true });
+      cleanup(root);
     }
-  }
-
-  // Scenario: Windows — recursive watch is supported. supportsRecursiveWatch
-  // resolves true via the win32 arm of the OR.
-  test("win32 platform takes the second OR arm", () => {
-    withPlatform("win32", 18, () => {
-      jest.isolateModules(() => {
-        const fresh = require("./deepRequire");
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), "dr-win-"));
-        try {
-          fs.writeFileSync(path.join(root, "x.js"), "module.exports = () => 'x';");
-          const packages = fresh(root);
-          expect(packages.x()).toBe("x");
-        } finally {
-          cleanup(root);
-        }
-      });
-    });
   });
 
-  // Scenario: Linux on Node 18 — recursive watch NOT supported.
-  // supportsRecursiveWatch resolves false; the fs.watch block is skipped.
-  test("linux + node<20 skips the fs.watch block entirely", () => {
-    withPlatform("linux", 18, () => {
-      jest.isolateModules(() => {
-        const fresh = require("./deepRequire");
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), "dr-lin-"));
-        try {
-          fs.writeFileSync(path.join(root, "x.js"), "module.exports = () => 'x';");
-          const packages = fresh(root);
-          expect(packages.x()).toBe("x");
-        } finally {
-          cleanup(root);
-        }
-      });
-    });
+  // Scenario: edits to non-source files and private files do not reload.
+  // Scenario: only a TypeScript service file changes (the controllers are .js).
+  // The watcher must still reload; the extension list is not just the selector.
+  test("a change to a .ts file reloads even when the selector is js only", async () => {
+    const root = tmpDir({ "x.js": "module.exports = () => 'x';" });
+    try {
+      load(root, { watch: { debounceMs: 1 } }, ["js"]);
+      await new Promise((r) => setTimeout(r, 150));
+      logs.length = 0;
+      fire(path.join("svc", "db.ts"), "change");
+      expect(await waitFor(() => logs.length > 0)).toBe(true);
+    } finally {
+      cleanup(root);
+    }
+  }, 10000);
+
+  test("README edits do not trigger a reload", async () => {
+    const root = tmpDir({ "x.js": "module.exports = () => 'x';" });
+    try {
+      load(root, { watch: { debounceMs: 1 } }, ["js"]);
+      // FSEvents may replay the fixture's own creation just after the watcher
+      // arms (a legitimate reload); let that settle before measuring.
+      await new Promise((r) => setTimeout(r, 150));
+      logs.length = 0;
+      fire("notes.md");
+      await new Promise((r) => setTimeout(r, 40));
+      expect(logs).toEqual([]);
+    } finally {
+      cleanup(root);
+    }
+  }, 10000);
+
+  test("underscore-prefixed files never become endpoints", async () => {
+    const root = tmpDir({ "y.js": "module.exports = () => 'y';" });
+    try {
+      const packages = load(root, { watch: { debounceMs: 1 } });
+      fs.writeFileSync(path.join(root, "_private.js"), "module.exports = () => 'priv';");
+      fire("_private.js", "rename");
+      expect(await waitFor(() => logs.length > 0)).toBe(true);
+      expect(packages._private).toBeUndefined();
+      expect(Object.keys(packages)).toEqual(["y"]);
+    } finally {
+      cleanup(root);
+    }
+  }, 10000);
+
+  // Scenario: a reload with no known file name (some platforms) still reloads
+  // and logs without a "(changed: ...)" suffix.
+  test("an event with no file name reloads without listing files", async () => {
+    const root = tmpDir({ "z.js": "module.exports = () => 'z';" });
+    try {
+      load(root, { watch: { debounceMs: 1 } });
+      fire(null, "rename");
+      expect(await waitFor(() => logs.length > 0)).toBe(true);
+      expect(logs[0]).toBe("Reloaded 1 controllers");
+    } finally {
+      cleanup(root);
+    }
+  }, 10000);
+
+  // Scenario: extra service directories are watched too.
+  test("watch.paths adds directories to watch", () => {
+    const root = tmpDir({ "z.js": "module.exports = () => 'z';" });
+    const svc = tmpDir({ "db.js": "module.exports = {};" });
+    try {
+      const packages = load(root, { watch: { paths: [svc] } });
+      expect(watchSpy.mock.calls.map((c) => c[0])).toEqual([fs.realpathSync(root), fs.realpathSync(svc)]);
+      deepRequire.stopWatching(packages);
+    } finally {
+      watchSpy.mockClear();
+      cleanup(root);
+      cleanup(svc);
+    }
+  });
+
+  test("stopWatching closes the watcher and is a no-op for unwatched maps", async () => {
+    const root = tmpDir({ "z.js": "module.exports = () => 'z';" });
+    try {
+      const packages = load(root, { watch: { debounceMs: 1 } });
+      const closeSpy = jest.spyOn(openWatchers[0], "close");
+      deepRequire.stopWatching(packages);
+      expect(closeSpy).toHaveBeenCalled();
+      deepRequire.stopWatching(packages);
+      deepRequire.stopWatching({});
+    } finally {
+      cleanup(root);
+    }
   });
 });
 

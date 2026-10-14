@@ -44,12 +44,10 @@ describe("receiveContext", () => {
       ).toBe("first");
     });
 
-    test("returns null for sessionId not at start (due to regex)", () => {
-      // Note: The regex (?:^|;\\s*) requires literal \\s* after semicolon
-      // This means sessionId can only be reliably matched at start of string
+    test("finds sessionId after other cookies (the old escaped-\\s regex only matched at the start)", () => {
       expect(
         getSessionId({ headers: { cookie: "other=second; sessionId=last" } })
-      ).toBeNull();
+      ).toBe("last");
     });
   });
 
@@ -320,5 +318,19 @@ describe("receiveContext", () => {
         expect(keys).toContain("authState");
       });
     });
+  });
+});
+
+describe("receiveContext — getSessionId matches the wiring layer's parser", () => {
+  // Scenario: a browser sends several cookies; the session cookie is not first.
+  // The old regex (an escaped `\s`) only matched at the start of the header, so
+  // `this.sessionId` was null while the connection had a session.
+  test("finds sessionId after other cookies, with optional space", () => {
+    expect(getSessionId({ headers: { cookie: "a=1; sessionId=mid; b=2" } })).toBe("mid");
+    expect(getSessionId({ headers: { cookie: "a=1;sessionId=tight" } })).toBe("tight");
+  });
+
+  test("falls back to the x-ape-session-id header (Node and Bun clients)", () => {
+    expect(getSessionId({ headers: { "x-ape-session-id": " hdr " } })).toBe("hdr");
   });
 });

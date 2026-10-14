@@ -175,6 +175,8 @@ const currentDir = process.cwd();
  *                             pass absolute paths so cwd no longer matters.
  *                             Detected via `path.isAbsolute(dirname)`.
  * @param {string[]} [selector=['js']] - File extensions to include (without dots)
+ * @param {Object} [options] - Forwarded to deepRequire
+ * @param {boolean|Object} [options.watch=false] - Opt-in hot reload (see server/utils/hotReload.js)
  * @returns {Object.<string, Function>} Object mapping endpoint paths to controller functions
  * @throws {Error} If directory doesn't exist or contains duplicate endpoints
  *
@@ -221,7 +223,7 @@ const currentDir = process.cwd();
  *   return await handler.call(context, data)
  * }
  */
-module.exports = function (dirname, selector) {
+module.exports = function (dirname, selector, options) {
   // Absolute paths bypass the cached `currentDir` entirely so cwd at call
   // time has no effect on resolution. This is the only way for callers
   // running inside multi-process servers (or test harnesses spawning from
@@ -232,5 +234,5 @@ module.exports = function (dirname, selector) {
   // Existing callers depend on the snapshot semantics — re-reading cwd here
   // would break apps that chdir after loader import.
   const resolved = path.isAbsolute(dirname) ? dirname : path.join(currentDir, dirname);
-  return deeprequire(resolved, selector);
+  return deeprequire(resolved, selector, options);
 };

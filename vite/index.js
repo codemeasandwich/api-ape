@@ -32,10 +32,16 @@ const path = require("path");
  * @param {string} options.where - Directory containing API controllers (relative to project root)
  * @param {Function|string} [options.onConnect] - Connection lifecycle callback, or path to module exporting it
  * @param {Object} [options.fileTransferOptions] - File transfer configuration
+ * @param {boolean|Object} [options.watch=true] - Hot-reload controllers (dev server only); `false` disables it
+ * @param {Object} [options.origin] - Origin policy, see server/README.md "Origin check"
  * @returns {import('vite').Plugin} Vite plugin object
  */
 function apiApePlugin(options = {}) {
-  const { where = "api", onConnect, ...rest } = options;
+  // Hot reload of controllers is on by default here: this plugin only runs under `vite serve`.
+  // Pass `watch: false` to turn it off, or `watch: { paths: [...] }` to add service directories.
+  const { where = "api", onConnect, watch = true, ...rest } = options;
+  /** The previous api-ape instance, so a Vite restart can stop its file watcher. */
+  let previous = null;
 
   return {
     name: "api-ape",
@@ -53,6 +59,7 @@ function apiApePlugin(options = {}) {
 
         // Reset singleton state for Vite HMR compatibility
         serverApe._resetForTesting();
+        if (previous) require("../server/utils/deepRequire").stopWatching(previous.core.controllers);
 
         // Resolve onConnect - it can be a function or a path to a module
         let resolvedOnConnect = onConnect;
@@ -68,8 +75,9 @@ function apiApePlugin(options = {}) {
         }
 
         // Initialize api-ape on Vite's underlying HTTP server
-        serverApe(server.httpServer, {
+        previous = serverApe(server.httpServer, {
           where,
+          watch,
           onConnect: resolvedOnConnect,
           ...rest,
         });

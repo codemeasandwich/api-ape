@@ -110,6 +110,7 @@
 
 const { configureApeLogging, resetApeLoggingForTesting } = require("../../utils/apeLogger");
 const loader = require("./loader");
+const { resolveOriginPolicy } = require("../security/origin");
 const wiring = require("./wiring");
 const { isBun, isDeno, getRuntime } = require("./wsProvider");
 const { getFileTransferManager } = require("./fileTransfer");
@@ -157,9 +158,15 @@ function _resetForTesting() {
  * @param {Object} [options.fileTransferOptions] - File transfer configuration
  * @param {number} [options.fileTransferOptions.startTimeout=60000] - Timeout before upload starts
  * @param {number} [options.fileTransferOptions.completeTimeout=60000] - Timeout for upload completion
+ * @param {Object} [options.origin] - Origin policy `{ mode: 'root-domain'|'exact', allowedOrigins, allowedHosts }`.
+ *     Default `root-domain` on Node (ports ignored, unchanged), `exact` on Bun.
+ * @param {boolean|Object} [options.watch=false] - Hot-reload controllers (opt-in); see README "Hot reload"
+ * @param {Object} [options.websocketOptions] - Bun only: `Bun.serve` websocket tuning (idleTimeout, sendPings, ...)
  * @param {Object} [options.longPollingOptions] - Long polling configuration
  * @param {number} [options.longPollingOptions.heartbeatInterval=20000] - Interval in ms for heartbeat pings
  * @param {number} [options.longPollingOptions.recycleTimeout=25000] - Timeout in ms before recycling connection
+ * @param {string} [defaultOriginMode] - Origin mode used when `options.origin.mode` is absent:
+ *     `"root-domain"` on Node, `"exact"` on Bun
  * @returns {ApeCore} Core handlers and path patterns
  *
  * @typedef {Object} ApeCore
@@ -194,7 +201,9 @@ function createApeCore({
   onConnect,
   fileTransferOptions,
   longPollingOptions,
-}) {
+  origin,
+  watch,
+}, defaultOriginMode) {
   const path = require("path");
   // `where` may be absolute (passed verbatim) or relative (joined with cwd
   // for back-compat — this matches the legacy loader resolution semantics).
@@ -203,7 +212,7 @@ function createApeCore({
   const controllersDir = path.isAbsolute(where)
     ? where
     : path.join(process.cwd(), where);
-  const controllers = loader(where);
+  const controllers = loader(where, undefined, { watch });
   // Decouple the public URL prefix from the on-disk path. Default rules:
   //   absolute `where` → basename (so `/srv/app/api` URL-collapses to `api`)
   //   relative `where` → as-is (preserves the historical `/api/ape` etc.)
@@ -215,7 +224,12 @@ function createApeCore({
       ? path.basename(where)
       : where.replace(/^\.?\/+|\/+$/g, "");
   const fileTransfer = getFileTransferManager(fileTransferOptions);
-  const wiringHandler = wiring(controllers, onConnect, fileTransfer);
+  // Node keeps the historical root-domain Origin check by default; Bun defaults
+  // to exact host:port (the caller passes the default for its runtime).
+  const originPolicy = resolveOriginPolicy(origin, defaultOriginMode);
+  const wiringHandler = wiring(controllers, onConnect, fileTransfer, {
+    originPolicy,
+  });
   const { handleStreamGet, handleStreamPost } = createLongPollingHandler(
     controllers,
     onConnect,
@@ -226,6 +240,7 @@ function createApeCore({
   return {
     controllers,
     controllersDir,
+    originPolicy,
     publicPrefix,
     fileTransfer,
     wiringHandler,
@@ -357,11 +372,14 @@ module.exports = function (server, options) {
 
   configureApeLogging(options && options.logging);
 
-  const core = createApeCore(options);
+  const bunServer = isBunServer(server);
+  /* istanbul ignore next - the exact default is only chosen for a Bun server */
+  const originDefault = bunServer ? "exact" : "root-domain";
+  const core = createApeCore(options, originDefault);
 
   // Check for Bun server first
   /* istanbul ignore next 3 - only reachable in Bun runtime */
-  if (isBunServer(server)) {
+  if (bunServer) {
     return initBunServerWithReload(server, options, core);
   }
 

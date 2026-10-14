@@ -100,8 +100,140 @@ function getHeader(req, name) {
   if (typeof req.header === "function") {
     return req.header(name);
   }
+  // Fetch API Request (Bun): Headers has .get() and no own properties
+  if (typeof req.headers.get === "function") {
+    return req.headers.get(name) || undefined;
+  }
   // Raw Node.js http request - headers are lowercase
   return req.headers[name.toLowerCase()];
+}
+
+/** Origin comparison strategies. */
+const MODES = ["root-domain", "exact"];
+
+/** Keys accepted in an origin policy. */
+const POLICY_KEYS = ["mode", "allowedOrigins", "allowedHosts"];
+
+/**
+ * Validate and normalise an origin policy.
+ *
+ * @param {Object} [policy] - `{ mode, allowedOrigins, allowedHosts }`
+ * @param {"root-domain"|"exact"} defaultMode - Mode used when `policy.mode` is absent
+ * @returns {{mode: string, allowedOrigins: string[], allowedHosts: string[]}}
+ * @throws {Error} For an unknown mode or a non-array allow list
+ */
+function resolveOriginPolicy(policy, defaultMode) {
+  const p = policy || {};
+  const unknown = Object.keys(p).filter((k) => !POLICY_KEYS.includes(k));
+  if (unknown.length > 0) {
+    throw new Error(
+      `api-ape: unknown origin option ${unknown.join(", ")}. Allowed: ${POLICY_KEYS.join(", ")}`,
+    );
+  }
+  const mode = p.mode === undefined ? defaultMode : p.mode;
+  if (!MODES.includes(mode)) {
+    throw new Error(
+      `api-ape: origin.mode must be one of ${MODES.join(", ")} (got ${JSON.stringify(mode)})`,
+    );
+  }
+  for (const key of ["allowedOrigins", "allowedHosts"]) {
+    if (p[key] !== undefined && !Array.isArray(p[key])) {
+      throw new Error(`api-ape: origin.${key} must be an array of strings`);
+    }
+  }
+  const allowedOrigins = p.allowedOrigins || [];
+  const allowedHosts = p.allowedHosts || [];
+  [...allowedOrigins, ...allowedHosts].forEach((entry) => {
+    if (typeof entry !== "string") {
+      throw new Error(`api-ape: origin allow-list entries must be strings (got ${typeof entry})`);
+    }
+  });
+  allowedOrigins.forEach((o) => {
+    const n = normaliseOrigin(o);
+    if (n !== "null" && !(n && /^https?:/.test(n))) {
+      throw new Error(
+        `api-ape: origin.allowedOrigins entry ${JSON.stringify(o)} must be an http(s) origin such as "http://localhost:5173" (or "null")`,
+      );
+    }
+  });
+  return { mode, allowedOrigins, allowedHosts };
+}
+
+/**
+ * Normalise an Origin header value to `scheme://host[:port]` (default ports
+ * dropped, host lower-cased), or `"null"` for the opaque origin.
+ *
+ * @param {string} value - Origin header or allow-list entry
+ * @returns {string|null} Normalised origin, or null when it cannot be parsed
+ * @private
+ */
+function normaliseOrigin(value) {
+  if (value === "null") return "null";
+  try {
+    const u = new URL(value);
+    return u.origin === "null" ? null : u.origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Exact (scheme-aware, port-aware) comparison of an Origin to a Host header.
+ * `http://localhost:9999` does not match Host `localhost:4318`.
+ *
+ * @param {string} originHeader - Origin header
+ * @param {string|undefined} hostHeader - Host header
+ * @returns {boolean} True when the Origin is the same origin as the Host
+ * @private
+ */
+function exactMatch(originHeader, hostHeader) {
+  if (!hostHeader) return false;
+  try {
+    const o = new URL(originHeader);
+    if (o.protocol !== "http:" && o.protocol !== "https:") return false;
+    // Re-parse the Host with the Origin's scheme so default ports compare equal
+    const h = new URL(`${o.protocol}//${hostHeader}`);
+    return o.host === h.host && h.pathname === "/" && !h.username;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Decide whether a request is allowed.
+ *
+ * @param {Object} req - Request (any supported shape)
+ * @param {Object} policy - Resolved policy
+ * @returns {string|null} Refusal message, or null when allowed
+ * @private
+ */
+function refusalReason(req, policy) {
+  const originHeader = getHeader(req, "Origin");
+  const hostHeader = getHeader(req, "Host");
+
+  if (policy.allowedHosts.length > 0) {
+    const host = (hostHeader || "").toLowerCase();
+    if (!policy.allowedHosts.some((h) => h.toLowerCase() === host)) {
+      return "REJECTING socket: Host " + hostHeader + " is not in allowedHosts";
+    }
+  }
+
+  // Missing Origin: non-browser client or same-origin; nothing to compare
+  if (!originHeader) return null;
+
+  const normalised = normaliseOrigin(originHeader);
+  const listed =
+    normalised !== null &&
+    policy.allowedOrigins.some((o) => normaliseOrigin(o) === normalised);
+  if (listed) return null;
+
+  const matches =
+    policy.mode === "exact"
+      ? exactMatch(originHeader, hostHeader)
+      : extractRootDomain(originHeader) === extractRootDomain(hostHeader);
+  if (matches) return null;
+
+  return "REJECTING socket from " + originHeader + " mismatch with " + hostHeader;
 }
 
 /**
@@ -132,6 +264,10 @@ function getHeader(req, name) {
  * @param {WebSocket} socket - WebSocket instance (must have `.destroy()` method)
  * @param {http.IncomingMessage} req - HTTP upgrade request
  * @param {Function} [onError=console.error] - Error callback for logging rejections
+ * @param {Object} [policy] - `{ mode: "root-domain"|"exact", allowedOrigins, allowedHosts }`.
+ *     Defaults to the legacy `root-domain` mode (ports ignored). `exact` compares
+ *     scheme-normalised host AND port; `allowedOrigins` admits extra exact origins;
+ *     `allowedHosts` refuses any Host not listed (DNS-rebinding guard).
  * @returns {boolean} True if origin is valid and connection should proceed,
  *                    false if connection was rejected and destroyed
  *
@@ -176,27 +312,21 @@ function getHeader(req, name) {
  * // Origin: https://example.com.evil.com, Host: example.com
  * // extractRootDomain → 'evil.com' vs 'example.com' → No match ✗
  */
-module.exports = function (socket, req, onError) {
+module.exports = function (socket, req, onError, policy) {
   // Default error handler to console.error if not provided
   onError = onError || console.error;
 
-  // Extract root domains for comparison
-  const origin = extractRootDomain(getHeader(req, "Origin") || "");
-  const host = extractRootDomain(getHeader(req, "Host"));
+  const reason = refusalReason(req, resolveOriginPolicy(policy, "root-domain"));
+  if (reason) {
+    onError(reason);
 
-  // Check for origin mismatch (only if Origin header is present)
-  if (origin && origin !== host) {
-    // Log the rejection
-    onError(
-      "REJECTING socket from " +
-        getHeader(req, "Origin") +
-        " mismatch with " +
-        getHeader(req, "Host"),
-    );
-
-    // Destroy the socket to terminate the connection
-    if (socket && socket.destroy) {
-      socket.destroy();
+    // Terminate the connection. Node net sockets and api-ape's own sockets have
+    // destroy(); the `ws` library's WebSocket has terminate() and no destroy();
+    // anything else is closed with 1008 (policy violation).
+    if (socket) {
+      if (typeof socket.destroy === "function") socket.destroy();
+      else if (typeof socket.terminate === "function") socket.terminate();
+      else if (typeof socket.close === "function") socket.close(1008, "Origin not allowed");
     }
 
     return false;
@@ -205,3 +335,5 @@ module.exports = function (socket, req, onError) {
   // Origin is valid (or not present)
   return true;
 };
+
+module.exports.resolveOriginPolicy = resolveOriginPolicy;

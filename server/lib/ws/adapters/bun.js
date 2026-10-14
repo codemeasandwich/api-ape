@@ -270,6 +270,19 @@ class BunWebSocket extends EventEmitter {
   }
 
   /**
+   * Refuse the connection immediately (Node `socket.destroy()` parity).
+   *
+   * The Origin check calls `socket.destroy()` on a refused connection. Bun's
+   * socket has no hard-destroy, so this closes with 1008 (policy violation).
+   * A no-op when the socket is already closing or closed.
+   *
+   * @returns {void}
+   */
+  destroy() {
+    this.close(1008, "Origin not allowed");
+  }
+
+  /**
    * Internal handler for incoming messages.
    *
    * Called by BunWebSocketServer when Bun's websocket.message event fires.

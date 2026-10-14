@@ -97,6 +97,7 @@ const originSecurity = require("../security/origin");
  * @param {Object} socket - WebSocket instance (from WebSocketServer)
  * @param {http.IncomingMessage} req - HTTP upgrade request object
  * @param {function(Error): void} onError - Callback invoked on security failure
+ * @param {Object} [originPolicy] - `{ mode, allowedOrigins, allowedHosts }`, see security/origin.js
  * @returns {boolean} True if connection is valid and secure, false otherwise
  *
  * @example
@@ -144,9 +145,9 @@ const originSecurity = require("../security/origin");
  *     return session
  * }
  */
-module.exports = function open(socket, req, onError) {
+module.exports = function open(socket, req, onError, originPolicy) {
   // Delegate to origin security for validation
-  const isSecure = originSecurity(socket, req, onError);
+  const isSecure = originSecurity(socket, req, onError, originPolicy);
 
   if (!isSecure) {
     return false;

@@ -241,3 +241,26 @@ describe("send handler — broadcast onSend hook", () => {
     expect(cleanup).toHaveBeenCalledWith(false, { hello: 1 });
   });
 });
+
+describe("send handler — closed socket", () => {
+  // Scenario: a broadcast reaches a client whose socket has already closed and
+  // the app's onSend hook returned no cleanup callback. The failure is logged
+  // through the api-ape logger and nothing is sent. This is timing-dependent in
+  // the simulator stories, so it is pinned here deterministically.
+  test("a broadcast to a closed socket is logged and not sent", () => {
+    const logger = require("../../utils/apeLogger");
+    const error = jest.fn();
+    logger.configureApeLogging({ error, log() {}, warn() {}, info() {}, debug() {} });
+    try {
+      const ape = makeApe({
+        socket: { readyState: 3, CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3, send: jest.fn() },
+        events: { onSend: jest.fn(() => undefined) },
+      });
+      sendHandlerFactory(ape)(null, "topic", { a: 1 }, false);
+      expect(ape.socket.send).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledTimes(1);
+    } finally {
+      logger.resetApeLoggingForTesting();
+    }
+  });
+});

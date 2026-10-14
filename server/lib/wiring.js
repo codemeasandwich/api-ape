@@ -254,6 +254,8 @@ function defaultEvents(events = {}) {
  * @param {Object} [options] - Additional options
  * @param {Object} [options.authFramework] - Auth framework instance for authentication
  * @param {Object} [options.authMiddleware] - Authorization middleware instance
+ * @param {Object} [options.originPolicy] - Origin check policy `{ mode, allowedOrigins, allowedHosts }`
+ *     (see server/security/origin.js). Omitted = legacy root-domain check.
  * @returns {Function} WebSocket connection handler `(socket, req) => void`
  *
  * @example <caption>Minimal Setup</caption>
@@ -307,7 +309,7 @@ module.exports = function wiring(controllers, onConnect, fileTransfer, options =
   onConnect = onConnect || (() => {});
 
   // Extract auth framework and middleware from options
-  const { authFramework = null, authMiddleware = null } = options;
+  const { authFramework = null, authMiddleware = null, originPolicy } = options;
 
   /**
    * WebSocket connection handler
@@ -463,7 +465,7 @@ module.exports = function wiring(controllers, onConnect, fileTransfer, options =
          *
          * If validation fails, the socket is destroyed and we clean up.
          */
-        const isOk = socketOpen(socket, req, onError);
+        const isOk = socketOpen(socket, req, onError, originPolicy);
 
         /* istanbul ignore next 4 - origin validation failure, requires CORS misconfiguration */
         if (!isOk) {

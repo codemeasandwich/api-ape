@@ -67,6 +67,10 @@ const path = require("path");
 const fs = require("fs");
 const { getFileTransferManager } = require("./fileTransfer");
 const { BunWebSocket, BunWebSocketServer } = require("./ws/adapters/bun");
+const { stopWatching } = require("../utils/deepRequire");
+const { upgradeWebSocket } = require("./runtimes/bunRequest");
+const { resolveOriginPolicy } = require("../security/origin");
+const { bunWebSocketConfig } = require("./runtimes/bunWebSocketConfig");
 
 /**
  * @typedef {Object} ApeBunOptions
@@ -84,6 +88,22 @@ const { BunWebSocket, BunWebSocketServer } = require("./ws/adapters/bun");
  * @property {Function} [onConnect] - Callback when a client connects.
  *     Receives (socket, req, send) and can return { onDisconnect, embed }.
  * @property {Object} [fileTransferOptions] - Options for the file transfer manager.
+ * @property {Object} [origin] - Origin check policy for the WebSocket upgrade.
+ *     `{ mode: 'exact' | 'root-domain', allowedOrigins?: string[], allowedHosts?: string[] }`.
+ *     Defaults to `mode: 'exact'`: the Origin must equal the Host (scheme-normalised
+ *     host AND port), so a page on another port of localhost is refused with a 403
+ *     before the upgrade. `allowedOrigins` admits extra exact origins (e.g. a Vite dev
+ *     server); `allowedHosts` refuses any Host not listed (DNS-rebinding guard).
+ *     A request with no Origin header (non-browser client) is allowed.
+ * @property {boolean|Object} [watch=false] - Hot-reload controllers on file change.
+ *     Off by default. `true` watches the controller directory;
+ *     `{ paths: string[], debounceMs: number }` also invalidates and watches those
+ *     directories (the service modules the controllers import). See README "Hot reload".
+ * @property {Object} [websocketOptions] - Bun WebSocket tuning passed through to
+ *     `Bun.serve({ websocket })`: `idleTimeout`, `sendPings`, `maxPayloadLength`,
+ *     `backpressureLimit`, `closeOnBackpressureLimit`, `perMessageDeflate`,
+ *     `publishToSelf`. Bun closes a socket idle for `idleTimeout` seconds (default 120)
+ *     and sends protocol pings by default (`sendPings: true`).
  */
 
 /**
@@ -94,6 +114,7 @@ const { BunWebSocket, BunWebSocketServer } = require("./ws/adapters/bun");
  *     Returns Response for api-ape routes, null for non-matching routes.
  * @property {Object} websocket - WebSocket event handlers for Bun.serve().
  * @property {BunWebSocketServer} wss - The WebSocket server instance.
+ * @property {Function} close - Stops the hot-reload watcher (no-op unless `watch` was set).
  */
 
 /**
@@ -173,7 +194,16 @@ const { BunWebSocket, BunWebSocketServer } = require("./ws/adapters/bun");
  *     }
  * })
  */
-function apeBun({ where, urlPrefix, selector, onConnect, fileTransferOptions }) {
+function apeBun({
+  where,
+  urlPrefix,
+  selector,
+  onConnect,
+  fileTransferOptions,
+  origin,
+  watch,
+  websocketOptions,
+}) {
   /**
    * Load controllers from the specified directory. Absolute paths are passed
    * verbatim; relative paths resolve against the loader's cached cwd. The
@@ -182,7 +212,7 @@ function apeBun({ where, urlPrefix, selector, onConnect, fileTransferOptions }) 
    * preserves backwards-compatible behaviour for existing Node consumers.
    * @type {Object<string, Function>}
    */
-  const controllers = loader(where, selector);
+  const controllers = loader(where, selector, { watch });
 
   /**
    * Public URL prefix for the api-ape routes. Decoupled from `where` so a
@@ -222,7 +252,10 @@ function apeBun({ where, urlPrefix, selector, onConnect, fileTransferOptions }) 
    * Wiring handler that processes WebSocket connections and messages.
    * @type {Function}
    */
-  const wiringHandler = wiring(controllers, onConnect, fileTransfer);
+  // Exact host:port Origin matching is the default under Bun; resolved once so a
+  // bad option throws at start-up, not on the first connection.
+  const originPolicy = resolveOriginPolicy(origin, "exact");
+  const wiringHandler = wiring(controllers, onConnect, fileTransfer, { originPolicy });
 
   // Handle WebSocket connections through the wiring layer
   wss.on("connection", wiringHandler);
@@ -251,21 +284,12 @@ function apeBun({ where, urlPrefix, selector, onConnect, fileTransferOptions }) 
     const url = new URL(req.url);
     const pathname = url.pathname;
 
-    // Handle WebSocket upgrade requests
+    // Handle WebSocket upgrade requests. The Origin policy runs here, before
+    // the upgrade, and the request reaches controllers Node-shaped
+    // (see runtimes/bunRequest.js).
     if (pathname === wsPath) {
-      const upgrade = req.headers.get("upgrade");
-      if (upgrade?.toLowerCase() === "websocket") {
-        // Use Bun's native upgrade mechanism
-        // Store request in data for access in websocket.open
-        const success = server.upgrade(req, {
-          data: { req },
-        });
-        if (success) {
-          // Return undefined to signal Bun handles the response
-          return undefined;
-        }
-        return new Response("WebSocket upgrade failed", { status: 500 });
-      }
+      const upgraded = upgradeWebSocket(req, server, { originPolicy });
+      if (upgraded !== null) return upgraded;
     }
 
     // Serve the client JavaScript bundle
@@ -302,6 +326,7 @@ function apeBun({ where, urlPrefix, selector, onConnect, fileTransferOptions }) 
    * @type {BunWebSocketHandlers}
    */
   const websocket = {
+    ...bunWebSocketConfig(websocketOptions),
     /**
      * Called when a WebSocket connection is opened.
      * Creates a BunWebSocket wrapper and passes to the wiring handler.
@@ -365,10 +390,19 @@ function apeBun({ where, urlPrefix, selector, onConnect, fileTransferOptions }) 
     },
   };
 
+  /**
+   * Stop the hot-reload watcher started by `watch` (a no-op when `watch` is off).
+   * @returns {void}
+   */
+  function close() {
+    stopWatching(controllers);
+  }
+
   return {
     fetch,
     websocket,
     wss,
+    close,
   };
 }
 

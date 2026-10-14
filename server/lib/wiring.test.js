@@ -173,3 +173,57 @@ describe("wiring — authFramework integration", () => {
     socket.emit("close");
   });
 });
+
+describe("wiring — originPolicy", () => {
+  // Scenario: a Bun/loopback server asks for exact host:port matching. A page
+  // on another port of the same host must be refused by the wiring layer too
+  // (defence in depth behind the pre-upgrade check in the Bun adapter).
+  beforeEach(() => _clients.clear());
+
+  test("an exact policy refuses another port of localhost and destroys the socket", async () => {
+    const handler = wiring({}, () => ({}), null, { originPolicy: { mode: "exact" } });
+    const socket = makeSocket();
+    handler(
+      socket,
+      makeReq({ headers: { origin: "http://localhost:9999", host: "localhost:4318" } }),
+    );
+    await new Promise((r) => setImmediate(r));
+    expect(socket.destroy).toHaveBeenCalled();
+    expect(socket.send).not.toHaveBeenCalled();
+    // The refused socket then closes: the client row is already gone, so the
+    // close handler must return quietly (no pending-resume registration).
+    expect(() => socket.emit("close")).not.toThrow();
+    expect(_clients.size).toBe(0);
+  });
+
+  test("the same policy admits the exact origin", async () => {
+    const handler = wiring({}, () => ({}), null, { originPolicy: { mode: "exact" } });
+    const socket = makeSocket();
+    handler(
+      socket,
+      makeReq({ headers: { origin: "http://localhost:4318", host: "localhost:4318" } }),
+    );
+    await new Promise((r) => setImmediate(r));
+    expect(socket.destroy).not.toHaveBeenCalled();
+    expect(socket.send).toHaveBeenCalled();
+  });
+
+  test("wiring works with the options argument omitted altogether", async () => {
+    const handler = wiring({}, () => ({}), null);
+    const socket = makeSocket();
+    handler(socket, makeReq({ headers: { origin: "http://evil.example", host: "127.0.0.1" } }));
+    await new Promise((r) => setImmediate(r));
+    expect(socket.destroy).toHaveBeenCalled();
+  });
+
+  test("with no policy another port of the same host is still admitted (legacy)", async () => {
+    const handler = wiring({}, () => ({}), null, {});
+    const socket = makeSocket();
+    handler(
+      socket,
+      makeReq({ headers: { origin: "http://localhost:9999", host: "localhost:4318" } }),
+    );
+    await new Promise((r) => setImmediate(r));
+    expect(socket.destroy).not.toHaveBeenCalled();
+  });
+});
