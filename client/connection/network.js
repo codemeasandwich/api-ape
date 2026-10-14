@@ -125,7 +125,7 @@ export function getPingUrl() {
  *   cross-origin one is seen as a redirect rather than as a thrown CORS failure), a
  *   3xx/4xx, `{ ok }` missing, or a stale replayed timestamp.
  *
- * Before 4.3.1 every failure was `'walled'`, so a restarted server kept the page in
+ * Before 4.4.0 every failure was `'walled'`, so a restarted server kept the page in
  * "walled" for the 30 s captive-portal retry.
  *
  * @returns {Promise<'ok'|'walled'|'unreachable'>} The classification above

@@ -119,7 +119,7 @@ describe("Connection State", () => {
      * Test: Fetch timeout (AbortError) should return 'unreachable'.
      * A timeout means no answer arrived: the server is down or restarting, which is
      * not a captive portal (a portal ANSWERS, with a login page). The client retries
-     * soon with backoff instead of waiting out the 30 s portal retry (4.3.1).
+     * soon with backoff instead of waiting out the 30 s portal retry (4.4.0).
      * The end-to-end stories are in integration/bun/client-connect.ts.
      */
     it('should return "unreachable" when fetch times out', async () => {

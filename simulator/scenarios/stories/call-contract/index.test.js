@@ -1,5 +1,5 @@
 /**
- * @fileoverview Call-contract stories (api-ape 4.3.1): what a caller can rely on when it
+ * @fileoverview Call-contract stories (api-ape 4.4.0): what a caller can rely on when it
  * makes a call, seen through the public server API and a raw socket.
  *
  * Every test is a user story. The page-side halves of these stories (the real browser

@@ -8,8 +8,8 @@
  * no inherited property is called as if it were a controller, no prototype changes, and
  * honest calls on the same socket keep working.
  *
- * Fixed in 4.4.0 (all earlier versions were affected). Each story failed on 4.3.1's
- * parent commit before the fix.
+ * Fixed in 4.4.0 (all earlier versions were affected). Each story failed on 4.3.0 and
+ * earlier before the fix.
  *
  * @module simulator/scenarios/stories/call-contract/hostile-peer
  */

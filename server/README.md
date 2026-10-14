@@ -97,7 +97,7 @@ api.connect('other-server', 3000)  // → ws://other-server:3000/api/ape
 const result = await api.hello('World')
 api.on('message', ({ data }) => console.log(data))
 
-// Subscribe to a channel the other server publishes to (from 4.3.1 this sends the
+// Subscribe to a channel the other server publishes to (from 4.4.0 this sends the
 // { subscribe } frame, so it receives; the first local subscriber subscribes, the
 // last one to leave unsubscribes, and every reconnect subscribes again)
 const off = api.news.banking((data) => console.log(data))
@@ -217,7 +217,7 @@ ape(app, {
 | `this.agent` | Parsed user-agent |
 | `this.isAuthenticated`, `this.authTier`, `this.principal`, `this.requiresTier(n)` | Auth state. Always `false` / `0` / `null` / `() => false`: the auth options are not wired (see [Authentication](#authentication)). |
 
-`this.broadcast` and `this.broadcastOthers` exist from 4.3.1 (the 4.3.0 docs listed them but the context did not provide them). If your `onConnect` already returns an `embed` with a `broadcast` or `broadcastOthers` of its own, yours wins (from 4.4.0; in 4.3.1 the built-in replaced it). There is no `this.online()` or `this.getClients()`; use `this.clients`. Each call runs on its own context, so `this.foo = x` inside a controller is private to that call; keep per-connection state in `onConnect`'s `embed`.
+`this.broadcast` and `this.broadcastOthers` exist from 4.4.0 (the 4.3.0 docs listed them but the context did not provide them). If your `onConnect` already returns an `embed` with a `broadcast` or `broadcastOthers` of its own, yours wins (from 4.4.0). There is no `this.online()` or `this.getClients()`; use `this.clients`. Each call runs on its own context, so `this.foo = x` inside a controller is private to that call; keep per-connection state in `onConnect`'s `embed`.
 
 ### Connection Lifecycle Hooks
 
@@ -352,7 +352,7 @@ Bun.serve({
 
 Three separate mechanisms, often confused:
 
-1. **`this.keepalive()` in a controller** resets the *client's* per-call timer (10 s by default) for a slow call. It sends `{ queryId, _keepalive: true }`; the call is not resolved. Call it at least every few seconds from long work. It does **not** extend the server's own freshness check on the incoming call (the server refuses a call whose `createdAt` is more than 10 s old, in the future, or a repeated `queryId`; this is checked once, on arrival). A call buffered by the client across a sleep or disconnect of more than 10 s is therefore refused, and pending calls are rejected when the socket closes, so there is no exactly-once delivery: keep mutations idempotent or revision-guarded. The browser client treats the frame as "still working": it restarts that call's timer and keeps waiting for the real reply (before 4.3.1 the client took the first keepalive for the reply and resolved the call with `undefined`). Every call runs on its own context layered over the connection's, so two concurrent calls each keepalive on their own `queryId`. A side effect: `this.foo = x` inside a controller is private to that call; keep per-connection state in `onConnect`'s `embed`.
+1. **`this.keepalive()` in a controller** resets the *client's* per-call timer (10 s by default) for a slow call. It sends `{ queryId, _keepalive: true }`; the call is not resolved. Call it at least every few seconds from long work. It does **not** extend the server's own freshness check on the incoming call (the server refuses a call whose `createdAt` is more than 10 s old, in the future, or a repeated `queryId`; this is checked once, on arrival). A call buffered by the client across a sleep or disconnect of more than 10 s is therefore refused, and pending calls are rejected when the socket closes, so there is no exactly-once delivery: keep mutations idempotent or revision-guarded. The browser client treats the frame as "still working": it restarts that call's timer and keeps waiting for the real reply (before 4.4.0 the client took the first keepalive for the reply and resolved the call with `undefined`). Every call runs on its own context layered over the connection's, so two concurrent calls each keepalive on their own `queryId`. A side effect: `this.foo = x` inside a controller is private to that call; keep per-connection state in `onConnect`'s `embed`.
 2. **`GET /{prefix}/ape/ping`** is an HTTP reachability probe returning `{ ok, ts }`. The client uses it to detect captive portals (`walled`). It is not a WebSocket heartbeat.
 3. **WebSocket liveness** belongs to the runtime. api-ape sends no ping frames of its own. Under Bun, the runtime sends protocol pings (`sendPings`, default `true`) and closes a socket that has been silent for `idleTimeout` seconds (default 120); browsers answer pings automatically, so an idle tab stays connected. Tune it with `websocketOptions: { idleTimeout, sendPings }`. Bun enforces the timeout on a coarse timer: measured on Bun 1.3.14, an `idleTimeout` of 2 or 5 both closed a silent socket at about 8 s, so treat it as approximate. Verified by `integration/bun/security.ts` (pings keep an idle socket open; without pings it closes).
 
@@ -483,7 +483,7 @@ client.send.stocks.nasdaq.tech({ price: 100 })
 
 api-ape includes a tiered authentication system with OPAQUE/PAKE support (server never learns raw passwords).
 
-> **Not available through `ape()` / `apeBun()`.** The `authFramework` and `authMiddleware` options were accepted by 4.3.0 and earlier and then **silently dropped**, so nothing below was ever enforced. From 4.3.1 `ape()` and `apeBun()` **throw at startup** if either is passed. They are not wired because they would cover the WebSocket path only; the Node HTTP long-poll fallback has no auth hooks and would answer unauthenticated requests. Until a design that covers every transport lands, authenticate in `onConnect` (refuse the socket, or return `embed: { user }`) and check `this.user` in controllers. The modules below stay in the package as building blocks.
+> **Not available through `ape()` / `apeBun()`.** The `authFramework` and `authMiddleware` options were accepted by 4.3.0 and earlier and then **silently dropped**, so nothing below was ever enforced. From 4.4.0 `ape()` and `apeBun()` **throw at startup** if either is passed. They are not wired because they would cover the WebSocket path only; the Node HTTP long-poll fallback has no auth hooks and would answer unauthenticated requests. Until a design that covers every transport lands, authenticate in `onConnect` (refuse the socket, or return `embed: { user }`) and check `this.user` in controllers. The modules below stay in the package as building blocks.
 
 ### Quick Setup (not wired, see the note above)
 
@@ -506,7 +506,7 @@ const authMiddleware = createAuthMiddleware({
   }
 });
 
-// ape(server, { where: 'api', authFramework, authMiddleware });  // throws since 4.3.1
+// ape(server, { where: 'api', authFramework, authMiddleware });  // throws since 4.4.0
 ```
 
 ### Authentication Tiers
@@ -954,11 +954,24 @@ import messageHash from 'api-ape/messageHash' // queryId of a message
 |-------|---------|
 | `{ type: '__connected__', data: { clientId, sessionId } }` | First frame after the upgrade. Send `?resume=<clientId>` plus the `sessionId` cookie on a reconnect (see above). |
 | `{ queryId, data }` | The reply to the call with that `queryId`. A controller that returns nothing gives `data` as `undefined` (encoded `"data<!U>": 0`). |
-| `{ queryId, err, errCode?, errData? }` | The call failed. `err` is an `Error` (JSS keeps `name` and `message`; the stack is `"Name: message"` only; read with plain `JSON.parse` the key is `err<!E>` = `[name, message, stack]`); `errCode` / `errData` carry the `code` / `data` the controller attached. |
+| `{ queryId, err, errCode?, errData? }` | The call failed. `err` is an `Error` (JSS keeps `name` and `message`; the stack is `"Name: message"` only; read with plain `JSON.parse` the key is `err<!E>` = `[name, message, stack]`); `errCode` / `errData` carry the `code` / `data` the controller attached, under the rules in [Errors](#errors) (a value thrown with no message, such as a plain object, arrives as itself without its own `stack`). Only the standard Error classes are rebuilt from an `err` tag; any other class name arrives as a plain `Error` carrying that name. The HTTP long-poll `POST` answers with this same frame (HTTP 500, or 404 for an unknown endpoint). |
 | `{ queryId, _keepalive: true }` | `this.keepalive()` was called: the call is still running. Not a reply; restart the call's timer and wait for the real one. |
 | `{ type: '/channel', data }` | A publish to a subscribed channel, or `this.send` / `this.broadcast` push (`type` is whatever the server named it). No `queryId`. |
 
 Conformance of every row above is tested in `simulator/scenarios/stories/call-contract/wire-protocol.test.js`, written against `api-ape/jss` and `api-ape/messageHash`.
+
+## Upgrading to 4.4.0
+
+4.4.0 is a **security release**: use it, whatever else you read here (details in the [CHANGELOG](../CHANGELOG.md#security)). Things that can break an application, all listed under "Breaking" in the CHANGELOG:
+
+- `ape()` / `apeBun()` **throw** if given `authFramework` or `authMiddleware` (they were never applied). Authenticate in `onConnect`.
+- A controller file that exports something that is not a function **stops startup**, naming the file.
+- `this.foo = x` in a controller is **private to that call**; keep per-connection state in `onConnect`'s `embed`.
+- `online()` and `getClients()` are no longer in `index.d.ts` (use `this.clients`).
+- Code that reads reply frames with plain `JSON.parse` sees the error as `err<!E>`, not a string `err`; read frames with `api-ape/jss`. The HTTP long-poll POST answers in the same shape.
+- `err.code` / `err.data` are forwarded only for the errors you throw: own, plain, never from Node system errors (see [Errors](#errors)).
+
+Old clients keep working against a 4.4.0 server (upgrade the server first), with the caveats under "Mixed versions" in the CHANGELOG.
 
 ## Troubleshooting & FAQ
 

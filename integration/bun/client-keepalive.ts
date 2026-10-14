@@ -34,7 +34,7 @@ const scenarios: Scenario[] = [
     {
         name: 'a call that outlives the 10 s timeout stays alive because each keepalive restarts the timer',
         fixtures: { 'slow.js': slow },
-        // `.then(...)` arms the call's timeout on 4.3.0 (a bare `await` did not until 4.3.1),
+        // `.then(...)` arms the call's timeout on 4.3.0 (a bare `await` did not until 4.4.0),
         // so this story is meaningful on old and new clients alike.
         browser: ({ api }) => new Promise((resolve, reject) => api.slow({ n: 4, ms: 3000, tag: 'long' }).then(resolve).catch(reject)),
         timeoutMs: 30000,

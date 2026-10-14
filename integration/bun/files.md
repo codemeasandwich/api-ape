@@ -40,7 +40,7 @@ Origin check (exact host:port accepted, another port and a foreign domain refuse
 
 ### `security-decode.ts`
 
-The decoder as a security boundary under real Bun: a raw peer sends a frame whose error tag names `Worker` (carrying a `data:` script that would write a marker file) or `WebSocket` (carrying the address of a local listener). Nothing may run and nothing may connect; honest calls and a standard `TypeError` still work. `APE_ROOT=/older/checkout` shows it failing on 4.3.1 and earlier.
+The decoder as a security boundary under real Bun: a raw peer sends a frame whose error tag names `Worker` (carrying a `data:` script that would write a marker file) or `WebSocket` (carrying the address of a local listener). Nothing may run and nothing may connect; honest calls and a standard `TypeError` still work. `APE_ROOT=/older/checkout` shows it failing on 4.4.0 and earlier.
 
 ### `scenario-runner.ts`
 
@@ -76,7 +76,7 @@ What a page's catch block sees: a `TypeError` with its message and no server pat
 
 ### `options.ts`
 
-Under real Bun: `apeBun` throws on `authFramework` / `authMiddleware` (they were silently dropped before 4.3.1), names a mistyped option in a warning, and routes the framework's log lines to the `logging` sink it is given (apeBun ignored `logging` before).
+Under real Bun: `apeBun` throws on `authFramework` / `authMiddleware` (they were silently dropped before 4.4.0), names a mistyped option in a warning, and routes the framework's log lines to the `logging` sink it is given (apeBun ignored `logging` before).
 
 ### `hot-reload.ts`
 

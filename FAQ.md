@@ -194,7 +194,7 @@ This sequence from [server/lib/wiring.js:303-568](../../SOURCE/api-ape/server/li
 
 1. **Don't write a "register" controller.** Use `ape.publish` + channel subscription or `ape.clients.get().send`. See §3.
 2. **Never persist `clientId` across reconnects.** Use `sessionId` or an authenticated id. `clientId` is regenerated per socket.
-3. **`this.broadcast` / `this.broadcastOthers` exist from 4.3.1.** In 4.3.0 and earlier the README showed `this.broadcastOthers('message', ...)` but the controller context ([server/socket/receiveContext.js](server/socket/receiveContext.js)) did not provide it and the call threw `is not a function`. Now `this.broadcast(type, data)` pushes to every client and `this.broadcastOthers(type, data)` to every client except the caller. On 4.3.0, use `this.publish('message', {...})` (if it's a channel) or:
+3. **`this.broadcast` / `this.broadcastOthers` exist from 4.4.0.** In 4.3.0 and earlier the README showed `this.broadcastOthers('message', ...)` but the controller context ([server/socket/receiveContext.js](server/socket/receiveContext.js)) did not provide it and the call threw `is not a function`. Now `this.broadcast(type, data)` pushes to every client and `this.broadcastOthers(type, data)` to every client except the caller. On 4.3.0, use `this.publish('message', {...})` (if it's a channel) or:
    ```js
    this.clients.forEach(c => {
      if (c.clientId !== this.clientId) c.send('message', data)
@@ -223,7 +223,7 @@ This sequence from [server/lib/wiring.js:303-568](../../SOURCE/api-ape/server/li
 
 ## 7. Common pitfalls (discovered in source, not always in prose docs)
 
-- **(Fixed in 4.3.1) Root README's `this.broadcastOthers` did not exist on 4.3.0.** See Tier-1 item 3; the context now provides `broadcast` and `broadcastOthers`.
+- **(Fixed in 4.4.0) Root README's `this.broadcastOthers` did not exist on 4.3.0.** See Tier-1 item 3; the context now provides `broadcast` and `broadcastOthers`.
 - **Subscribing with `api.channel(() => {})` and then calling `api.channel({ data })` on the same path is legal** — one is subscribe, one is RPC — but there must be a controller file at that path for the RPC form to resolve. Otherwise the RPC rejects while the subscription continues working; easy to misread the resulting error.
 - **Late joiners always get the last message.** If you publish "progress=100, done" and then a new subscriber arrives seconds later, they receive the `done` event and may double-act on it. Design channels so the last message is a valid steady state, not an edge event — or publish a short-lived `done`/`null` reset after the terminal event.
 - **`ape.clients.get(clientId)` returns `undefined` for stale ids.** Always null-check; a client can disconnect between the moment you captured the id and the moment you send.

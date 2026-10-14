@@ -1,7 +1,7 @@
 /**
  * @fileoverview Option checks for `ape()` and `apeBun()`.
  *
- * Domain context: before 4.3.1 an option the library did not act on was accepted in
+ * Domain context: before 4.4.0 an option the library did not act on was accepted in
  * silence. `authFramework` and `authMiddleware` were documented and then dropped, so a
  * server that believed it enforced authentication enforced nothing.
  *

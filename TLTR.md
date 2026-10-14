@@ -124,7 +124,7 @@ const profile = await api.users[userId].profile()
 
 ### Timeouts
 
-Each RPC's timer starts **when you make the call** (before 4.3.1 it started only when you attached `.then` / `.catch`, so `await` never timed out). `await`, `.then(ok, err)` and `.catch()` all see a timeout, and a call nobody awaits never raises an unhandled rejection.
+Each RPC's timer starts **when you make the call** (before 4.4.0 it started only when you attached `.then` / `.catch`, so `await` never timed out). `await`, `.then(ok, err)` and `.catch()` all see a timeout, and a call nobody awaits never raises an unhandled rejection.
 
 ```js
 api.metrics.beacon({ … })              // ✅ fire and forget: failure or timeout is swallowed
@@ -222,7 +222,7 @@ Important behaviors:
 
 - The handler is called **immediately** on registration with the current state. You don't need to read state separately.
 - `onConnectionChange` returns an **unsubscribe function**. Always call it on cleanup.
-- `'walled'` is a real state and a real UX concern — the client pings `/api/ape/ping` and validates the timestamp; a captive-portal redirect serves an HTML page instead, and that's how `'walled'` is detected. A server that is simply down or restarting gives no answer at all (refused or timed out), which is `'disconnected'`, retried with backoff from 0.5 s to 30 s (before 4.3.1 it read as `'walled'` with a 30 s wait). Treat it as "offline-ish" but with an actionable banner ("Sign in to this network").
+- `'walled'` is a real state and a real UX concern — the client pings `/api/ape/ping` and validates the timestamp; a captive-portal redirect serves an HTML page instead, and that's how `'walled'` is detected. A server that is simply down or restarting gives no answer at all (refused or timed out), which is `'disconnected'`, retried with backoff from 0.5 s to 30 s (before 4.4.0 it read as `'walled'` with a 30 s wait). Treat it as "offline-ish" but with an actionable banner ("Sign in to this network").
 
 ---
 

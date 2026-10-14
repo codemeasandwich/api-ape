@@ -10,7 +10,7 @@
  *
  * Usage: bun integration/bun/security-decode.ts
  *        APE_ROOT=/path/to/older/checkout bun integration/bun/security-decode.ts
- *        (APE_ROOT lets you confirm the stories fail against api-ape 4.3.1 and earlier)
+ *        (APE_ROOT lets you confirm the stories fail against api-ape 4.3.0 and earlier)
  */
 
 import { mkdtempSync, writeFileSync, existsSync, rmSync } from 'fs';

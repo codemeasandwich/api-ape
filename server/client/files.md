@@ -66,7 +66,7 @@ Implements backoff scheduling (`scheduleReconnect`, `cancelReconnect`, `resetBac
 Message receiver and subscription registry, extracted from `connection.js` to keep both modules under the 260-SLOC limit:
 
 - **Receiver management** — Register, remove, buffer, flush, and dispatch typed/untyped message receivers
-- **Channel subscriptions** — `subscribeChannel(path)` sends `{ subscribe }` for the first local subscriber and `{ unsubscribe }` for the last, and every socket open asks again (the server drops subscriptions on close). Before 4.3.1 `api.chan.x(cb)` only registered a local handler and received nothing
+- **Channel subscriptions** — `subscribeChannel(path)` sends `{ subscribe }` for the first local subscriber and `{ unsubscribe }` for the last, and every socket open asks again (the server drops subscriptions on close). Before 4.4.0 `api.chan.x(cb)` only registered a local handler and received nothing
 - **Public subscription API** — `on()`, `onConnectionChange()`, `isReady()`, `getWs()` functions
 - **Late-binding** — Uses `bindConnection()` to inject live connection state getters from `connection.js`, avoiding circular dependency
 - **Connection state tracking** — Owns `connectionState` and `connectionChangeListeners`, deduplicates state notifications

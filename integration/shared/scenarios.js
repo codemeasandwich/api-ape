@@ -212,7 +212,7 @@ const scenarios = [
                 setTimeout(() => reject(new Error('Error response timeout')), 5000);
             });
 
-            // Should get an error response. Since 4.3.1 `err` is an Error carried by JSS, so a
+            // Should get an error response. Since 4.4.0 `err` is an Error carried by JSS, so a
             // plain JSON reader sees the tagged key `err<!E>` = [name, message, stack].
             const err = response['err<!E>'] || response.err;
             expect(err).toBeTruthy();

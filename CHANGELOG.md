@@ -3,16 +3,83 @@
 All notable changes to api-ape. Versions follow semantic versioning; the
 GitHub release notes are generated from commit subjects by `npm run release`.
 
-## 4.3.1
+## 4.4.0
 
-Call-path fixes found while mapping api-ape onto Bluey's Bun + React build. All eight
-fixes below were reproduced first with a user-story scenario against 4.3.0 (page-side
-scenarios run the real browser client against a real `Bun.serve`:
-`integration/bun/client-*.ts`; wire-side scenarios are in
-`simulator/scenarios/stories/call-contract/`).
+**Security fix, plus call-path fixes** found while mapping api-ape onto Bluey's Bun +
+React build and then reviewed independently. The version is 4.4.0 because it adds
+exports and methods (`api-ape/jss`, `api-ape/messageHash`, `this.broadcast`, ...); there
+is no 4.3.1 on npm, and everything an earlier draft called 4.3.1 is in this release. Each
+fix was reproduced first with a user-story scenario against 4.3.0 (page-side scenarios
+run the real browser client against a real `Bun.serve`, or `ape()` on a Node
+`http.Server` for the HTTP streaming path: `integration/bun/client-*.ts`; wire-side
+scenarios are in `simulator/scenarios/stories/call-contract/`).
+
+### Security
+
+**Upgrade to 4.4.0 if your server accepts connections from anyone you do not control.**
+
+- **Affected:** every earlier version of api-ape.
+- **Impact:** every frame a client sends is decoded before the server looks at what it
+  asks for, and the decoder built the error class **named in the frame** by looking the
+  name up among the process's globals. A client that could open a socket, with no login
+  and no valid endpoint, could therefore make the server construct any global of its
+  choosing. (A browser page of another site is stopped by the Origin check; a script or
+  any non-browser client is not.) Under **Bun** that includes a worker that runs the client's own script
+  inside the server process: remote code execution. Under **Node and Bun** it includes a
+  WebSocket the server opens to an address the client picked (on Node 22 and later, where
+  `WebSocket` is a global): the server can be made to call hosts only it can reach. `api-ape/jss`, which wraps the same decoder, had the same
+  flaw wherever an application parsed text from outside.
+- **Fix:** the decoder builds only the standard Error classes from a fixed list (`Error`,
+  `TypeError`, `RangeError`, `SyntaxError`, `ReferenceError`, `EvalError`, `URIError`,
+  `AggregateError`); any other name becomes a plain `Error` that carries the name as
+  text. Nothing in api-ape indexes the globals with text from a peer any more.
+- **Related holes closed in the same change** (all reachable by the same kind of client,
+  found by reading every place peer text is used as a name): a call whose endpoint name is
+  one every object inherits (`valueOf`, `constructor`) was answered by that built-in
+  instead of "not found", and `valueOf` handed the connection's context back to the
+  caller; pointer paths and tag names in a frame could reach `Function`, `Object` or a
+  prototype; a `__proto__` key replaced the prototype of the decoded object; and an upload
+  field name that walked through `constructor.prototype` wrote to `Object.prototype` (it
+  needed a completed upload on a server with file transfer).
+- **Until you can upgrade:** do not expose the server to untrusted networks, or put an
+  authenticating gateway in front of it. There is no configuration switch that avoids the
+  flaw. The new scenarios fail on 4.3.0 and pass on 4.4.0
+  (`integration/bun/security-decode.ts`,
+  `simulator/scenarios/stories/call-contract/hostile-peer.test.js`,
+  `utils/jss/decode.test.js`).
+
+### Breaking
+
+- **`authFramework` / `authMiddleware` throw at startup** in `ape()` and `apeBun()`. 4.3.0
+  and earlier accepted and silently dropped them, so nothing was enforced. They are not
+  wired (they would cover the WebSocket path only; the HTTP long-poll path has no auth
+  hooks). Authenticate in `onConnect` and check `this.user` in controllers.
+- **A controller file that exports something that is not a function stops startup**,
+  naming the file (it used to fail at the first call).
+- **`this.foo = x` inside a controller is private to that call** (it used to land on a
+  context shared by the connection's calls by accident). Keep per-connection state in
+  `onConnect`'s `embed`.
+- **`online()` and `getClients()` are gone from the types** (`index.d.ts`); they never
+  existed at runtime. Use `this.clients`.
+- **The error reply frame changed shape for programs that read raw JSON.** `err` is a
+  JSS-encoded `Error`: read with plain `JSON.parse` the key is `err<!E>`
+  (`[name, message, stack]`) instead of a string `err`, and `errCode` / `errData` ride
+  beside it. Read frames with `api-ape/jss` (`parse`), or take `err<!E>[1]` as the
+  message. The browser, Node and Bun clients, including 4.3.0's, are unaffected. The HTTP
+  long-poll path now answers in the same shape (HTTP 500 / 404 with the same frame; it was
+  `{ err: "<message>", queryId }`, or `{ error }` for a missing endpoint).
+- **`errCode` / `errData` are forwarded less than before.** `code` only when it is a
+  string or a number on the thrown error's own enumerable properties; `data` only when it
+  is own plain data (strings, numbers, booleans, `null`, arrays, plain objects, `Date`s;
+  not functions, class instances, `BigInt`s or cycles); nothing at all from a Node system
+  error (`syscall` / `errno`: `ECONNREFUSED`, `ENOENT` carry paths and addresses). Library
+  errors used to leak whatever `code` / `data` they carried. Attach them to errors you
+  throw and wrap a library's error before it leaves a controller. A thrown plain object
+  no longer forwards its own `stack`.
 
 ### Fixed
 
+- **A peer can no longer make the server construct arbitrary globals** (see Security).
 - **`this.keepalive()` resolved the call early with `undefined`.** The browser
   client took the keepalive frame for the reply. It now restarts that call's timer
   and waits for the real reply, so a 12 s call with a keepalive every 3 s works.
@@ -22,10 +89,28 @@ scenarios run the real browser client against a real `Bun.serve`:
 - **N calls before the first connect opened N+1 sockets** (each queued call asked to
   connect while the reachability ping was still in flight). One connection attempt
   runs at a time now.
-- **A restarted server read as `walled` for about 30 s.** A ping that fails or times
-  out (or a 5xx gateway) is now `unreachable`: the state is `disconnected` and the
-  client re-pings with backoff (0.5 s up to 30 s). `walled` stays for an HTTP answer
-  that is not the ape ping (login page, redirect, stale replay).
+- **A call that landed between a failed ping and its scheduled retry opened a second
+  socket**: the call connected, then the retry connected again (three `onConnect`s for
+  one page, every broadcast twice, and the orphan's close marked the live socket not
+  ready). The retry is cancelled when an attempt starts and when a socket opens, an
+  attempt returns early when a socket is open or connecting, and only the live socket's
+  close changes the client's state.
+- **Calls made during an outage each pinged again**, bypassing the 0.5 s to 30 s backoff
+  (about 75 pings in 3 s at one call per 40 ms). While a retry is scheduled a call now
+  only queues; the browser's `online` event still pings at once. A call still queued 5 s
+  after it was made rejects with `Request not sent`, as before.
+- **A ping whose answer started and never finished held the connection attempt (and
+  every queued call) for good.** The 3 s abort now covers reading the body, and the
+  15 s "attempt in flight" flag does not expire while a WebSocket handshake is pending.
+- **A restarted server read as `walled` for about 30 s.** A ping that fails or times out
+  (or a 5xx gateway) is now `unreachable`: the state is `disconnected` and the
+  client re-pings with backoff (0.5 s up to 30 s, with up to 20 % jitter added on top of
+  the 30 s cap, so at most 36 s). `walled` stays for an HTTP answer that is not the ape
+  ping (login page, redirect, stale replay).
+- **A captive portal that redirects to its login page on another site read
+  `disconnected`**, because following the redirect is a cross-origin failure that `fetch`
+  reports as a thrown error. The ping no longer follows redirects (`redirect: "manual"`),
+  so the redirect itself reads `walled`.
 - **Calls made while the page was reconnecting were never sent** after the first
   flush (the queue array was replaced instead of emptied). Found by the restart
   scenarios.
@@ -36,30 +121,46 @@ scenarios run the real browser client against a real `Bun.serve`:
   controller returning `undefined` sent no reply** (the call hung). The timeout is
   armed when the call is made, the promise is a plain promise, `undefined` is
   answered (`data<!U>`), a call nobody awaits raises no unhandled rejection, and a
-  queued call that expires rejects instead of throwing from a timer.
+  queued call that expires rejects instead of throwing from a timer. A call that times
+  out, or whose socket refuses the send, is forgotten (its timer and its `waitingOn`
+  entry are cleared); a reply that arrives for a call that is gone is dropped instead of
+  reaching the page as a push.
 - **`import api from 'api-ape'` was a flat proxy**: `api.dir.thing` was undefined,
   `api.on` was an RPC to `/on`, and a subscribe before connecting returned a
   Promise. It now uses the same `wrap()` as `connectSocket().sender`; a subscribe
   returns its unsubscribe function synchronously and is sent when the socket opens
   (and again on every reconnect).
+- **`api.onConnectionChange(handler)` was registered twice once the client was ready**,
+  so the handler ran twice for every state change. It is registered once.
 - **Errors arrived as the message string only.** The caller now gets an `Error`
   with the thrown class and message and the `code` / `data` the controller attached
-  (`err.code`, `err.data`). The server stack is not sent. A thrown string arrives as
-  an `Error`.
+  (`err.code`, `err.data`; see Breaking for what is forwarded). The server stack is not
+  sent. A thrown string arrives as an `Error`.
+- **A call over the HTTP long-poll / streaming fallback did not behave like one over a
+  WebSocket.** A controller error reached the page as `Request failed: 500`;
+  `this.broadcast`, `this.broadcastOthers` and `this.keepalive()` were missing from the
+  controller's `this`; a controller that returned nothing dropped its `data`; and once
+  the page had fallen back to streaming every call after the first failed with
+  `getSocket().send is not a function`. The POST and the SSE stream now use the same
+  frames (`dataFrame` / `errorFrame` / `keepaliveFrame` in `utils/wireError.js`) and the
+  same context (`createControllerContext` + `createCallContext`) as the WebSocket path,
+  an unknown endpoint gives the same 404 message, the streaming client rejects with the
+  thrown `Error` (`err.code`, `err.data`) and drops keepalive frames, and calls made once
+  connected go over the streaming transport. One difference stays: an `embed` that names
+  `clientId` or `sessionId` replaces them on this transport, as it always did; on a
+  WebSocket the connection's own win.
 - **`export default` controllers failed** with "controller.call is not a function";
   a function `default` is now unwrapped. `*.d.ts`, `*.test.*` and `*.spec.*` files in
   the controller folder are no longer registered as endpoints.
-- **`authFramework` / `authMiddleware` were accepted and silently dropped** by
-  `ape()` and `apeBun()`. They are not wired (wiring would cover WebSocket only while
-  the Node long-poll path stays unauthenticated), so both functions now **throw at
-  startup** naming the option. Any other unknown option logs a warning.
+- **`authFramework` / `authMiddleware` were accepted and silently dropped** (see
+  Breaking). Any other unknown option logs a warning. `ape()` / `apeBun()` called with no
+  options object say what is needed instead of throwing a `TypeError`.
 - **`apeBun()` ignored `logging`.**
 - **`this.broadcast` and `this.broadcastOthers` were documented but absent**; they
-  now exist on the controller context. `index.d.ts` no longer lists `online()` and
-  `getClients()` (never real; use `this.clients`).
-- **The server-side client's `api.chan.x(cb)` never subscribed** on the server.
-  The first local subscriber now sends `{ subscribe }`, the last leaving sends
-  `{ unsubscribe }`, and every reconnect subscribes again.
+  now exist on the controller context, and an app that embeds its own `broadcast` /
+  `broadcastOthers` in `onConnect` keeps them. The server-side client's `api.chan.x(cb)`
+  never subscribed on the server: the first local subscriber now sends `{ subscribe }`,
+  the last leaving sends `{ unsubscribe }`, and every reconnect subscribes again.
 
 ### Added
 
@@ -68,24 +169,41 @@ scenarios run the real browser client against a real `Bun.serve`:
 - Types: `apeBun` (`api-ape/bun`), `ApeBunHandlers`, `this.broadcast` /
   `broadcastOthers` / `send` / `keepalive` / `clients`, and the `selector`,
   `urlPrefix`, `fileTransferOptions` and `longPollingOptions` options.
-- `integration/bun/client-*.ts` + `scenario-runner.ts` (the real browser client against
-  a real `Bun.serve`) and `integration/bun/options.ts`, run in CI.
+- `utils/safeKeys.js` (`hasOwn`, `setKey`): the one way peer text indexes an object.
+- Scenario tests: `integration/bun/client-*.ts` (including `client-race.ts` and
+  `client-streaming.ts`) + `scenario-runner.ts` (the real browser client against a real
+  `Bun.serve`, or `ape()` on a Node `http.Server`), `integration/bun/options.ts` and
+  `integration/bun/security-decode.ts`, run in CI.
 
 ### Behaviour changes
 
-- `this.foo = x` inside a controller is now private to that call (it used to land on
-  a context shared by the connection's calls by accident). Keep per-connection state
-  in `onConnect`'s `embed`.
-- A controller file that exports something that is not a function now stops
-  startup, naming the file (it used to fail at the first call).
 - A controller that returns nothing now sends a reply (`undefined`).
-- An error reply carries `err` as a JSS-encoded `Error`. A client that reads the frame with plain `JSON.parse` (a probe, another language) sees the key `err<!E>` (`[name, message, stack]`) instead of a string `err`; read frames with `api-ape/jss` (`parse`), or take `err<!E>[1]` as the message. The browser, Node and Bun clients, including 4.3.0's, are unaffected. `integration/shared/scenarios.js` is updated accordingly.
 - An unreachable server is `disconnected`, not `walled`; check for `walled` only for
-  captive portals.
-- `ape()` / `apeBun()` throw on `authFramework` / `authMiddleware`.
+  captive portals. While the next ping is scheduled, calls only queue.
+- An error whose class is not one of the eight standard ones arrives as a plain `Error`
+  carrying the sender's `name` (before, a global of that name on the receiver, such as
+  `DOMException`, was constructed instead).
+- On a Node server the long-poll POST answers with HTTP 404 and the error frame for an
+  unknown endpoint (it was `{ "error": "Controller ... not found" }`).
 - Not fixed here: binary transfer under Bun, the generated `api-ape.d.ts` type
-  checking, and a TypeScript controller that mixes `import` with `module.exports`
-  (does not load under Bun; use `export default`).
+  checking, a TypeScript controller that mixes `import` with `module.exports`
+  (does not load under Bun; use `export default`), `{ subscribe }` frames over the HTTP
+  long-poll path (the POST handler only routes calls), and the decoder still builds
+  whatever `RegExp` a peer sends (a pathological pattern costs CPU).
+
+### Mixed versions
+
+- **Old browser, Node or Bun clients (4.3.0 and earlier) with a 4.4.0 server:** everything
+  works, but they keep their old behaviour: a `this.keepalive()` frame still resolves an
+  old browser client's call early with `undefined`, identical calls in the same
+  millisecond are still refused as replays (no `nonce`), and an old client does not put
+  `err.code` / `err.data` on the Error. An old streaming client shows the generic
+  `Request failed: 500` for a controller error from a 4.4.0 server.
+- **A 4.4.0 client with an older server:** a controller that returns nothing sends no
+  reply on 4.3.0, so the call times out after 10 s (the 4.3.0 client hung forever);
+  errors arrive as a plain string, as before; a 4.3.0 streaming server's `{ error }` bodies are
+  still understood.
+- Upgrade servers first; they are the ones exposed to the security flaw.
 
 ## 4.3.0
 
