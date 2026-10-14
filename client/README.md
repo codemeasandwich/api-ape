@@ -76,6 +76,8 @@ api.onConnectionChange((state) => {
 
 **No async setup needed!** The client auto-initializes and buffers calls until connected.
 
+**Call results and timeouts.** Every call's 10 s timeout starts when the call is made, so `await api.x()`, `.then(ok, err)` and `.catch()` all see a timeout, and a server that never answers rejects with `Request Timed out for: /x` instead of hanging. A call still queued 5 s after it was made (the server is down) rejects with `Request not sent for: /x`. A controller that returns nothing replies with `undefined`. A call nobody awaits never raises an unhandled rejection when it fails.
+
 ## Transient network & logical reconnect (Phase 1)
 
 WebSocket disconnects are expected in production (Wi‑Fi handoffs, laptop sleep, deploys). api-ape handles **queued but unsent** RPC by buffering until the transport is ready again; subscriptions are **re-sent** on connect (`resubscribeAll`).

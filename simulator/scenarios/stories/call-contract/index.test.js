@@ -70,4 +70,16 @@ describe("Call contract", () => {
       }
     });
   });
+  describe("replies", () => {
+    test("a controller that returns nothing still answers: the caller gets a reply whose data is undefined", async () => {
+      const server = await harness.createServer({ where: FIXTURES });
+      const raw = await connectRaw(server);
+
+      const reply = await raw.reply(raw.call("voidret", {}));
+
+      expect(reply.err).toBeUndefined();
+      expect(reply.data).toBeUndefined();
+      raw.close();
+    });
+  });
 });

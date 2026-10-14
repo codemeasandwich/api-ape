@@ -46,7 +46,7 @@ Connection stories through the real browser client: a page that makes calls befo
 
 ### `client-calls.ts`
 
-Call stories through the real browser client: five identical calls in the same millisecond each get their own reply (per-client `nonce`).
+Call stories through the real browser client: five identical calls in the same millisecond each get their own reply (per-client `nonce`); a controller that returns nothing resolves `undefined`; a call the server never answers times out after 10 s; `.then(ok, err)` receives the error; a failed or expired call nobody looks at raises no unhandled rejection or uncaught exception (the runner reports those as `errors`).
 
 ### `hot-reload.ts`
 

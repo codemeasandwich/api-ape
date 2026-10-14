@@ -36,6 +36,8 @@ export interface Browser {
     api: any;
     /** `api-ape/client/connectSocket`, for scenarios about the lower-level client. */
     connectSocket: any;
+    /** Unhandled promise rejections and uncaught exceptions the page suffered (a browser logs them; a test must see them). */
+    errors: string[];
     /** Every connection state the page has been told about, in order, with ms since start. */
     states: Array<{ state: string; at: number }>;
     /** Tell the parent something happened; its `onEvent` handler for the name runs. */
@@ -76,7 +78,7 @@ export interface Scenario {
     /** Server-side reactions to `b.emit(name)`. */
     onEvent?: Record<string, (ctl: ServerControl) => void | Promise<void>>;
     /** Assert on what the page returned and what the server saw. Throw to fail. */
-    check: (seen: { result: any; ctl: ServerControl; log: string }) => void | Promise<void>;
+    check: (seen: { result: any; ctl: ServerControl; log: string; errors: string[] }) => void | Promise<void>;
     /** Answer some requests yourself before api-ape sees them (e.g. a captive portal's login page). */
     fetch?: (req: Request) => Response | undefined;
     /** Start with the server down; the page starts first and the scenario brings the server up. */
@@ -123,6 +125,10 @@ async function runChild(scenarios: Scenario[], index: number, port: number): Pro
     g.navigator = { onLine: true };
     g.addEventListener = () => {};
 
+    const errors: string[] = [];
+    process.on('unhandledRejection', (e: any) => { errors.push(`unhandled rejection: ${e?.message ?? e}`); });
+    process.on('uncaughtException', (e: any) => { errors.push(`uncaught exception: ${e?.message ?? e}`); });
+
     const started = Date.now();
     const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
     const api: any = (await import(resolve(ROOT, 'client/index.js'))).default;
@@ -148,7 +154,7 @@ async function runChild(scenarios: Scenario[], index: number, port: number): Pro
     void reader;
 
     const browser: Browser = {
-        api, connectSocket, states, sleep, port,
+        api, connectSocket, states, sleep, port, errors,
         emit: (name) => new Promise<void>((res) => {
             acks.set(name, res);
             console.log(`${MARK}event ${name}`);
@@ -169,7 +175,7 @@ async function runChild(scenarios: Scenario[], index: number, port: number): Pro
     } catch (e: any) {
         result = { __page_threw: { name: e?.name, message: e?.message } };
     }
-    console.log(`${MARK}result ${encode({ result, states })}`);
+    console.log(`${MARK}result ${encode({ result, states, errors })}`);
     process.exit(0);
 }
 
@@ -258,7 +264,7 @@ export async function runScenarios(file: string, title: string, scenarios: Scena
             assert(payload !== undefined, `the page never finished (killed after ${scenario.timeoutMs ?? 20000} ms); child log:\n${log.slice(-600)}`);
             const seen = decode(payload!);
             assert(!seen.result?.__page_threw, `the page threw: ${JSON.stringify(seen.result?.__page_threw)}`);
-            await scenario.check({ result: seen.result, ctl, log });
+            await scenario.check({ result: seen.result, ctl, log, errors: seen.errors ?? [] });
             console.log(`  OK   ${scenario.name} (${Date.now() - started}ms)`);
         } catch (e: any) {
             failures++;

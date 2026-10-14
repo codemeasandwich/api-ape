@@ -195,11 +195,11 @@ module.exports = function receiveHandler(ape) {
 
       result
         .then((val) => {
-          if (undefined !== val) {
-            try {
-              send(queryId, false, val, false);
-            } catch (sendErr) { }
-          }
+          // Always reply, even for `undefined`: a controller that returns nothing
+          // must still settle the caller's promise (the frame carries `data<!U>`).
+          try {
+            send(queryId, false, val, false);
+          } catch (sendErr) { }
           if (typeof onFinish === "function") onFinish(false, val);
         })
         .catch((err) => {

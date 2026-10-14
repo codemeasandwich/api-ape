@@ -14,6 +14,7 @@ test-api-contract/
 ├── README.md   # Overview
 ├── files.md    # This file
 ├── echo.js     # Returns its payload under `echo`
+├── voidret.js  # Async controller that returns nothing (the caller must still get a reply)
 └── slow.js     # Long-running call that sends this.keepalive() after each round
 ```
 
@@ -22,6 +23,10 @@ test-api-contract/
 ### `echo.js`
 
 Returns `{ echo: <payload> }`. Used where a story needs to tell replies apart (identical calls in one millisecond).
+
+### `voidret.js`
+
+An async controller that returns `undefined`. Proves the server replies (`data<!U>`) so the caller's promise settles.
 
 ### `slow.js`
 

@@ -110,9 +110,10 @@ describe("receive handler — controller dispatch and result handling", () => {
     expect(onFinish).toHaveBeenCalledWith(false, { echoed: { hello: 1 } });
   });
 
-  // Scenario: a controller returns undefined (fire-and-forget). The handler
-  // must NOT call send() — only onFinish — to avoid sending an empty body.
-  test("undefined return does not emit a send", async () => {
+  // Scenario: a controller returns undefined. The handler MUST still reply
+  // (send() with undefined data, encoded `data<!U>`) so the caller's promise
+  // settles instead of hanging; 4.3.0 sent nothing.
+  test("undefined return still sends a reply", async () => {
     const onFinish = jest.fn();
     const ape = makeApe({
       controllers: {
@@ -126,7 +127,7 @@ describe("receive handler — controller dispatch and result handling", () => {
     const onReceive = receiveHandler(ape);
     await onReceive(frame("fireAndForget", {}));
     await new Promise((r) => setImmediate(r));
-    expect(ape.send).not.toHaveBeenCalled();
+    expect(ape.send).toHaveBeenCalledWith(expect.any(String), false, undefined, false);
     expect(onFinish).toHaveBeenCalledWith(false, undefined);
   });
 

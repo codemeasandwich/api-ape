@@ -160,7 +160,7 @@ const waitingOn = {};
 
 /**
  * Queue of messages waiting to be sent when connection becomes ready
- * @type {Array<{type: string, data: any, resolve: function, reject: function, waiting: boolean, createdAt: number, timer: number}>}
+ * @type {Array<{type: string, data: any, resolve: function, reject: function, createdAt: number, timer: number}>}
  * @private
  */
 const aWaitingSend = [];

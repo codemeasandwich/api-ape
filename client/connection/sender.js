@@ -80,9 +80,9 @@ const connectTimeout = 5000;
  *
  * ## Timeout Behavior
  *
- * The returned promise uses lazy timeout activation - the timeout only
- * starts counting when `.then()` or `.catch()` is called on the promise.
- * This prevents timeouts from triggering for fire-and-forget messages.
+ * The timeout is armed when the call is made (10 s from the call's creation,
+ * restarted by each server keepalive). A call nobody awaits does not raise an
+ * unhandled rejection when it fails or times out.
  *
  * @param {function(): WebSocket} getSocket - Function that returns the current WebSocket instance
  * @param {Object.<string, function(Error|null, any, boolean=): void>} waitingOn - Map of query IDs to response
@@ -102,7 +102,7 @@ const connectTimeout = 5000;
  * }
  *
  * @example
- * // Fire and forget (no await) - timeout won't trigger
+ * // Fire and forget (no await) - failure or timeout is swallowed
  * wsSend('/api/log', { event: 'pageview' }, Date.now())
  */
 export function createWsSend(getSocket, waitingOn) {
@@ -124,7 +124,6 @@ export function createWsSend(getSocket, waitingOn) {
   return function wsSend(type, data, createdAt, directCall) {
     /** @type {function(Error): void} */
     let rej;
-    let promiseIsLive = false;
     const timeLeftForReqToBeMade = createdAt + totalRequestTimeout - Date.now();
 
     // Timeout timer. The server's `this.keepalive()` restarts it (`armTimer`).
@@ -138,9 +137,7 @@ export function createWsSend(getSocket, waitingOn) {
     const armTimer = (ms) => {
       clearTimeout(timer);
       timer = setTimeout(() => {
-        if (promiseIsLive) {
-          rej(new Error("Request Timed out for: " + type));
-        }
+        rej(new Error("Request Timed out for: " + type));
       }, ms);
     };
     armTimer(timeLeftForReqToBeMade);
@@ -176,8 +173,6 @@ export function createWsSend(getSocket, waitingOn) {
           return;
         }
         clearTimeout(timer);
-        // Restore normal promise behavior after response
-        replyPromise.then = next.bind(replyPromise);
         if (err) {
           reject(err);
         } else {
@@ -196,32 +191,12 @@ export function createWsSend(getSocket, waitingOn) {
       }
     });
 
-    // Store original then/catch for lazy timeout activation
-    const next = replyPromise.then;
-
-    /**
-     * Wrapped .then() that activates the timeout on first call
-     * This implements lazy timeout - timeout only starts when
-     * someone actually waits for the response
-     */
-    replyPromise.then = (worker) => {
-      promiseIsLive = true;
-      replyPromise.then = next.bind(replyPromise);
-      replyPromise.catch = err.bind(replyPromise);
-      return next.call(replyPromise, worker);
-    };
-
-    const err = replyPromise.catch;
-
-    /**
-     * Wrapped .catch() that activates the timeout on first call
-     */
-    replyPromise.catch = (worker) => {
-      promiseIsLive = true;
-      replyPromise.catch = err.bind(replyPromise);
-      replyPromise.then = next.bind(replyPromise);
-      return err.call(replyPromise, worker);
-    };
+    // The timeout is armed at creation, so `await api.x()` and `.then(ok, err)` both see
+    // it (4.3.0 armed it lazily inside a custom `then` that dropped its second argument).
+    // A call nobody looks at (fire and forget) must not raise an unhandled rejection
+    // when it fails or times out, hence the no-op handler; `await` and `.then` on the
+    // returned promise still receive the error.
+    replyPromise.catch(() => {});
 
     return replyPromise;
   };
@@ -273,7 +248,8 @@ export function createSender(isReady, getSendFn, waitingQueue, connectFn) {
    * @param {any} data - Payload data to send
    * @returns {Promise<any>} Promise resolving to the server's response
    * @throws {Error} If type is not a string
-   * @throws {Error} If connection timeout occurs while message is queued
+   * @throws {Error} Never synchronously for a timeout: a call still queued after the connect timeout
+   *   rejects its promise instead
    */
   return function sender(type, data) {
     if ("string" !== typeof type) {
@@ -299,19 +275,16 @@ export function createSender(isReady, getSendFn, waitingQueue, connectFn) {
       data,
       resolve: undefined,
       reject: undefined,
-      waiting: false,
       createdAt,
       timer: null,
     };
 
-    // Setup connection timeout
+    // Setup connection timeout: a call still queued after `connectTimeout` is
+    // rejected and leaves the queue (so it is not sent late, after the page gave up).
     payload.timer = setTimeout(() => {
-      const errMessage = "Request not sent for: " + type;
-      if (payload.waiting) {
-        payload.reject(new Error(errMessage));
-      } else {
-        throw new Error(errMessage);
-      }
+      const queued = waitingQueue.indexOf(payload);
+      if (queued >= 0) waitingQueue.splice(queued, 1);
+      payload.reject(new Error("Request not sent for: " + type));
     }, timeLeftForReqToBeMade);
 
     /**
@@ -323,30 +296,9 @@ export function createSender(isReady, getSendFn, waitingQueue, connectFn) {
       payload.reject = rej;
     });
 
-    // Store original promise methods
-    const waitingOnOpenThen = waitingOnOpen.then;
-    const waitingOnOpenCatch = waitingOnOpen.catch;
-
-    /**
-     * Wrapped .then() that marks the payload as being waited on
-     * This enables proper timeout handling
-     */
-    waitingOnOpen.then = (worker) => {
-      payload.waiting = true;
-      waitingOnOpen.then = waitingOnOpenThen.bind(waitingOnOpen);
-      waitingOnOpen.catch = waitingOnOpenCatch.bind(waitingOnOpen);
-      return waitingOnOpenThen.call(waitingOnOpen, worker);
-    };
-
-    /**
-     * Wrapped .catch() that marks the payload as being waited on
-     */
-    waitingOnOpen.catch = (worker) => {
-      payload.waiting = true;
-      waitingOnOpen.catch = waitingOnOpenCatch.bind(waitingOnOpen);
-      waitingOnOpen.then = waitingOnOpenThen.bind(waitingOnOpen);
-      return waitingOnOpenCatch.call(waitingOnOpen, worker);
-    };
+    // A queued call nobody looks at must not raise an unhandled rejection (or, as in
+    // 4.3.0, throw from the timer) when it expires; `await` and `.then` still get the error.
+    waitingOnOpen.catch(() => {});
 
     // Add to queue and trigger connection
     waitingQueue.push(payload);
@@ -369,10 +321,10 @@ export function createSender(isReady, getSendFn, waitingQueue, connectFn) {
  */
 export function flushQueue(waitingQueue, sendFn) {
   waitingQueue.splice(0).forEach(
-    ({ type, data, resolve, reject, waiting, createdAt, timer }) => {
+    ({ type, data, resolve, reject, createdAt, timer }) => {
       clearTimeout(timer);
       const result = sendFn(type, data, createdAt);
-      if (waiting) result.then(resolve).catch(reject);
+      result.then(resolve, reject);
     },
   );
 }
