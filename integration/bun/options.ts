@@ -39,6 +39,10 @@ async function main() {
         const message = attempt(() => apeBun({ where: dir, authMiddleware: { check() {} } }));
         assert(message?.includes('"authMiddleware" option is not supported'), `expected a startup error, got ${JSON.stringify(message)}`);
     });
+    await test('apeBun() with no options object names what is missing instead of a TypeError', () => {
+        const message = attempt(() => apeBun());
+        assert(message?.includes('options must be an object such as { where: "api" }'), `expected a clear message, got ${JSON.stringify(message)}`);
+    });
     await test('a mistyped apeBun option is named in a warning and the server still starts', () => {
         const warnings: string[] = [];
         const ape = apeBun({ where: dir, logging: { log() {}, info() {}, debug() {}, error() {}, warn: (m: string) => warnings.push(m) }, urlPrefixx: 'typo' });

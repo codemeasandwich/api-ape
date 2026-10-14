@@ -70,7 +70,7 @@ TypeScript declarations for the `api-ape/bun` entry point (`apeBun(options): Ape
 
 ### `options.js`
 
-`checkOptions(options)` runs at the start of `ape()` and `apeBun()`. `authFramework` and `authMiddleware` throw (they were never applied; wiring them would leave the Node long-poll path unauthenticated). Any other unknown key logs a warning naming it.
+`checkOptions(options)` runs at the start of `ape()` and `apeBun()`. A missing or non-object `options` throws a message naming what is needed (`{ where: "api" }`) instead of a TypeError. `authFramework` and `authMiddleware` throw (they were never applied; wiring them would leave the Node long-poll path unauthenticated). Any other unknown key logs a warning naming it.
 
 ### `fileTransfer.js`
 

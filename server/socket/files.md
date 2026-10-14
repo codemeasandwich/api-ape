@@ -77,7 +77,7 @@ Runs JSS plugin hooks around the wire: `processPluginSend` before a reply is enc
 Controller context factory that creates the `this` binding for controllers:
 
 - Extracts session ID from request cookies
-- Provides `broadcast()` and `broadcastOthers()` for messaging all clients
+- Provides `broadcast()` and `broadcastOthers()` for messaging all clients (declared before the app's `embed`, so an app's own `broadcast` wins)
 - Provides `publish()` for pub/sub channel messaging
 - Exposes `clientId`, `sessionId`, and `clients` Map
 - When auth is configured, adds `isAuthenticated`, `authTier`, `principal`, and `requiresTier()`

@@ -24,7 +24,7 @@ call-contract/
 
 ### `index.test.js`
 
-The call-contract stories (keepalive, identical calls, replies, errors, controller files). Starts a harness server over `simulator/test-api-contract/` or over controller files written to a temp directory for the test, and talks to it with the raw client.
+The call-contract stories (keepalive, identical calls, replies, errors and what `errCode` / `errData` may carry, controller files, context from `onConnect`, options). Starts a harness server over `simulator/test-api-contract/` or over controller files written to a temp directory for the test, and talks to it with the raw client.
 
 ### `hostile-peer.test.js`
 

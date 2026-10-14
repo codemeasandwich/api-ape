@@ -36,7 +36,7 @@ Internal logging facade for api-ape on both browser and Node. Exports `configure
 
 ### `wireError.js`
 
-How a failed call travels from a controller to its caller. `errorFrame(thrown, type, queryId)` (server) builds the reply `{ err: <Error via JSS>, errCode?, errData?, type, queryId }`: name and message are kept, the stack is replaced by `"Name: message"` so no server paths leak, and unserialisable `data` is dropped rather than losing the reply. `attachErrorDetails(err, frame)` (browser and Node clients) puts `code` / `data` back on the Error. `toWireError` normalises strings and Error-shaped objects.
+How a failed call travels from a controller to its caller. `errorFrame(thrown, type, queryId)` (server) builds the reply `{ err: <Error via JSS>, errCode?, errData?, type, queryId }`: name and message are kept, the stack is replaced by `"Name: message"` so no server paths leak, and the reply always leaves (an unserialisable thrown value arrives as an Error saying so). `errCode` goes only from an own enumerable string/number `code`, `errData` only from own enumerable plain data (no functions, class instances, BigInts, cycles, nesting over 32), and neither from a Node system error (it has `syscall` or `errno`). A thrown plain object never forwards its own `stack`. `attachErrorDetails(err, frame)` (browser and Node clients) puts `code` / `data` back on the Error. `toWireError` normalises strings and Error-shaped objects.
 
 ### `safeKeys.js`
 

@@ -41,9 +41,14 @@ const UNSUPPORTED_OPTIONS = ["authFramework", "authMiddleware"];
  *
  * @param {Object} options - The options object passed to `ape()` / `apeBun()`
  * @returns {void}
- * @throws {Error} If `authFramework` or `authMiddleware` is present
+ * @throws {Error} If `options` is not an object, or if `authFramework` or `authMiddleware` is present
  */
 function checkOptions(options) {
+  if (options === null || typeof options !== "object") {
+    throw new Error(
+      `api-ape: options must be an object such as { where: "api" }, got ${options === null ? "null" : typeof options}`,
+    );
+  }
   const given = Object.keys(options);
   const unsupported = given.filter((key) => UNSUPPORTED_OPTIONS.includes(key));
   if (unsupported.length > 0) {

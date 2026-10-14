@@ -245,6 +245,128 @@ describe("Call contract", () => {
     });
   });
 
+  describe("what an error may carry to its caller (errCode / errData)", () => {
+    const DETAILS = {
+      "fail.js": `const fs = require("fs");
+      class NotFound extends Error { constructor(m) { super(m); this.code = "NOT_FOUND"; this.data = { id: 7 }; } }
+      class Getter extends Error { get code() { return "FROM_PROTOTYPE"; } }
+      module.exports = function (d) {
+        switch (d.kind) {
+          case "enoent": return fs.readFileSync("/nonexistent-ape-dir/secret.txt");
+          case "refused": return new Promise((resolve, reject) => {
+            const net = require("net");
+            const probe = net.createServer().listen(0, "127.0.0.1", () => {
+              const { port } = probe.address();
+              probe.close(() => net.connect(port, "127.0.0.1").on("error", reject));
+            });
+          });
+          case "own": throw new NotFound("no such thing");
+          case "nested": throw Object.assign(new Error("n"), { data: { list: [1, "two", null, new Date(0)], deep: { ok: true } } });
+          case "numeric": throw Object.assign(new Error("n"), { code: 404 });
+          case "object-code": throw Object.assign(new Error("n"), { code: { secret: "x" }, data: "kept" });
+          case "instance-data": throw Object.assign(new Error("n"), { code: "C", data: new Map([["a", 1]]) });
+          case "function-data": throw Object.assign(new Error("n"), { code: "C", data: { run() {} } });
+          case "circular": { const data = { a: 1 }; data.self = data; throw Object.assign(new Error("n"), { code: "C", data }); }
+          case "inherited": throw new Getter("g");
+          case "hidden": { const e = new Error("h"); Object.defineProperty(e, "code", { value: "HIDDEN", enumerable: false }); throw e; }
+          case "too-deep": { let data = 1; for (let i = 0; i < 40; i++) data = { data }; throw Object.assign(new Error("n"), { code: "C", data }); }
+          case "plain-stack": throw { status: 409, stack: "Error: x\\n    at /srv/app/secret/handler.js:10:5" };
+          case "plain-bigint": throw { status: 500, big: 10n };
+          case "code-bigint": throw Object.assign(new Error("n"), { code: 10n });
+        }
+      };`,
+    };
+
+    /**
+     * Call `fail` with a kind and return the reply frame.
+     *
+     * @param {string} kind - Which failure the fixture should throw
+     * @returns {Promise<Object>} The reply frame
+     */
+    const failWith = async (kind) => {
+      const raw = await serveRaw(DETAILS);
+      const frame = await raw.reply(raw.call("fail", { kind }));
+      raw.close();
+      return frame;
+    };
+
+    test("a Node system error (ENOENT with a path) carries no code and no data", async () => {
+      const frame = await failWith("enoent");
+
+      expect(frame.err).toBeInstanceOf(Error);
+      expect(frame.errCode).toBeUndefined();
+      expect(frame.errData).toBeUndefined();
+    });
+
+    test("a library error with an address and port (ECONNREFUSED) carries no code", async () => {
+      const frame = await failWith("refused");
+
+      expect(frame.err.message).toMatch(/ECONNREFUSED/);
+      expect(frame.errCode).toBeUndefined();
+    });
+
+    test("an error class the controller wrote, with its own code and data, delivers both", async () => {
+      const frame = await failWith("own");
+
+      expect(frame.errCode).toBe("NOT_FOUND");
+      expect(frame.errData).toEqual({ id: 7 });
+    });
+
+    test("data made of nested arrays, objects, null and dates is delivered", async () => {
+      const frame = await failWith("nested");
+
+      expect(frame.errData).toEqual({ list: [1, "two", null, new Date(0)], deep: { ok: true } });
+    });
+
+    test("a numeric code is delivered", async () => {
+      expect((await failWith("numeric")).errCode).toBe(404);
+    });
+
+    test("a code that is not a string or number is dropped, and plain data beside it still goes", async () => {
+      const frame = await failWith("object-code");
+
+      expect(frame.errCode).toBeUndefined();
+      expect(frame.errData).toBe("kept");
+    });
+
+    test.each([["instance-data", "a Map"], ["function-data", "an object holding a function"], ["circular", "a cycle"], ["too-deep", "nesting 40 deep"]])(
+      "data that is not plain data (%s: %s) is dropped and the code still goes",
+      async (kind) => {
+        const frame = await failWith(kind);
+
+        expect(frame.errCode).toBe("C");
+        expect(frame.errData).toBeUndefined();
+      },
+    );
+
+    test("a code that is a BigInt is dropped and the caller still gets the reply", async () => {
+      const frame = await failWith("code-bigint");
+
+      expect(frame.err.message).toBe("n");
+      expect(frame.errCode).toBeUndefined();
+    });
+
+    test("a code that exists only as a prototype getter or a hidden property is not forwarded", async () => {
+      expect((await failWith("inherited")).errCode).toBeUndefined();
+      expect((await failWith("hidden")).errCode).toBeUndefined();
+    });
+
+    test("a thrown plain object never forwards its own stack, its other fields still arrive", async () => {
+      const frame = await failWith("plain-stack");
+
+      expect(frame.err.status).toBe(409);
+      expect(frame.err.stack).toBeUndefined();
+      expect(JSON.stringify(frame)).not.toContain("/srv/app/secret");
+    });
+
+    test("a thrown plain object that cannot be serialised still gets a reply, not a timeout", async () => {
+      const frame = await failWith("plain-bigint");
+
+      expect(frame.err).toBeInstanceOf(Error);
+      expect(frame.err.message).toMatch(/cannot be sent/);
+    });
+  });
+
   describe("controller files", () => {
     test("a controller written as export default is called like any other", async () => {
       const raw = await serveRaw({
@@ -318,6 +440,37 @@ describe("Call contract", () => {
     });
   });
 
+  describe("context from onConnect", () => {
+    test("an app that embeds its own broadcast keeps it: this.broadcast is the app's, not the built-in", async () => {
+      const where = controllers({
+        "who.js": `module.exports = function () { return { viaApp: this.broadcast("ping") }; };`,
+      });
+      const server = await harness.createServer({
+        where,
+        apeOptions: { urlPrefix: "contract" },
+        onConnect: () => ({ embed: { broadcast: (type) => `the app's own broadcast of ${type}` } }),
+      });
+      const raw = await connectRaw(server, "contract");
+
+      const frame = await raw.reply(raw.call("who", {}));
+
+      expect(frame.data).toEqual({ viaApp: "the app's own broadcast of ping" });
+      raw.close();
+    });
+
+    test("without an embedded broadcast, this.broadcast is the built-in one", async () => {
+      const server = await harness.createServer({ where: FIXTURES });
+      const only = await connectRaw(server);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      await only.reply(only.call("announce", { text: "hi" }));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(only.frames.some((f) => f.type === "shout")).toBe(true);
+      only.close();
+    });
+  });
+
   describe("options", () => {
     const quiet = (warn) => ({ log() {}, info() {}, debug() {}, error() {}, warn });
 
@@ -349,6 +502,14 @@ describe("Call contract", () => {
       apeBun({ where: FIXTURES, logging: quiet(warn), urlPrefixx: "typo" });
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('"urlPrefixx"'));
     });
+    test.each([[undefined, "undefined"], [null, "null"], ["api", "string"]])(
+      "starting a server with no options object (%p) names what is missing instead of a TypeError",
+      (given, shown) => {
+        const { apeBun } = require("../../../../server/lib/bun");
+
+        expect(() => apeBun(given)).toThrow(`api-ape: options must be an object such as { where: "api" }, got ${shown}`);
+      },
+    );
   });
   describe("server-side client subscriptions", () => {
     test("a service that subscribes with api.news.banking(cb) receives what the other server publishes until it unsubscribes", async () => {

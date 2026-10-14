@@ -41,11 +41,13 @@ function getSessionId(req) {
 function createControllerContext({ sharedValues, embedValues, clientId, sessionId, socketAuth }) {
   const context = {
     ...sharedValues,
-    ...embedValues,
-    publish: (channel, data) => publish(channel, data),
     // Push `type` to every connected client / to every client except the caller.
+    // Declared BEFORE the app's embed so an app that embeds its own `broadcast`
+    // keeps it (these names are new in 4.4.0; an app may already use them).
     broadcast: (type, data) => broadcast(type, data),
     broadcastOthers: (type, data) => broadcastOthers(type, data, clientId),
+    ...embedValues,
+    publish: (channel, data) => publish(channel, data),
     clients,
     clientId,
     sessionId,

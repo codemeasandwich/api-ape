@@ -217,7 +217,7 @@ ape(app, {
 | `this.agent` | Parsed user-agent |
 | `this.isAuthenticated`, `this.authTier`, `this.principal`, `this.requiresTier(n)` | Auth state. Always `false` / `0` / `null` / `() => false`: the auth options are not wired (see [Authentication](#authentication)). |
 
-`this.broadcast` and `this.broadcastOthers` exist from 4.3.1 (the 4.3.0 docs listed them but the context did not provide them). There is no `this.online()` or `this.getClients()`; use `this.clients`. Each call runs on its own context, so `this.foo = x` inside a controller is private to that call; keep per-connection state in `onConnect`'s `embed`.
+`this.broadcast` and `this.broadcastOthers` exist from 4.3.1 (the 4.3.0 docs listed them but the context did not provide them). If your `onConnect` already returns an `embed` with a `broadcast` or `broadcastOthers` of its own, yours wins (from 4.4.0; in 4.3.1 the built-in replaced it). There is no `this.online()` or `this.getClients()`; use `this.clients`. Each call runs on its own context, so `this.foo = x` inside a controller is private to that call; keep per-connection state in `onConnect`'s `embed`.
 
 ### Connection Lifecycle Hooks
 
@@ -266,7 +266,9 @@ api/
 
 ### Errors
 
-A controller that throws rejects the caller's promise with an `Error` that keeps its class and message (`TypeError`, `RangeError`, any `name` you set; the server's stack is not sent, so no file paths reach a browser). Attach `code` and `data` to carry details: `throw Object.assign(new Error('conflict'), { code: 'CONFLICT', data: { current: 3 } })` arrives as `err.code` and `err.data` (JSS-serialisable values; data that cannot be serialised is dropped and the error still arrives). A thrown string arrives as `new Error(string)`. A controller that returns nothing replies with `undefined`.
+A controller that throws rejects the caller's promise with an `Error` that keeps its class and message (`TypeError`, `RangeError`, any `name` you set; the server's stack is not sent, so no file paths reach a browser). Attach `code` and `data` to carry details: `throw Object.assign(new Error('conflict'), { code: 'CONFLICT', data: { current: 3 } })` arrives as `err.code` and `err.data`. A thrown string arrives as `new Error(string)`. A controller that returns nothing replies with `undefined`.
+
+**What `code` and `data` may carry (4.4.0).** A thrown value is the output of whatever your controller called, libraries included, so only what you put on an error yourself is forwarded: `code` when it is an own, enumerable property holding a string or a number; `data` when it is an own, enumerable property holding plain data (strings, numbers, booleans, `null`, arrays, plain objects and `Date`s, nested under 32 levels, no cycles). A function, a class instance (`Map`, `Buffer`, another `Error`), a `BigInt` or a getter on the prototype is dropped, and the error still arrives with its class and message. Nothing is forwarded from a Node system error (anything with `syscall` or `errno`: `ECONNREFUSED`, `ENOENT` carry paths and addresses). So attach `code` and `data` to errors **you** throw, and catch and rethrow a library's error as your own. A thrown plain object arrives as itself, without its own `stack`; one that cannot be serialised (a `BigInt` inside it) arrives as an `Error` saying so, rather than leaving the caller waiting for its timeout.
 
 ### Hot Reload
 
