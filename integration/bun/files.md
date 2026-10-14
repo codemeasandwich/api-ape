@@ -26,7 +26,9 @@ bun/
 ├── client-streaming.ts  # HTTP streaming transport (WebSockets blocked): errors, context, keepalive
 ├── client-api.ts        # Page API: nested api.dir.thing(), early subscribe, api.on, transport
 ├── client-errors.ts     # Errors (class, code, data) and controller files (export default, .d.ts, tests)
-└── options.ts           # apeBun options: unsupported auth options throw, typos warn, logging honoured
+├── options.ts           # apeBun options: unsupported auth options throw, typos warn, logging honoured, where/controllers refusals
+├── controllers.ts       # `apeBun({ controllers })` through the real browser client, no controller folder
+└── compiled-binary.ts   # A `bun build --compile` binary started from another folder answers an RPC from the page client
 ```
 
 ## Files
@@ -34,6 +36,14 @@ bun/
 ### `run.ts`
 
 Entry point for the core Bun integration tests. Mounts `apeBun()` over `integration/test-api`, runs the shared scenarios (WebSocket connection, RPC calls, binary transfer, broadcasts, error handling), then checks the `selector` option: with `selector: ['js', 'ts']` the TypeScript controller in `integration/test-api-ts` answers, and with the default selector it is ignored.
+
+### `controllers.ts`
+
+`apeBun({ controllers })` with no controller folder, through the real browser client (via `scenario-runner.ts`): nested and export-default endpoints, `this.clientId`, and "was not found" for an endpoint missing from the map. `APE_ROOT=/older/checkout` fails (no `controllers` option before 4.5.0).
+
+### `compiled-binary.ts`
+
+Writes a tiny server that imports two controllers and passes `controllers`, runs `bun build --compile`, starts the binary with an empty folder as its working directory, reads its port from stdout, and makes `cards/move` and `hello` calls with the real browser client. Skips (exit 0, with a message) only when this Bun cannot `build --compile`. `CONTROL=1` also builds the `where: 'api'` variant and shows its crash in `walkDir`; `APE_ROOT=/older/checkout` fails.
 
 ### `security.ts`
 

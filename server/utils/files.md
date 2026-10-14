@@ -32,7 +32,7 @@ Recursively loads all JavaScript modules from a directory tree and maps file pat
 - `api/users/profile.js` → `controllers['users/profile']`
 - `api/users/index.js` → `controllers['users']`
 
-Detects duplicate endpoint mappings and throws helpful errors.
+Detects duplicate endpoint mappings and throws helpful errors. Also exports `computeEndpoint` (file path to endpoint) and `asController` (module export to function) so the `controllers` option (`lib/controllerSource.js`) applies the same naming and refusal rules to a map.
 
 Hot reload is **off by default**. `deepRequire(dir, selector, { watch })` starts it; `deepRequire.stopWatching(map)` stops it.
 

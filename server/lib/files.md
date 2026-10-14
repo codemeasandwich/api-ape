@@ -17,6 +17,7 @@ This is the core implementation of api-ape's server functionality. It orchestrat
 lib/
 ├── main.js              # Server initialization entry point
 ├── loader.js            # Controller file auto-loader
+├── controllerSource.js  # Controllers from `where` (folder) or `controllers` (map), and the URL prefix
 ├── broadcast.js         # Client tracking & broadcast utilities
 ├── bun.js               # Bun.serve() high-level integration (apeBun)
 ├── bun.d.ts             # Types for `api-ape/bun` (apeBun)
@@ -50,6 +51,10 @@ Recursively loads controller files from a directory, mapping file paths to endpo
 - `api/users/profile.js` → `controllers['users/profile']`
 - `api/users/index.js` → `controllers['users']`
 
+### `controllerSource.js`
+
+Where a server's controllers come from. `loadControllers(options)` returns the flat endpoint map from `where` (via `loader.js`) or from the `controllers` option (a map of endpoint path to function, for `bun build --compile` executables with no folder to scan); `publicPrefix(options)` derives the `/${prefix}/ape` URL segment (`urlPrefix`, else `where`, else `api`). A map key goes through `deepRequire`'s own `computeEndpoint` and `asController`, so it follows the folder's naming rules (`index` maps to the parent, a function `default` is unwrapped, non-functions and duplicates stop startup); where the folder scan silently skips a file, a key is refused. `watch` and `selector` are ignored with a warning for a map. Used by `main.js` and `bun.js`.
+
 ### `broadcast.js`
 
 Manages connected clients and provides messaging utilities:
@@ -70,7 +75,7 @@ TypeScript declarations for the `api-ape/bun` entry point (`apeBun(options): Ape
 
 ### `options.js`
 
-`checkOptions(options)` runs at the start of `ape()` and `apeBun()`. A missing or non-object `options` throws a message naming what is needed (`{ where: "api" }`) instead of a TypeError. `authFramework` and `authMiddleware` throw (they were never applied; wiring them would leave the Node long-poll path unauthenticated). Any other unknown key logs a warning naming it.
+`checkOptions(options)` runs at the start of `ape()` and `apeBun()`. A missing or non-object `options` throws a message naming what is needed (`{ where: "api" }`) instead of a TypeError. `where` and `controllers` are mutually exclusive (both or neither throws). `authFramework` and `authMiddleware` throw (they were never applied; wiring them would leave the Node long-poll path unauthenticated). Any other unknown key logs a warning naming it.
 
 ### `fileTransfer.js`
 

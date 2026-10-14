@@ -109,7 +109,7 @@
  */
 
 const { configureApeLogging, resetApeLoggingForTesting } = require("../../utils/apeLogger");
-const loader = require("./loader");
+const { loadControllers, publicPrefix: publicPrefixOf } = require("./controllerSource");
 const { checkOptions, DEFAULT_MAX_MESSAGE_BYTES } = require("./options");
 const { resolveOriginPolicy } = require("../security/origin");
 const wiring = require("./wiring");
@@ -197,35 +197,26 @@ function _resetForTesting() {
  * // core.controllers = { 'users': [Function], 'chat': [Function], ... }
  * // core.wsPath = '/api/ape'
  */
-function createApeCore({
-  where,
-  urlPrefix,
-  onConnect,
-  fileTransferOptions,
-  longPollingOptions,
-  origin,
-  watch,
-  maxMessageBytes = DEFAULT_MAX_MESSAGE_BYTES,
-}, defaultOriginMode) {
-  const path = require("path");
-  // `where` may be absolute (passed verbatim) or relative (joined with cwd
-  // for back-compat — this matches the legacy loader resolution semantics).
-  // `controllersDir` is exposed for callers that need the resolved on-disk
-  // root (e.g. file watchers); keep both branches.
-  const controllersDir = path.isAbsolute(where)
-    ? where
-    : path.join(process.cwd(), where);
-  const controllers = loader(where, undefined, { watch });
+function createApeCore(options, defaultOriginMode) {
+  const {
+    onConnect,
+    fileTransferOptions,
+    longPollingOptions,
+    origin,
+    maxMessageBytes = DEFAULT_MAX_MESSAGE_BYTES,
+  } = options;
+  // Controllers come from `where` (a folder scan) or `controllers` (a map the app built,
+  // for compiled executables with no folder). `controllersDir` is the resolved on-disk
+  // root (null for a map). `selector` is not forwarded here, as before 4.5.0: on Node
+  // only `.js` controllers load.
+  const { controllers, controllersDir } = loadControllers(options);
   // Decouple the public URL prefix from the on-disk path. Default rules:
   //   absolute `where` → basename (so `/srv/app/api` URL-collapses to `api`)
   //   relative `where` → as-is (preserves the historical `/api/ape` etc.)
-  // Explicit `urlPrefix` overrides both. Leading/trailing slashes stripped
+  //   `controllers` map → `api`
+  // Explicit `urlPrefix` overrides all. Leading/trailing slashes stripped
   // so callers can pass `/api/`, `api`, or `/api` interchangeably.
-  const publicPrefix = urlPrefix
-    ? urlPrefix.replace(/^\/+|\/+$/g, "")
-    : path.isAbsolute(where)
-      ? path.basename(where)
-      : where.replace(/^\.?\/+|\/+$/g, "");
+  const publicPrefix = publicPrefixOf(options);
   const fileTransfer = getFileTransferManager(fileTransferOptions);
   // Node keeps the historical root-domain Origin check by default; Bun defaults
   // to exact host:port (the caller passes the default for its runtime).

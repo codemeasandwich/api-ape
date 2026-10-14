@@ -117,8 +117,9 @@ This enables server-side microservice patterns while keeping the familiar api-ap
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `where` | `string` | Directory containing controller files. Relative paths (e.g. `'api'`) are resolved against `process.cwd()` captured at module-load time. Absolute paths (e.g. `'/srv/myapp/api'`) are used verbatim — pass an absolute path when the calling process cannot guarantee a stable `cwd` (embedded servers, multi-tenant runners, test harnesses spawned from arbitrary directories). |
-| `urlPrefix` | `string` | _Optional._ Public URL segment for api-ape routes (`/${urlPrefix}/ape`, `/${urlPrefix}/ape.js`, etc.). Defaults to `where` when `where` is relative (preserving the historical `/api/ape` shape), or to `path.basename(where)` when `where` is absolute. Override when the on-disk controller path and the public URL segment must differ. |
+| `where` | `string` | Directory containing controller files. **Give either `where` or `controllers`, not both** (startup throws if both or neither is given). Relative paths (e.g. `'api'`) are resolved against `process.cwd()` captured at module-load time. Absolute paths (e.g. `'/srv/myapp/api'`) are used verbatim — pass an absolute path when the calling process cannot guarantee a stable `cwd` (embedded servers, multi-tenant runners, test harnesses spawned from arbitrary directories). |
+| `controllers` | `object` | _Alternative to `where` (4.5.0)._ A map from endpoint path to controller function, `{ 'cards/move': move }`, used instead of scanning a folder. For a `bun build --compile` executable, which has no folder to scan (see [Compiled executables](#compiled-executables-controllers)). |
+| `urlPrefix` | `string` | _Optional._ Public URL segment for api-ape routes (`/${urlPrefix}/ape`, `/${urlPrefix}/ape.js`, etc.). Defaults to `where` when `where` is relative (preserving the historical `/api/ape` shape), or to `path.basename(where)` when `where` is absolute, or to `api` with `controllers` (where the browser client dials). Override when the on-disk controller path and the public URL segment must differ. |
 | `onConnect` | `function` | Connection lifecycle hook |
 | `fileTransferOptions` | `object` | Binary transfer settings (see below) |
 | `selector` | `string[]` | _Optional._ Controller file extensions to load, default `['js']` (`['js', 'ts']` under Bun). |
@@ -132,7 +133,7 @@ This enables server-side microservice patterns while keeping the familiar api-ap
 
 ### `apeBun(options)` (Bun)
 
-`require('api-ape/bun').apeBun(options)` returns `{ fetch, websocket, wss, close }` for `Bun.serve()`. It takes the same options as `ape()` (`where`, `urlPrefix`, `selector`, `onConnect`, `fileTransferOptions`, `origin`, `watch`, `websocketOptions`, `maxMessageBytes`, `logging`). `fetch` answers the api-ape paths and returns `null` for anything else, so your own routes can follow.
+`require('api-ape/bun').apeBun(options)` returns `{ fetch, websocket, wss, close }` for `Bun.serve()`. It takes the same options as `ape()` (`where` or `controllers`, `urlPrefix`, `selector`, `onConnect`, `fileTransferOptions`, `origin`, `watch`, `websocketOptions`, `maxMessageBytes`, `logging`). `fetch` answers the api-ape paths and returns `null` for anything else, so your own routes can follow.
 
 | Option | Type | Description |
 |--------|------|-------------|
@@ -257,6 +258,34 @@ api/
    - /users.js
    Remove one of these files to fix this conflict.
 ```
+
+### Compiled executables (`controllers`)
+
+`where` scans a folder with `fs.readdirSync` when the server starts. Inside a `bun build --compile` single-file executable there is no such folder, and the scan crashes (in `walkDir` / `readdirSync`) when the binary runs from another directory. Import your controllers and pass them as a map instead; nothing is read from disk:
+
+```js
+// server.ts: compiled with `bun build --compile server.ts --outfile app`
+import { apeBun } from 'api-ape/bun'
+import move from './api/cards/move'
+import * as profile from './api/users/profile'   // a module namespace: its `default` is used
+
+const ape = apeBun({
+  controllers: { 'cards/move': move, 'users/profile': profile },
+})
+Bun.serve({ port: 3000, fetch: (req, srv) => ape.fetch(req, srv) ?? new Response('Not found', { status: 404 }), websocket: ape.websocket })
+```
+
+`ape(server, { controllers })` works the same on Node. The map follows the folder's rules, because a key goes through the same code as a file path:
+
+- A key is the endpoint path (`cards/move`; one leading `/` is ignored). A value is the function, or an object whose `default` is the function (a module namespace). Anything else stops startup naming the endpoint.
+- `users/index` serves `users`, as `users/index.js` does. Two keys that name one endpoint (`users` and `users/index`, or `users` and `/users`) stop startup, listing both.
+- Where the folder scan **silently skips** a file, a key is **refused** (an endpoint you list by hand must not go missing): a segment starting with `_` (private), a bare `index`, a `.test` / `.spec` name, an empty segment (`a//b`).
+- `where` and `controllers` are mutually exclusive: startup throws if both or neither is given.
+- `watch` and `selector` concern a folder: with `controllers` they are ignored with a warning. Restart to change controllers.
+- The map is copied at startup; keys added to your object later are not served.
+- The public URL prefix defaults to `api` (the browser client dials `/api/ape`); `urlPrefix` overrides it. There is no `/ape/schema` endpoint (it reads controller source files).
+
+Tested by starting a real `bun build --compile` binary from another folder and calling it from the page client: `integration/bun/compiled-binary.ts`.
 
 ### Controller files
 
@@ -972,6 +1001,12 @@ Conformance of every row above is tested in `simulator/scenarios/stories/call-co
 - Code that reads reply frames with plain `JSON.parse` sees the error as `err<!E>`, not a string `err`; read frames with `api-ape/jss`. The HTTP long-poll POST answers in the same shape.
 
 Old clients keep working against a 4.4.0 server (upgrade the server first), with the caveats under "Mixed versions" in the CHANGELOG.
+
+## Upgrading to 4.5.0
+
+4.5.0 adds the `controllers` option and breaks nothing: an app that does not pass it behaves as on 4.4.0.
+
+- **`controllers`**: a map of endpoint path to function in place of `where`, for `bun build --compile` executables. See [Compiled executables](#compiled-executables-controllers). One thing to know: `ape()` / `apeBun()` now throw if neither `where` nor `controllers` is given (a missing `where` used to fail with a TypeError from `path`).
 
 ## Troubleshooting & FAQ
 

@@ -137,6 +137,14 @@ jobs:
         if: matrix.runtime == 'bun'
         run: bun run integration/bun/options.ts
 
+      - name: Run Bun programmatic controllers integration
+        if: matrix.runtime == 'bun'
+        run: bun run integration/bun/controllers.ts
+
+      - name: Run Bun compiled single-file executable integration
+        if: matrix.runtime == 'bun'
+        run: bun run integration/bun/compiled-binary.ts
+
       - name: Run Deno integration
         if: matrix.runtime == 'deno'
         run: deno run --allow-all integration/deno/run.ts

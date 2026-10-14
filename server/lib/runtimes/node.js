@@ -227,8 +227,10 @@ function initNodeServer(server, options, core) {
    * Schema endpoint path and handler for IntelliSense support.
    * @type {string}
    */
-  const schemaPath = `/${options.where}/ape/schema`;
-  const schemaHandler = createSchemaHandler(core.controllersDir);
+  const schemaPath = `/${options.where != null ? options.where : core.publicPrefix}/ape/schema`;
+  // The schema reads controller SOURCE files, so a server given a `controllers` map
+  // (no folder) has none to serve.
+  const schemaHandler = core.controllersDir ? createSchemaHandler(core.controllersDir) : null;
 
   // Connect WebSocket server to api-ape wiring handler
   wss.on("connection", core.wiringHandler);
@@ -296,12 +298,12 @@ function initNodeServer(server, options, core) {
     }
 
     // Schema endpoint for IntelliSense/LSP
-    if (pathname === schemaPath && req.method === "GET") {
+    if (schemaHandler && pathname === schemaPath && req.method === "GET") {
       return schemaHandler(req, res);
     }
 
     // Handle CORS preflight for schema endpoint
-    if (pathname === schemaPath && req.method === "OPTIONS") {
+    if (schemaHandler && pathname === schemaPath && req.method === "OPTIONS") {
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type");

@@ -21,6 +21,7 @@ const { apeLog } = require("../../utils/apeLogger");
 /** Options `ape()` and `apeBun()` act on. */
 const KNOWN_OPTIONS = [
   "where",
+  "controllers",
   "urlPrefix",
   "selector",
   "onConnect",
@@ -47,6 +48,32 @@ const DEFAULT_MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
 const UNSUPPORTED_OPTIONS = ["authFramework", "authMiddleware"];
 
 /**
+ * `where` (scan a folder) and `controllers` (a map of endpoint path to function, for
+ * compiled executables) are two ways to say the same thing: exactly one is required.
+ *
+ * @param {Object} options - The options object passed to `ape()` / `apeBun()`
+ * @returns {void}
+ * @throws {Error} If both or neither is given
+ */
+function checkControllerSource(options) {
+  const hasWhere = options.where != null;
+  const hasControllers = options.controllers != null;
+  if (hasWhere && hasControllers) {
+    throw new Error(
+      "api-ape: pass either `where` (a folder of controller files to scan) or `controllers` " +
+        "(a map of endpoint path to function), not both.",
+    );
+  }
+  if (!hasWhere && !hasControllers) {
+    throw new Error(
+      "api-ape: the options need `where` (a folder of controller files, e.g. { where: \"api\" }) " +
+        "or `controllers` (a map of endpoint path to function, e.g. { controllers: { hello } }, " +
+        "for a compiled executable with no folder).",
+    );
+  }
+}
+
+/**
  * Reject options that are not supported and warn about unknown ones.
  *
  * @param {Object} options - The options object passed to `ape()` / `apeBun()`
@@ -69,6 +96,7 @@ function checkOptions(options) {
         `and check them in controllers.`,
     );
   }
+  checkControllerSource(options);
   const unknown = given.filter((key) => !KNOWN_OPTIONS.includes(key));
   if (unknown.length > 0) {
     apeLog.warn(

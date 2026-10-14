@@ -335,6 +335,20 @@ module.exports = function (dirname, selector, options = {}) {
 };
 
 /**
+ * The endpoint a controller file serves (shared with the `controllers` option so a map
+ * key follows the same naming rules as a file path). See `computeEndpoint` above.
+ * @type {function(string): string|null}
+ */
+module.exports.computeEndpoint = computeEndpoint;
+
+/**
+ * Turn what a controller module exports into its function (shared with the
+ * `controllers` option). See `asController` above.
+ * @type {function(any, string, string): Function}
+ */
+module.exports.asController = asController;
+
+/**
  * Stop the hot-reload watcher belonging to a controller map returned by
  * `deepRequire(..., { watch })`. A no-op for maps that are not being watched.
  *

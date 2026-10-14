@@ -61,7 +61,7 @@
  * })
  */
 
-const loader = require("./loader");
+const { loadControllers, publicPrefix: publicPrefixOf } = require("./controllerSource");
 const { checkOptions, DEFAULT_MAX_MESSAGE_BYTES } = require("./options");
 const { configureApeLogging } = require("../../utils/apeLogger");
 const wiring = require("./wiring");
@@ -205,25 +205,23 @@ function apeBun(options) {
   if (options && options.logging !== undefined) configureApeLogging(options.logging);
   checkOptions(options);
   const {
-    where,
-    urlPrefix,
-    selector,
     onConnect,
     fileTransferOptions,
     origin,
-    watch,
     websocketOptions,
     maxMessageBytes = DEFAULT_MAX_MESSAGE_BYTES,
   } = options;
   /**
-   * Load controllers from the specified directory. Absolute paths are passed
-   * verbatim; relative paths resolve against the loader's cached cwd. The
-   * optional `selector` forwards to deepRequire so Bun TS projects can pass
-   * `['js','ts']` and have their `.ts` controllers register; default `['js']`
-   * preserves backwards-compatible behaviour for existing Node consumers.
+   * Load controllers from the specified directory (`where`) or take the `controllers`
+   * map. Absolute paths are passed verbatim; relative paths resolve against the
+   * loader's cached cwd. The optional `selector` forwards to deepRequire so Bun TS
+   * projects can pass `['js','ts']` and have their `.ts` controllers register; default
+   * `['js']` preserves backwards-compatible behaviour for existing Node consumers.
+   * A `controllers` map touches no file system, so it works inside a
+   * `bun build --compile` executable.
    * @type {Object<string, Function>}
    */
-  const controllers = loader(where, selector, { watch });
+  const { controllers } = loadControllers(options, { selector: true });
 
   /**
    * Public URL prefix for the api-ape routes. Decoupled from `where` so a
@@ -231,15 +229,11 @@ function apeBun(options) {
    * controller loading) without leaking the absolute path into URLs. The
    * default derives from `where`: an absolute path collapses to its
    * basename (`/srv/app/api` → `api`); a relative path is used verbatim
-   * (`'api'` → `'api'`, `'src/api'` → `'src/api'`). Override explicitly
-   * with `urlPrefix` when neither default fits.
+   * (`'api'` → `'api'`, `'src/api'` → `'src/api'`); a `controllers` map
+   * (no folder) uses `api`. Override explicitly with `urlPrefix`.
    * @type {string}
    */
-  const publicPrefix = urlPrefix
-    ? urlPrefix.replace(/^\/+|\/+$/g, "")
-    : path.isAbsolute(where)
-      ? path.basename(where)
-      : where.replace(/^\.?\/+|\/+$/g, "");
+  const publicPrefix = publicPrefixOf(options);
 
   /**
    * File transfer manager for handling binary uploads/downloads.

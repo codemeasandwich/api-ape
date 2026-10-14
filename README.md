@@ -52,6 +52,8 @@ Bun.serve({
 })
 ```
 
+A compiled single-file executable has no folder to scan, so pass your imported controllers instead of `where`: `apeBun({ controllers: { 'cards/move': move } })` (see [Compiled executables](server/README.md#compiled-executables-controllers)).
+
 Bun is WebSocket-only (the HTTP poll fallback and `/ape/data` file transfer are Node-only). See [Bun, Origin check, Hot reload and Keepalive](server/README.md#bun) in the server docs.
 
 ### Vite Plugin
@@ -124,6 +126,7 @@ await api.message({ text: 'Hello' })                   // RPC call
 * **[Auto-wiring](server/README.md#auto-routing)** — Drop JS files in a folder, they become API endpoints
 * **[Real-time broadcasts](server/README.md#controller-context-this)** — Built-in `broadcast()` and `broadcastOthers()` methods
 * **[Pub/Sub channels](server/README.md#pubsub-channels)** — Clients subscribe to channels, server publishes updates
+* **[Compiled executables](server/README.md#compiled-executables-controllers)** — `controllers: { 'cards/move': fn }` in place of `where`, for `bun build --compile` binaries
 * **[Promise-based calls](client/README.md#usage)** — `api.users.list()` maps to `api/users/list.js`
 * **[Origin check](server/README.md#origin-check)** — Exact host:port matching (`origin.mode: 'exact'`, default on Bun), `allowedOrigins`, `allowedHosts`
 * **[Hot reload (opt-in)](server/README.md#hot-reload)** — `watch: true` reloads controllers and the services they import together; off by default

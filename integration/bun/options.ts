@@ -49,6 +49,18 @@ async function main() {
         assert(typeof ape.fetch === 'function', 'apeBun did not return a handler');
         assert(warnings.some((w) => w.includes('"urlPrefixx"')), `no warning naming the option: ${JSON.stringify(warnings)}`);
     });
+    await test('apeBun refuses both `where` and `controllers`, and neither, with a message naming both', () => {
+        const both = attempt(() => apeBun({ where: dir, controllers: { hello: () => 'hi' } }));
+        assert(both?.includes('either `where`') && both.includes('`controllers`') && both.includes('not both'), `both: ${JSON.stringify(both)}`);
+        const neither = attempt(() => apeBun({ logging: false }));
+        assert(neither?.includes('need `where`') && neither.includes('`controllers`'), `neither: ${JSON.stringify(neither)}`);
+    });
+    await test('apeBun({ controllers }) names a value that is not a function and a key the folder scan would never serve', () => {
+        const notFn = attempt(() => apeBun({ controllers: { 'cards/move': { not: 'a function' } } }));
+        assert(notFn?.includes('Endpoint "cards/move"') && notFn.includes('must export a function'), `non-function: ${JSON.stringify(notFn)}`);
+        const hidden = attempt(() => apeBun({ controllers: { '_private/helper': () => 1 } }));
+        assert(hidden?.includes('"_private/helper"') && hidden.includes('cannot be an endpoint'), `private key: ${JSON.stringify(hidden)}`);
+    });
     await test('apeBun logging routes the framework\'s own log lines to the given sink', async () => {
         const lines: string[] = [];
         const ape = apeBun({ where: dir, urlPrefix: 'api', logging: { log: (m: string) => lines.push(m), info() {}, debug() {}, error() {}, warn() {} } });

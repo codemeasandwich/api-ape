@@ -14,6 +14,7 @@ Stories about the server's side of the call protocol, driven with a raw socket s
 call-contract/
 ├── README.md       # Overview
 ├── files.md        # This file
+├── controllers-option.test.js   # `controllers` map instead of a folder: same naming rules, refusals, `this`
 ├── hostile-peer.test.js   # What a stranger's frames can make a server do
 ├── index.test.js   # The stories
 ├── long-poll.test.js   # A call over HTTP (SSE stream + POST) behaves as over a WebSocket
@@ -26,6 +27,10 @@ call-contract/
 ### `index.test.js`
 
 The call-contract stories (keepalive, identical calls, replies, errors and what `errCode` / `errData` may carry, controller files, context from `onConnect`, options). Starts a harness server over `simulator/test-api-contract/` or over controller files written to a temp directory for the test, and talks to it with the raw client.
+
+### `controllers-option.test.js`
+
+The `controllers` option (4.5.0), through `ape()` and a raw socket: a nested endpoint, an `export default` module namespace, a leading slash, `users/index`, `this` (embed, `clientId`, `broadcast`, `publish`), names every object inherits, the map copied at start, the `api` URL prefix and `urlPrefix`; start-up refusals (both or neither of `where` / `controllers`, a non-function value, `_private` / bare `index` / `.test` / empty-segment keys, duplicate endpoints); `watch` and `selector` ignored with a warning.
 
 ### `hostile-peer.test.js`
 

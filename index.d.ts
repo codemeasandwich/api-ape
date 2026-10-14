@@ -161,11 +161,17 @@ export type ApeWatchOption = boolean | {
 }
 
 /**
- * Server options for ape()
+ * A map from endpoint path to controller, for the `controllers` option.
+ * A value is the function, or a module namespace whose `default` is the function.
  */
-export interface ApeServerOptions {
-    /** Directory containing controller files */
-    where: string
+export type ApeControllerMap = {
+    [path: string]: ControllerFunction | { default: ControllerFunction }
+}
+
+/**
+ * Options shared by both ways of providing controllers
+ */
+export interface ApeServerOptionsBase {
     /**
      * Public URL segment for the api-ape routes (`/${urlPrefix}/ape`). Defaults to `where`
      * (relative) or its basename (absolute). The browser client dials `/api/ape`.
@@ -210,6 +216,33 @@ export interface ApeServerOptions {
     authFramework?: never
     authMiddleware?: never
 }
+
+/**
+ * Server options for `ape()` and `apeBun()`: controllers come from a folder (`where`) or
+ * from a map (`controllers`), never both. `watch` and `selector` concern a folder only.
+ */
+export type ApeServerOptions = ApeServerOptionsBase &
+    (
+        | {
+              /** Directory containing controller files (scanned at start-up; hot reload with `watch`) */
+              where: string
+              controllers?: never
+          }
+        | {
+              /**
+               * Endpoint path to controller, for a `bun build --compile` executable (no folder
+               * to scan): `{ 'cards/move': move }`. Same naming rules as files: `index` maps
+               * to the parent; a `_private` segment, a bare `index` or a `.test` name is
+               * refused. Public URL prefix defaults to `api`. See server/README.md.
+               */
+              controllers: ApeControllerMap
+              where?: never
+              /** Not applicable to a map; ignored with a warning */
+              watch?: never
+              /** Not applicable to a map; ignored with a warning */
+              selector?: never
+          }
+    )
 
 /**
  * What `apeBun()` returns, for `Bun.serve({ fetch, websocket })`.
