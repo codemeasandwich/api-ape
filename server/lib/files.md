@@ -19,6 +19,8 @@ lib/
 ├── loader.js            # Controller file auto-loader
 ├── broadcast.js         # Client tracking & broadcast utilities
 ├── bun.js               # Bun.serve() high-level integration (apeBun)
+├── bun.d.ts             # Types for `api-ape/bun` (apeBun)
+├── options.js           # Rejects unsupported options, warns about unknown ones
 ├── fileTransfer.js      # Binary file transfer manager
 ├── fileTransfer.test.js # File transfer test suite
 ├── httpUtils.js         # Shared HTTP utilities
@@ -61,6 +63,14 @@ Manages connected clients and provides messaging utilities:
 ### `bun.js`
 
 High-level Bun integration that returns `fetch` and `websocket` handlers ready for `Bun.serve()`. Handles WebSocket upgrades, client bundle serving, and all api-ape routes.
+
+### `bun.d.ts`
+
+TypeScript declarations for the `api-ape/bun` entry point (`apeBun(options): ApeBunHandlers`), referenced from the `exports["./bun"].types` field in `package.json`.
+
+### `options.js`
+
+`checkOptions(options)` runs at the start of `ape()` and `apeBun()`. `authFramework` and `authMiddleware` throw (they were never applied; wiring them would leave the Node long-poll path unauthenticated). Any other unknown key logs a warning naming it.
 
 ### `fileTransfer.js`
 

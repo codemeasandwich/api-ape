@@ -117,6 +117,10 @@ jobs:
         if: matrix.runtime == 'bun'
         run: bun run integration/bun/client-errors.ts
 
+      - name: Run Bun apeBun options integration
+        if: matrix.runtime == 'bun'
+        run: bun run integration/bun/options.ts
+
       - name: Run Deno integration
         if: matrix.runtime == 'deno'
         run: deno run --allow-all integration/deno/run.ts

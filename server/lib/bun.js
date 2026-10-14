@@ -62,6 +62,8 @@
  */
 
 const loader = require("./loader");
+const { checkOptions } = require("./options");
+const { configureApeLogging } = require("../../utils/apeLogger");
 const wiring = require("./wiring");
 const path = require("path");
 const fs = require("fs");
@@ -154,6 +156,7 @@ const { bunWebSocketConfig } = require("./runtimes/bunWebSocketConfig");
  *     projects whose controllers are TypeScript.
  * @param {Function} [options.onConnect] - Connection callback
  * @param {Object}   [options.fileTransferOptions] - File transfer options
+ * @param {boolean|Object} [options.logging] - `false` silences api-ape logs; an object sets log/warn/error/info/debug sinks
  * @returns {ApeBunResult} Object with fetch, websocket, and wss properties
  *
  * @example
@@ -194,16 +197,21 @@ const { bunWebSocketConfig } = require("./runtimes/bunWebSocketConfig");
  *     }
  * })
  */
-function apeBun({
-  where,
-  urlPrefix,
-  selector,
-  onConnect,
-  fileTransferOptions,
-  origin,
-  watch,
-  websocketOptions,
-}) {
+function apeBun(options) {
+  // `logging` is applied only when given, so a `configureApeLogging()` made before
+  // apeBun() is not reset by an apeBun() call that says nothing about logging.
+  if (options && options.logging !== undefined) configureApeLogging(options.logging);
+  checkOptions(options);
+  const {
+    where,
+    urlPrefix,
+    selector,
+    onConnect,
+    fileTransferOptions,
+    origin,
+    watch,
+    websocketOptions,
+  } = options;
   /**
    * Load controllers from the specified directory. Absolute paths are passed
    * verbatim; relative paths resolve against the loader's cached cwd. The

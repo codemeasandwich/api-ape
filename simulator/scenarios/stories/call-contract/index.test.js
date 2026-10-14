@@ -300,4 +300,54 @@ describe("Call contract", () => {
       await expect(harness.createServer({ where })).rejects.toThrow(/weird/);
     });
   });
+  describe("context", () => {
+    test("a controller can push to everyone with this.broadcast and to everyone but the caller with this.broadcastOthers", async () => {
+      const server = await harness.createServer({ where: FIXTURES });
+      const caller = await connectRaw(server);
+      const other = await connectRaw(server);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      await caller.reply(caller.call("announce", { text: "hello" }));
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const types = (raw) => raw.frames.map((f) => f.type).filter((t) => t === "shout" || t === "whisper");
+      expect(types(caller)).toEqual(["shout"]); // the caller hears the shout, not the whisper
+      expect(types(other).sort()).toEqual(["shout", "whisper"]);
+      caller.close();
+      other.close();
+    });
+  });
+
+  describe("options", () => {
+    const quiet = (warn) => ({ log() {}, info() {}, debug() {}, error() {}, warn });
+
+    test("a server started with authFramework refuses to start instead of leaving endpoints unauthenticated", async () => {
+      await expect(
+        harness.createServer({ where: FIXTURES, apeOptions: { authFramework: { createSocketAuth() {} } } }),
+      ).rejects.toThrow(/"authFramework" option is not supported/);
+    });
+
+    test("a server started with authMiddleware refuses to start", async () => {
+      await expect(
+        harness.createServer({ where: FIXTURES, apeOptions: { authMiddleware: { check() {} } } }),
+      ).rejects.toThrow(/"authMiddleware" option is not supported/);
+    });
+
+    test("a mistyped option still starts the server and is named in a warning", async () => {
+      const warn = jest.fn();
+      await harness.createServer({ where: FIXTURES, apeOptions: { logging: quiet(warn), wher: "typo" } });
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('"wher"'));
+    });
+
+    test("apeBun refuses authFramework and authMiddleware too, and sends its warnings to the logging option it is given", () => {
+      const { apeBun } = require("../../../../server/lib/bun");
+      expect(() => apeBun({ where: FIXTURES, authFramework: {} })).toThrow(/"authFramework" option is not supported/);
+      expect(() => apeBun({ where: FIXTURES, authMiddleware: {} })).toThrow(/"authMiddleware" option is not supported/);
+
+      const warn = jest.fn();
+      apeBun({ where: FIXTURES, logging: quiet(warn), urlPrefixx: "typo" });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('"urlPrefixx"'));
+    });
+  });
 });

@@ -110,6 +110,7 @@
 
 const { configureApeLogging, resetApeLoggingForTesting } = require("../../utils/apeLogger");
 const loader = require("./loader");
+const { checkOptions } = require("./options");
 const { resolveOriginPolicy } = require("../security/origin");
 const wiring = require("./wiring");
 const { isBun, isDeno, getRuntime } = require("./wsProvider");
@@ -368,9 +369,11 @@ module.exports = function (server, options) {
   if (created) {
     throw new Error("Api-Ape already started");
   }
-  created = true;
 
+  // Logging first, so a warning about an unknown option reaches the caller's sink.
   configureApeLogging(options && options.logging);
+  checkOptions(options);
+  created = true;
 
   const bunServer = isBunServer(server);
   /* istanbul ignore next - the exact default is only chosen for a Bun server */

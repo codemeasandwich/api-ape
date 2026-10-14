@@ -21,7 +21,8 @@ bun/
 ├── client-connect.ts    # Connection user stories (one socket per page, restart recovery, captive portal)
 ├── client-calls.ts      # Call user stories (identical calls, awaited calls, errors)
 ├── client-api.ts        # Page API: nested api.dir.thing(), early subscribe, api.on, transport
-└── client-errors.ts     # Errors (class, code, data) and controller files (export default, .d.ts, tests)
+├── client-errors.ts     # Errors (class, code, data) and controller files (export default, .d.ts, tests)
+└── options.ts           # apeBun options: unsupported auth options throw, typos warn, logging honoured
 ```
 
 ## Files
@@ -57,6 +58,10 @@ The default export as the README shows it: `api.dir.thing()` and `api.dir()` for
 ### `client-errors.ts`
 
 What a page's catch block sees: a `TypeError` with its message and no server paths, `err.code` / `err.data`, a thrown string as an Error; and controller files: a TypeScript `export default` controller answers, `.d.ts` and `.test.ts` files next to controllers are not endpoints.
+
+### `options.ts`
+
+Under real Bun: `apeBun` throws on `authFramework` / `authMiddleware` (they were silently dropped before 4.3.1), names a mistyped option in a warning, and routes the framework's log lines to the `logging` sink it is given (apeBun ignored `logging` before).
 
 ### `hot-reload.ts`
 

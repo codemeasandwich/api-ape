@@ -62,6 +62,8 @@ See [`auth/README.md`](auth/README.md) for full documentation.
 
 ### Quick Example
 
+> **Not available through `ape()` / `apeBun()`.** The `authFramework` and `authMiddleware` options were accepted by 4.3.0 and earlier and then **silently dropped**, so nothing below was ever enforced. From 4.3.1 `ape()` and `apeBun()` **throw at startup** if either is passed. They are not wired because they would cover the WebSocket path only; the Node HTTP long-poll fallback has no auth hooks and would answer unauthenticated requests. Until a design that covers every transport lands, authenticate in `onConnect` (refuse the socket, or return `embed: { user }`) and check `this.user` in controllers. The modules below stay in the package as building blocks.
+
 ```js
 const { createAuthFramework } = require('api-ape/server/security/auth');
 const { createAuthMiddleware } = require('api-ape/server/socket/authMiddleware');
@@ -81,7 +83,7 @@ const authMiddleware = createAuthMiddleware({
   }
 });
 
-ape(server, { where: 'api', authFramework, authMiddleware });
+// ape(server, { where: 'api', authFramework, authMiddleware });  // throws since 4.3.1
 ```
 
 ## See Also

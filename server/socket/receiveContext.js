@@ -7,7 +7,7 @@
  * @see {@link module:server/socket/receive} for the message handler
  */
 
-const { clients, publish } = require("../lib/broadcast");
+const { clients, publish, broadcast, broadcastOthers } = require("../lib/broadcast");
 const { parseSessionIdFromReq } = require("../lib/sessionIdentity");
 
 /**
@@ -43,6 +43,9 @@ function createControllerContext({ sharedValues, embedValues, clientId, sessionI
     ...sharedValues,
     ...embedValues,
     publish: (channel, data) => publish(channel, data),
+    // Push `type` to every connected client / to every client except the caller.
+    broadcast: (type, data) => broadcast(type, data),
+    broadcastOthers: (type, data) => broadcastOthers(type, data, clientId),
     clients,
     clientId,
     sessionId,

@@ -13,12 +13,17 @@ Controllers loaded by the call-contract stories. Kept apart from `test-api/` so 
 test-api-contract/
 ├── README.md   # Overview
 ├── files.md    # This file
+├── announce.js # Pushes to everyone / to everyone but the caller (this.broadcast, this.broadcastOthers)
 ├── echo.js     # Returns its payload under `echo`
 ├── voidret.js  # Async controller that returns nothing (the caller must still get a reply)
 └── slow.js     # Long-running call that sends this.keepalive() after each round
 ```
 
 ## Files
+
+### `announce.js`
+
+Calls `this.broadcast('shout', ...)` and `this.broadcastOthers('whisper', ...)`: the story checks the caller hears only the shout and every other client hears both.
 
 ### `echo.js`
 
