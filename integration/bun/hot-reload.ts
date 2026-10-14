@@ -9,7 +9,7 @@
  *    never changed (coherent reload);
  *  - with `watch: true` alone, modules outside the controller directory stay
  *    cached (the documented limit);
- *  - `.js` controllers and `.ts` services loaded with `require()` reload under Bun.
+ *  - `.ts` and `.js` controllers and `.ts` services loaded with `require()` reload under Bun.
  *    (ES `import` graphs reloaded in a manual probe on Bun 1.3.14 but are not
  *    covered here; on Node they are never evicted. See README "Hot reload".)
  *
@@ -33,12 +33,12 @@ async function test(name: string, fn: () => Promise<void>) {
 }
 function assert(c: unknown, m: string) { if (!c) throw new Error(m); }
 
-/** Fixture: api/a.js + api/b.js import svc/state.ts via require(). */
+/** Fixture: api/a.ts + api/b.js import svc/state.ts via require(). */
 function fixture() {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'ape-bun-hot-')));
     mkdirSync(join(root, 'api')); mkdirSync(join(root, 'svc'));
     writeFileSync(join(root, 'svc/state.ts'), "module.exports = { v: 'svc1' };");
-    writeFileSync(join(root, 'api/a.js'), "const s = require('../svc/state'); module.exports = function () { return 'a1:' + s.v; };");
+    writeFileSync(join(root, 'api/a.ts'), "const s = require('../svc/state'); module.exports = function () { return 'a1:' + s.v; };");
     writeFileSync(join(root, 'api/b.js'), "const s = require('../svc/state'); module.exports = function () { return 'b1:' + s.v; };");
     return root;
 }
@@ -57,7 +57,7 @@ async function call(ws: any, frames: any[], type: string) {
 
 async function scenario(options: any, edit: (root: string) => void, until: (r: string[]) => boolean) {
     const root = fixture();
-    const ape = apeBun({ where: join(root, 'api'), ...options(root) });
+    const ape = apeBun({ where: join(root, 'api'), selector: ['js', 'ts'], ...options(root) });
     const server = Bun.serve({ port: 0, fetch: (r, s) => ape.fetch(r, s) ?? new Response('no', { status: 404 }), websocket: ape.websocket });
     const ws: any = new WebSocket(`ws://localhost:${server.port}/api/ape`);
     const frames: any[] = [];
@@ -76,7 +76,7 @@ async function scenario(options: any, edit: (root: string) => void, until: (r: s
 
 const editBoth = (root: string) => {
     writeFileSync(join(root, 'svc/state.ts'), "module.exports = { v: 'svc2' };");
-    writeFileSync(join(root, 'api/a.js'), "const s = require('../svc/state'); module.exports = function () { return 'a2:' + s.v; };");
+    writeFileSync(join(root, 'api/a.ts'), "const s = require('../svc/state'); module.exports = function () { return 'a2:' + s.v; };");
 };
 
 console.log(`Bun ${Bun.version}`);
