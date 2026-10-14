@@ -106,6 +106,11 @@ const connectTimeout = 5000;
  * wsSend('/api/log', { event: 'pageview' }, Date.now())
  */
 export function createWsSend(getSocket, waitingOn) {
+  // Per-client counter sent as `nonce`: two identical calls in the same millisecond
+  // would otherwise serialize to the same message, hash to the same queryId, and the
+  // server would refuse the second as a replay.
+  let nonce = 0;
+
   /**
    * Send a message over WebSocket and return a Promise for the response
    *
@@ -149,6 +154,7 @@ export function createWsSend(getSocket, waitingOn) {
       data: processedData,
       createdAt: new Date(createdAt),
       requestedAt: new Date(),
+      nonce: ++nonce,
     };
 
     // Serialize and generate query ID for response correlation

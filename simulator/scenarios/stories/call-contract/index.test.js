@@ -52,4 +52,22 @@ describe("Call contract", () => {
       raw.close();
     });
   });
+  describe("identical calls", () => {
+    test("a service calling the same endpoint three times in one millisecond gets three replies", async () => {
+      // The server-side client (`api.connect`) dials `/api/ape`, so mount under `api`.
+      const server = await harness.createServer({ where: FIXTURES, apeOptions: { urlPrefix: "api" } });
+      const { api } = require("../../../../server");
+      api.connect(server.host, server.port);
+      try {
+        const replies = await Promise.all([1, 2, 3].map(() => api.echo({ same: "payload" })));
+        expect(replies).toEqual([
+          { echo: { same: "payload" } },
+          { echo: { same: "payload" } },
+          { echo: { same: "payload" } },
+        ]);
+      } finally {
+        api.close();
+      }
+    });
+  });
 });

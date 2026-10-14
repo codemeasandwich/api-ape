@@ -18,7 +18,8 @@ bun/
 ├── hot-reload.ts   # Opt-in hot reload: default off, watch.paths coherent, documented limit
 ├── scenario-runner.ts   # Runs a scenario's page half (real browser client) in a child process against a real Bun.serve
 ├── client-keepalive.ts  # Keepalive user stories through the real browser client
-└── client-connect.ts    # Connection user stories (one socket per page, restart recovery, captive portal)
+├── client-connect.ts    # Connection user stories (one socket per page, restart recovery, captive portal)
+└── client-calls.ts      # Call user stories (identical calls, awaited calls, errors, nested api, subscriptions)
 ```
 
 ## Files
@@ -42,6 +43,10 @@ Keepalive stories: a slow call resolves with its real result (not `undefined` fr
 ### `client-connect.ts`
 
 Connection stories through the real browser client: a page that makes calls before it has connected opens exactly one socket; after a server restart (or a server that is not up yet) the page says `disconnected`, never `walled`, and reconnects within seconds; a call made during the outage is sent when the server is back; a login page in place of the ping still reads `walled`. `Scenario.startDown`, `Scenario.fetch` and `onEvent` (server stop/start) drive these.
+
+### `client-calls.ts`
+
+Call stories through the real browser client: five identical calls in the same millisecond each get their own reply (per-client `nonce`).
 
 ### `hot-reload.ts`
 

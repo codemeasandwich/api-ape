@@ -21,6 +21,10 @@
  * @returns {function(string, *, number=): Promise<*>}
  */
 function createSend({ jss, messageHash, waitingOn, getWs, totalRequestTimeout }) {
+  // Per-client counter sent as `nonce`: identical calls in the same millisecond must
+  // not share a queryId (the server refuses a repeated queryId as a replay).
+  let nonce = 0;
+
   /**
    * Sends a message over the WebSocket and returns a promise for the response.
    *
@@ -31,7 +35,7 @@ function createSend({ jss, messageHash, waitingOn, getWs, totalRequestTimeout })
    * @returns {Promise<*>} Resolves when the correlated response arrives
    */
   function send(type, data, createdAt = Date.now()) {
-    const message = jss.stringify({ type, data, createdAt });
+    const message = jss.stringify({ type, data, createdAt, nonce: ++nonce });
     const queryId = messageHash(message);
 
     return new Promise((resolve, reject) => {

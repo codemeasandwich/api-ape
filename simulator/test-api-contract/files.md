@@ -13,10 +13,15 @@ Controllers loaded by the call-contract stories. Kept apart from `test-api/` so 
 test-api-contract/
 ├── README.md   # Overview
 ├── files.md    # This file
+├── echo.js     # Returns its payload under `echo`
 └── slow.js     # Long-running call that sends this.keepalive() after each round
 ```
 
 ## Files
+
+### `echo.js`
+
+Returns `{ echo: <payload> }`. Used where a story needs to tell replies apart (identical calls in one millisecond).
 
 ### `slow.js`
 
