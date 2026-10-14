@@ -64,6 +64,7 @@ const {
   onConnectionChange,
   isReady,
 } = require("./connection");
+const { subscribeChannel } = require("./connection-receivers");
 
 /**
  * Path separator used when building API paths.
@@ -142,7 +143,13 @@ const handler = {
          * @returns {void}
          */
         const wrappedHandler = (event) => payload(event.data);
-        return on(path, wrappedHandler);
+        // Local handler for what arrives, plus the `{ subscribe }` frame that makes the server send it.
+        const off = on(path, wrappedHandler);
+        const unsubscribe = subscribeChannel(path);
+        return () => {
+          off();
+          unsubscribe();
+        };
       }
       return queueOrSend(path, payload);
     };

@@ -19,6 +19,8 @@
  * @see {@link module:server/client/connection} - Connection lifecycle
  */
 
+const jss = require("../../utils/jss");
+
 // ============================================================================
 // RECEIVER STATE
 // ============================================================================
@@ -99,6 +101,46 @@ function bindConnection(refs) {
   _connState = refs;
 }
 
+/**
+ * Channels this client has asked the server for, with the number of local subscribers each.
+ * Only the first local subscriber sends `{ subscribe }`; the last one leaving sends `{ unsubscribe }`.
+ * @type {Map<string, number>}
+ */
+const remoteChannels = new Map();
+
+/**
+ * Send a subscribe/unsubscribe frame if the socket is open (otherwise `flushBufferedReceivers`
+ * sends every wanted subscription when it opens).
+ *
+ * @param {{subscribe?: string, unsubscribe?: string}} frame - Raw protocol frame
+ * @returns {void}
+ */
+function sendChannelFrame(frame) {
+  const socket = _connState.getWs();
+  if (_connState.getReady() && socket) socket.send(jss.stringify(frame));
+}
+
+/**
+ * Subscribe to a channel on the server (not just locally): `api.news.banking(cb)`.
+ *
+ * @param {string} channel - Channel path, e.g. `/news/banking`
+ * @returns {function(): void} Drops this subscriber; idempotent
+ */
+function subscribeChannel(channel) {
+  const count = remoteChannels.get(channel) || 0;
+  remoteChannels.set(channel, count + 1);
+  if (count === 0) sendChannelFrame({ subscribe: channel });
+  let active = true;
+  return () => {
+    if (!active) return;
+    active = false;
+    const left = remoteChannels.get(channel) - 1;
+    if (left > 0) return remoteChannels.set(channel, left);
+    remoteChannels.delete(channel);
+    sendChannelFrame({ unsubscribe: channel });
+  };
+}
+
 // ============================================================================
 // RECEIVER FUNCTIONS
 // ============================================================================
@@ -165,6 +207,8 @@ function flushBufferedReceivers() {
     setOnReceiver(type, handler),
   );
   bufferedReceivers.length = 0;
+  // The server drops a socket's subscriptions when it closes: ask again on every open.
+  remoteChannels.forEach((_count, channel) => sendChannelFrame({ subscribe: channel }));
 }
 
 /**
@@ -306,6 +350,7 @@ function getWs() {
 // ============================================================================
 
 module.exports = {
+  subscribeChannel,
   /** Inject connection state references (call once at startup) */
   bindConnection,
   /** Register a receiver for a type or all messages */

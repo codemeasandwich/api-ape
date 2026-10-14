@@ -350,4 +350,39 @@ describe("Call contract", () => {
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('"urlPrefixx"'));
     });
   });
+  describe("server-side client subscriptions", () => {
+    test("a service that subscribes with api.news.banking(cb) receives what the other server publishes until it unsubscribes", async () => {
+      const server = await harness.createServer({ where: FIXTURES, apeOptions: { urlPrefix: "api" } });
+      const { api, publish } = require("../../../../server");
+      const got = [];
+      api.connect(server.host, server.port);
+      try {
+        // Subscribed before the socket is open: sent when it opens.
+        const off = api.news.banking((data) => got.push(data));
+        await harness.waitFor(() => api.transport === "websocket", 3000);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        publish("/news/banking", { n: 1 });
+        await harness.waitFor(() => got.length === 1, 2000);
+
+        // A second local subscriber shares the one server-side subscription.
+        const second = [];
+        const offSecond = api.news.banking((data) => second.push(data));
+        publish("/news/banking", { n: 2 });
+        await harness.waitFor(() => got.length === 2 && second.length === 1, 2000);
+
+        offSecond();
+        offSecond(); // safe to call twice
+        off(); // last local subscriber: the server-side subscription is dropped
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        publish("/news/banking", { n: 3 });
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        expect(got.map((d) => d.n)).toEqual([1, 2]);
+        expect(second.map((d) => d.n)).toEqual([2]);
+      } finally {
+        api.close();
+      }
+    });
+  });
 });

@@ -96,6 +96,11 @@ api.connect('other-server', 3000)  // → ws://other-server:3000/api/ape
 // Now use it exactly like browser code!
 const result = await api.hello('World')
 api.on('message', ({ data }) => console.log(data))
+
+// Subscribe to a channel the other server publishes to (from 4.3.1 this sends the
+// { subscribe } frame, so it receives; the first local subscriber subscribes, the
+// last one to leave unsubscribes, and every reconnect subscribes again)
+const off = api.news.banking((data) => console.log(data))
 ```
 
 **Or set the connection URL via environment variable:**
