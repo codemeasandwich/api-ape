@@ -149,6 +149,8 @@ class ServerManager extends EventEmitter {
    * @param {Object} [options.adapter] - Database adapter for Forest clustering
    * @param {Object} [options.fileTransferOptions] - File transfer configuration
    * @param {Object} [options.longPollingOptions] - Long polling configuration
+   * @param {string[]} [options.selector] - Controller file extensions to load (default `['js']`)
+   * @param {Object} [options.apeOptions] - Extra options handed to `ape()` as given (e.g. to test rejected options)
    * @param {number} [options.longPollingOptions.heartbeatInterval=20000] - Heartbeat interval in ms
    * @param {number} [options.longPollingOptions.recycleTimeout=25000] - Connection recycle timeout in ms
    * @param {string} [options.id] - Custom server ID (auto-generated if not provided)
@@ -206,6 +208,8 @@ class ServerManager extends EventEmitter {
       onConnect: options.onConnect,
       fileTransferOptions: options.fileTransferOptions,
       longPollingOptions: options.longPollingOptions,
+      selector: options.selector,
+      ...(options.apeOptions || {}),
     };
 
     // Add adapter if provided

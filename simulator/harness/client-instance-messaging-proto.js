@@ -35,6 +35,9 @@ _handleMessage(rawData) {
       this._cookies.sessionId = data.sessionId;
     }
 
+    // A keepalive frame (`this.keepalive()` on the server) is never the reply.
+    if (queryId && msg._keepalive) return;
+
     // Check if this is a response to a pending request
     if (queryId && this._pendingRequests.has(queryId)) {
       const pending = this._pendingRequests.get(queryId);

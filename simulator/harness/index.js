@@ -147,6 +147,8 @@ class Harness {
    * @param {boolean} [options.useCluster=false] - Enable cluster mode with fake DB
    * @param {string} [options.serverId] - Custom server ID for cluster
    * @param {Object} [options.fileTransferOptions] - File transfer configuration
+   * @param {string[]} [options.selector] - Controller file extensions to load (default `['js']`)
+   * @param {Object} [options.apeOptions] - Extra options handed to `ape()` as given
    * @returns {Promise<ServerInstance>} The created server instance
    *
    * @example
@@ -166,6 +168,8 @@ class Harness {
       onConnect: options.onConnect,
       fileTransferOptions: options.fileTransferOptions,
       longPollingOptions: options.longPollingOptions,
+      selector: options.selector,
+      apeOptions: options.apeOptions,
       id: options.id,
     };
 

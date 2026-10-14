@@ -97,6 +97,10 @@ jobs:
         if: matrix.runtime == 'bun'
         run: bun run integration/bun/hot-reload.ts
 
+      - name: Run Bun browser-client keepalive integration
+        if: matrix.runtime == 'bun'
+        run: bun run integration/bun/client-keepalive.ts
+
       - name: Run Deno integration
         if: matrix.runtime == 'deno'
         run: deno run --allow-all integration/deno/run.ts

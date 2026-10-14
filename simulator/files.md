@@ -20,7 +20,8 @@ simulator/
 ├── scenarios/            # Test scenarios organized by type
 │   ├── actions/          # Atomic reusable test operations
 │   └── stories/          # Complete user journey test suites
-└── test-api/             # Test controllers loaded by api-ape server
+├── test-api/             # Test controllers loaded by api-ape server
+└── test-api-contract/    # Controllers for the call-contract stories
 ```
 
 ## Files
@@ -33,6 +34,10 @@ Comprehensive documentation covering:
 - Usage examples for createPair, createGroup, createCluster
 - Module specifications for all test categories
 - Complete user scenario examples
+
+### `test-api-contract/`
+
+Controllers for the call-contract stories (keepalive, void replies, structured errors). See [`test-api-contract/files.md`](./test-api-contract/files.md).
 
 ### `harness/`
 

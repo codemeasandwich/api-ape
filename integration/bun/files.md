@@ -15,7 +15,9 @@ Tests that run api-ape under the real Bun runtime (`Bun.serve`). They are run by
 bun/
 ├── run.ts          # Core RPC scenarios over Bun.serve (shared scenarios)
 ├── security.ts     # Origin, headers, keepalive, Bun idle timeout/pings
-└── hot-reload.ts   # Opt-in hot reload: default off, watch.paths coherent, documented limit
+├── hot-reload.ts   # Opt-in hot reload: default off, watch.paths coherent, documented limit
+├── scenario-runner.ts   # Runs a scenario's page half (real browser client) in a child process against a real Bun.serve
+└── client-keepalive.ts  # Keepalive user stories through the real browser client
 ```
 
 ## Files
@@ -27,6 +29,14 @@ Entry point for the core Bun integration tests. Mounts `apeBun()` over `integrat
 ### `security.ts`
 
 Origin check (exact host:port accepted, another port and a foreign domain refused with 403, no Origin accepted, `allowedOrigins`, `allowedHosts`); headers reaching controllers (`cookie`, `sessionId`, `x-ape-session-id`, user agent, `headers.get`, peer address); `this.keepalive()` frames; `GET /ape/ping`; Bun `idleTimeout` with and without `sendPings`.
+
+### `scenario-runner.ts`
+
+Shared runner for scenarios that need the REAL browser client. The browser client is a process-wide singleton, so the runner starts `Bun.serve` + `apeBun()` in the parent, runs the page half of each scenario in a child `bun` with `window`/`document`/`location`/`navigator` shimmed, and hands both views to the scenario's `check`. A scenario file calls `runScenarios(import.meta.path, title, scenarios)`. `APE_ROOT=/other/checkout` runs the same scenarios against another api-ape checkout; `ONLY=<substring>` runs matching scenarios.
+
+### `client-keepalive.ts`
+
+Keepalive stories: a slow call resolves with its real result (not `undefined` from the first keepalive), a 12 s call survives the 10 s timeout because each keepalive restarts the timer, and two slow calls at once get their own results.
 
 ### `hot-reload.ts`
 

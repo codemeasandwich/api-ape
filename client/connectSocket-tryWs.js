@@ -107,7 +107,14 @@ function createTryWebSocket(d) {
      * @returns {Promise<void>}
      */
     ws.onmessage = async (event) => {
-      const { err, type, queryId, data } = d.jss.parse(event.data);
+      const { err, type, queryId, data, _keepalive } = d.jss.parse(event.data);
+
+      // `this.keepalive()` on the server: restart that call's timeout and wait on.
+      // It is never the reply and never a broadcast.
+      if (_keepalive && queryId) {
+        if (d.waitingOn[queryId]) d.waitingOn[queryId](null, undefined, true);
+        return;
+      }
 
       if (type === "__connected__" && data && typeof data === "object") {
         d.applyConnectedHandshake(data);

@@ -85,7 +85,8 @@ const connectTimeout = 5000;
  * This prevents timeouts from triggering for fire-and-forget messages.
  *
  * @param {function(): WebSocket} getSocket - Function that returns the current WebSocket instance
- * @param {Object.<string, function(Error|null, any): void>} waitingOn - Map of query IDs to response callbacks
+ * @param {Object.<string, function(Error|null, any, boolean=): void>} waitingOn - Map of query IDs to response
+ *   callbacks; a third argument `true` means "keepalive frame: restart the timeout, do not settle"
  * @returns {function(string, any, number, boolean=): Promise<any>} Send function
  *
  * @example
@@ -121,12 +122,23 @@ export function createWsSend(getSocket, waitingOn) {
     let promiseIsLive = false;
     const timeLeftForReqToBeMade = createdAt + totalRequestTimeout - Date.now();
 
-    // Setup timeout timer
-    const timer = setTimeout(() => {
-      if (promiseIsLive) {
-        rej(new Error("Request Timed out for: " + type));
-      }
-    }, timeLeftForReqToBeMade);
+    // Timeout timer. The server's `this.keepalive()` restarts it (`armTimer`).
+    let timer;
+    /**
+     * (Re)start the timeout for this call.
+     *
+     * @param {number} ms - Milliseconds until the call is rejected as timed out
+     * @returns {void}
+     */
+    const armTimer = (ms) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (promiseIsLive) {
+          rej(new Error("Request Timed out for: " + type));
+        }
+      }, ms);
+    };
+    armTimer(timeLeftForReqToBeMade);
 
     // Process binary data in the payload
     const { processedData, uploads } = processBinaryForUpload(data);
@@ -151,7 +163,12 @@ export function createWsSend(getSocket, waitingOn) {
       rej = reject;
 
       // Register callback for when response arrives
-      waitingOn[queryId] = (err, result) => {
+      waitingOn[queryId] = (err, result, keepalive) => {
+        // A keepalive frame is not the reply: give the call a fresh window and wait on.
+        if (keepalive) {
+          armTimer(totalRequestTimeout);
+          return;
+        }
         clearTimeout(timer);
         // Restore normal promise behavior after response
         replyPromise.then = next.bind(replyPromise);

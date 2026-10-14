@@ -15,6 +15,7 @@ This module contains complete user journey test suites organized by feature area
 ```
 stories/
 ├── broadcast/            # Broadcast messaging test suites
+├── call-contract/        # What a caller can rely on per call (keepalive, replies, errors)
 ├── chat-app/             # Chat application journey tests
 ├── cluster/              # Multi-server Forest test suites
 ├── end-to-end/           # Comprehensive cross-feature tests
@@ -28,6 +29,10 @@ stories/
 ### `broadcast/`
 
 Test suites for broadcast messaging functionality. Tests `broadcast()`, `broadcastOthers()`, and message delivery to multiple clients. See [`broadcast/files.md`](./broadcast/files.md).
+
+### `call-contract/`
+
+Stories about the server's side of the call protocol seen through a raw socket: keepalive frames, void replies, structured errors, controller loading. See [`call-contract/files.md`](./call-contract/files.md).
 
 ### `chat-app/`
 

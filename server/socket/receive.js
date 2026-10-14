@@ -171,19 +171,23 @@ module.exports = function receiveHandler(ape) {
 
           checkReply(queryId, createdAt);
 
-          // Inject a per-request keepalive function onto the controller
-          // context. Long-running controllers (e.g., sessions/message with
-          // stream:false) call this.keepalive() periodically to send a
-          // heartbeat signal that resets the client's RPC timeout timer,
-          // preventing legitimate slow operations from timing out.
-          that._currentQueryId = queryId;
-          that.keepalive = () => {
+          // Each call runs on its own context layered over the connection's
+          // (`Object.create(that)`), so `this.keepalive` and `this._currentQueryId`
+          // belong to THIS call. A shared context let a second concurrent call
+          // overwrite the first one's keepalive, so the first one's frames then
+          // carried the second one's queryId.
+          // Long-running controllers (e.g., sessions/message with stream:false)
+          // call this.keepalive() periodically to send a heartbeat that resets the
+          // client's RPC timeout timer without resolving the call.
+          const callContext = Object.create(that);
+          callContext._currentQueryId = queryId;
+          callContext.keepalive = () => {
             try {
               send(queryId, false, false, false, true);
             } catch (_) { /* socket may be closed */ }
           };
 
-          resolve(controller.call(that, processedData));
+          resolve(controller.call(callContext, processedData));
         } catch (err) {
           reject(err);
         }
