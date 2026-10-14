@@ -79,6 +79,7 @@ scenarios run the real browser client against a real `Bun.serve`:
 - A controller file that exports something that is not a function now stops
   startup, naming the file (it used to fail at the first call).
 - A controller that returns nothing now sends a reply (`undefined`).
+- An error reply carries `err` as a JSS-encoded `Error`. A client that reads the frame with plain `JSON.parse` (a probe, another language) sees the key `err<!E>` (`[name, message, stack]`) instead of a string `err`; read frames with `api-ape/jss` (`parse`), or take `err<!E>[1]` as the message. The browser, Node and Bun clients, including 4.3.0's, are unaffected. `integration/shared/scenarios.js` is updated accordingly.
 - An unreachable server is `disconnected`, not `walled`; check for `walled` only for
   captive portals.
 - `ape()` / `apeBun()` throw on `authFramework` / `authMiddleware`.

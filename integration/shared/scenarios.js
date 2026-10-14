@@ -212,8 +212,11 @@ const scenarios = [
                 setTimeout(() => reject(new Error('Error response timeout')), 5000);
             });
 
-            // Should get an error response (api-ape uses 'err' field)
-            expect(response.err).toBeTruthy();
+            // Should get an error response. Since 4.3.1 `err` is an Error carried by JSS, so a
+            // plain JSON reader sees the tagged key `err<!E>` = [name, message, stack].
+            const err = response['err<!E>'] || response.err;
+            expect(err).toBeTruthy();
+            expect(String(Array.isArray(err) ? err[1] : err).includes('was not found')).toBeTruthy();
             ws.close(1000);
         }
     }

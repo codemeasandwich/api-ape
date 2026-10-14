@@ -951,7 +951,7 @@ import messageHash from 'api-ape/messageHash' // queryId of a message
 |-------|---------|
 | `{ type: '__connected__', data: { clientId, sessionId } }` | First frame after the upgrade. Send `?resume=<clientId>` plus the `sessionId` cookie on a reconnect (see above). |
 | `{ queryId, data }` | The reply to the call with that `queryId`. A controller that returns nothing gives `data` as `undefined` (encoded `"data<!U>": 0`). |
-| `{ queryId, err, errCode?, errData? }` | The call failed. `err` is an `Error` (JSS keeps `name` and `message`; the stack is `"Name: message"` only); `errCode` / `errData` carry the `code` / `data` the controller attached. |
+| `{ queryId, err, errCode?, errData? }` | The call failed. `err` is an `Error` (JSS keeps `name` and `message`; the stack is `"Name: message"` only; read with plain `JSON.parse` the key is `err<!E>` = `[name, message, stack]`); `errCode` / `errData` carry the `code` / `data` the controller attached. |
 | `{ queryId, _keepalive: true }` | `this.keepalive()` was called: the call is still running. Not a reply; restart the call's timer and wait for the real one. |
 | `{ type: '/channel', data }` | A publish to a subscribed channel, or `this.send` / `this.broadcast` push (`type` is whatever the server named it). No `queryId`. |
 
