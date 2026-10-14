@@ -24,6 +24,7 @@
  * - `on` - Subscribe to broadcasts (legacy receiver)
  * - `onConnectionChange` - Subscribe to connection state
  * - `transport` - Get current transport type
+ * - `configureLogging` - Configure api-ape's own logging
  *
  * ## Path Accumulation Invariant
  *
@@ -63,7 +64,12 @@ const joinKey = "/";
  * @constant {Set<string>}
  * @private
  */
-const reservedKeys = new Set(["on", "onConnectionChange", "transport"]);
+const reservedKeys = new Set([
+  "on",
+  "onConnectionChange",
+  "transport",
+  "configureLogging",
+]);
 
 /**
  * Wrap an API sender function in a Proxy for path-building syntax.
@@ -79,6 +85,8 @@ const reservedKeys = new Set(["on", "onConnectionChange", "transport"]);
  * payload (or callback) only. There is no two-argument form.
  *
  * @param {Function} api - The sender function. Signature: `(path, data) => Promise`.
+ * @param {Function|Object} [root=api] - The object that carries the reserved members
+ *   (`on`, `onConnectionChange`, `transport`, `configureLogging`); defaults to `api`.
  * @returns {Proxy} Proxied API root.
  *
  * @example
@@ -105,7 +113,7 @@ const reservedKeys = new Set(["on", "onConnectionChange", "transport"]);
  * api.onConnectionChange(handler)
  * console.log(api.transport)
  */
-export function wrap(api) {
+export function wrap(api, root = api) {
   // Handler closes over `api` so every wrapper dispatches to the same
   // root sender. No parent-wrapper recursion: path lives on `_path`.
   const handler = {
@@ -159,5 +167,5 @@ export function wrap(api) {
     },
   };
 
-  return new Proxy(api, handler);
+  return new Proxy(root, handler);
 }

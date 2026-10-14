@@ -55,6 +55,8 @@ export interface ServerControl {
     port: number;
     /** onConnect calls so far. */
     connects: number;
+    /** Publish to a channel, as server code does with `ape.publish`. */
+    publish: (channel: string, data: any) => void;
     /** Close the server and every socket. */
     stop: () => void;
     /** Start the server again on the same port. */
@@ -194,6 +196,7 @@ export async function runScenarios(file: string, title: string, scenarios: Scena
     }
 
     const { apeBun } = await import(resolve(ROOT, 'server/lib/bun.js'));
+    const { publish } = await import(resolve(ROOT, 'server/lib/broadcast/index.js'));
     (await import(resolve(ROOT, 'utils/apeLogger.js'))).configureApeLogging(false); // framework chatter off
     console.log(`${title} (Bun ${Bun.version})`);
     let failures = 0;
@@ -224,6 +227,7 @@ export async function runScenarios(file: string, title: string, scenarios: Scena
         const ctl: ServerControl = {
             port, dir,
             get connects() { return connects; },
+            publish: (channel, data) => publish(channel, data),
             stop: () => server.stop(true),
             start: () => { server = boot(port); },
         };

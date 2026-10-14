@@ -444,6 +444,13 @@ function buildClientInterface() {
     sender: wrap(sender),
 
     /**
+     * Raw call: `send('/users/create', payload)` returns the reply promise. The page-facing
+     * `api` default export (client/index.js) routes through this.
+     * @type {function(string, any): Promise<any>}
+     */
+    send: sender,
+
+    /**
      * Register a message receiver/handler
      * @see {@link module:client/connection/messageHandler.setOnReceiver}
      */

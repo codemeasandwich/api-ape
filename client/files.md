@@ -26,7 +26,7 @@ client/
 
 ### `index.js`
 
-Unified entry point that auto-initializes the client and provides call buffering. This is what users import when they `import api from 'api-ape'`. Buffers API calls made before the connection is established.
+Unified entry point that auto-initializes the client and provides call buffering. This is what users import when they `import api from 'api-ape'`. Buffers API calls made before the connection is established. The default export is built with the same `wrap()` as `connectSocket().sender`, so `api.dir.thing()`, `api.on(...)`, `api.onConnectionChange(...)`, `api.transport` and subscriptions behave identically on both; a subscribe returns its unsubscribe function synchronously, even before connecting.
 
 ### `browser.js`
 

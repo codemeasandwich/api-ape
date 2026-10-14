@@ -109,6 +109,10 @@ jobs:
         if: matrix.runtime == 'bun'
         run: bun run integration/bun/client-calls.ts
 
+      - name: Run Bun browser-client page API integration
+        if: matrix.runtime == 'bun'
+        run: bun run integration/bun/client-api.ts
+
       - name: Run Deno integration
         if: matrix.runtime == 'deno'
         run: deno run --allow-all integration/deno/run.ts

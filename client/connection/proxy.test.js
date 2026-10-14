@@ -21,7 +21,7 @@ describe("client proxy — path accumulation invariant", () => {
   // observe what each chain step would emit.
   function wrap(api, subscribe) {
     const joinKey = "/";
-    const reservedKeys = new Set(["on", "onConnectionChange", "transport"]);
+    const reservedKeys = new Set(["on", "onConnectionChange", "transport", "configureLogging"]);
 
     const handler = {
       get(target, key) {

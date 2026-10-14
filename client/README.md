@@ -172,6 +172,8 @@ const unsub = api.news.banking(data => {
 unsub()
 ```
 
+`unsub` is returned immediately, even if the connection is not up yet; the subscription is sent when the socket opens (and again after every reconnect). `api.on(type, handler)` receives every push of that `type` as `{ err, type, data }`.
+
 ### Chained Subscriptions
 
 ```js

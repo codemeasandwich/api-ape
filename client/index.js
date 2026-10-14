@@ -57,6 +57,8 @@
  */
 
 import { configureApeLogging } from "../utils/apeLogger.js";
+import { wrap } from "./connection/proxy";
+import { setOnReceiver } from "./connection/messageHandler";
 
 // Only run this in browser environments
 const isBrowser =
@@ -78,17 +80,10 @@ let resolvedClient = null;
 
 /**
  * Buffer for API calls made before the client is ready
- * @type {Array<{method: string, args: any[], resolve: Function, reject: Function}>}
+ * @type {Array<{path: string, payload: any, resolve: Function, reject: Function}>}
  * @private
  */
 const bufferedCalls = [];
-
-/**
- * Buffer for subscriptions registered before the client is ready
- * @type {Array<{channel: string, callback: Function, resolve: Function}>}
- * @private
- */
-const bufferedSubscriptions = [];
 
 /**
  * Registered connection state change handlers
@@ -111,16 +106,13 @@ let currentConnectionState = "disconnected";
  * It handles the asynchronous import of the connectSocket module and sets up
  * the connection with auto-reconnect enabled.
  *
+ * Subscriptions need no buffering here: `subscribe()` (connection/subscriptions.js)
+ * records the callback at once and `resubscribeAll()` sends every recorded
+ * subscription when the socket opens.
+ *
  * @returns {Promise<Object|null>} Promise resolving to the client interface,
  *                                  or null when running in SSR/non-browser environment
  * @private
- *
- * @example
- * // Internal usage - normally called automatically
- * const client = await getClient()
- * if (client) {
- *   client.sender.myEndpoint({ data: 'value' })
- * }
  */
 function getClient() {
   if (clientPromise) return clientPromise;
@@ -132,7 +124,6 @@ function getClient() {
 
   clientPromise = (async () => {
     const connectSocket = (await import("./connectSocket.js")).default;
-    const { subscribe } = await import("./connection/subscriptions.js");
 
     // Connect
     const client = connectSocket();
@@ -146,22 +137,10 @@ function getClient() {
 
     resolvedClient = client;
 
-    // Flush buffered subscriptions
-    bufferedSubscriptions.forEach(({ channel, callback, resolve }) => {
-      const unsub = subscribe(channel, callback);
-      resolve(unsub);
-    });
-    bufferedSubscriptions.length = 0;
-
     // Flush buffered calls
-    bufferedCalls.forEach(({ method, args, resolve, reject }) => {
+    bufferedCalls.forEach(({ path, payload, resolve, reject }) => {
       try {
-        const result = client.sender[method](...args);
-        if (result && typeof result.then === "function") {
-          result.then(resolve).catch(reject);
-        } else {
-          resolve(result);
-        }
+        client.send(path, payload).then(resolve, reject);
       } catch (err) {
         reject(err);
       }
@@ -175,56 +154,25 @@ function getClient() {
 }
 
 /**
- * Proxy object that intercepts API calls and routes them through the client
+ * Make one RPC call: straight through once the client is ready, buffered until then.
  *
- * This proxy provides the main API interface. Property access is intercepted
- * to return functions that either call the client directly (if ready) or
- * buffer the call for later execution.
- *
- * Subscriptions are detected by passing a function as the argument:
- * - `api.news.banking({ data })` → RPC call (returns Promise)
- * - `api.news.banking(callback)` → Subscription (returns unsubscribe function)
- *
- * @type {Proxy}
+ * @param {string} path - Endpoint path built by the proxy chain, e.g. `/users/create`
+ * @param {any} payload - Call payload
+ * @returns {Promise<any>} The server's reply
  * @private
- *
- * @property {Function} onConnectionChange - Subscribe to connection state changes
- * @property {string|null} transport - Current transport type ('websocket', 'polling', or null)
  */
-const senderProxy = new Proxy(
-  {},
-  {
-    /**
-     * Proxy get trap - intercepts property access on the api object
-     *
-     * @param {Object} target - The proxy target (empty object)
-     * @param {string|symbol} prop - The property being accessed
-     * @returns {Function|undefined|null} The appropriate handler or value
-     */
-    get(target, prop) {
-      // Reserved properties
-      if (prop === "onConnectionChange") return onConnectionChange;
-      if (prop === "configureLogging") return configureApeLogging;
-      if (prop === "transport") return resolvedClient?.transport || null;
-      if (prop === "then" || prop === "catch") return undefined; // Not a Promise
+function call(path, payload) {
+  if (resolvedClient) return resolvedClient.send(path, payload);
 
-      // Return a function that either calls directly or buffers
-      return (...args) => {
-        // If client is ready, call directly
-        if (resolvedClient) {
-          return resolvedClient.sender[prop](...args);
-        }
-
-        // Buffer the call and return a Promise
-        return new Promise((resolve, reject) => {
-          bufferedCalls.push({ method: prop, args, resolve, reject });
-          // Ensure client is initializing
-          getClient();
-        });
-      };
-    },
-  },
-);
+  const reply = new Promise((resolve, reject) => {
+    bufferedCalls.push({ path, payload, resolve, reject });
+    // Ensure client is initializing
+    getClient();
+  });
+  // A call nobody looks at must not raise an unhandled rejection when it fails.
+  reply.catch(() => {});
+  return reply;
+}
 
 /**
  * Subscribe to connection state changes
@@ -237,25 +185,9 @@ const senderProxy = new Proxy(
  * @returns {Function} Unsubscribe function - call to stop receiving updates
  *
  * @example
- * // Monitor connection state
  * const unsubscribe = api.onConnectionChange((state) => {
- *   switch (state) {
- *     case 'connected':
- *       console.log('Connected to server')
- *       break
- *     case 'disconnected':
- *       console.log('Disconnected from server')
- *       break
- *     case 'connecting':
- *       console.log('Connecting...')
- *       break
- *     case 'offline':
- *       console.log('Browser is offline')
- *       break
- *     case 'walled':
- *       console.log('Captive portal detected')
- *       break
- *   }
+ *   // 'offline' | 'walled' | 'disconnected' | 'connecting' | 'connected'
+ *   console.log('Connection:', state)
  * })
  *
  * // Later: stop listening
@@ -265,11 +197,6 @@ function onConnectionChange(handler) {
   connectionChangeHandlers.push(handler);
   // Immediately call with current state
   handler(currentConnectionState);
-
-  // If client exists, also register with it
-  if (resolvedClient) {
-    return resolvedClient.onConnectionChange(handler);
-  }
 
   // Ensure client is initializing
   getClient();
@@ -281,12 +208,21 @@ function onConnectionChange(handler) {
   };
 }
 
-// Define properties on the proxy to avoid Proxy interception issues
-Object.defineProperty(senderProxy, "onConnectionChange", {
-  value: onConnectionChange,
-  writable: false,
-  enumerable: false,
-  configurable: false,
+/**
+ * Root of the api chain: a function carrying the reserved members (`on`,
+ * `onConnectionChange`, `transport`, `configureLogging`) that `wrap()` passes through
+ * instead of treating them as path segments.
+ *
+ * @type {Function}
+ * @private
+ */
+const root = function apiRoot() {};
+root.on = setOnReceiver;
+root.onConnectionChange = onConnectionChange;
+root.configureLogging = configureApeLogging;
+Object.defineProperty(root, "transport", {
+  get: () => resolvedClient?.transport || null,
+  configurable: true,
 });
 
 // Auto-initialize in browser
@@ -295,31 +231,26 @@ if (isBrowser) {
 }
 
 /**
- * The main api-ape client proxy
+ * The main api-ape client proxy.
  *
- * This is the default export - a Proxy object that provides a clean API
- * for making WebSocket calls to the server. All method calls are automatically
- * buffered until the connection is established.
+ * Property access builds the path, a call with data is an RPC (returns a Promise),
+ * a call with one function argument is a subscription (returns the unsubscribe
+ * function synchronously, even before the connection is up). Built from the same
+ * `wrap()` as `connectSocket().sender`, so both behave identically.
  *
  * @type {Proxy}
  *
  * @example
  * import api from 'api-ape'
  *
- * // Make API calls (RPC)
- * const result = await api.users({ name: 'John' })
- *
- * // Dynamic path segments via bracket access
- * const user = await api.users[123]()
- *
- * // Subscribe to channels (pass a callback function)
- * const unsub = api.news.banking(data => {
- *   console.log('Received:', data)
- * })
- *
- * // Unsubscribe when done
+ * const users = await api.users.list({ active: true })    // /users/list
+ * const user = await api.users[123]()                      // /users/123
+ * const unsub = api.news.banking(data => console.log(data))
+ * api.on('toast', ({ data }) => show(data))                // every push of that type
  * unsub()
  */
+const senderProxy = wrap((path, payload) => call(path, payload), root);
+
 export default senderProxy;
 
 /**
