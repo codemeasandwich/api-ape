@@ -2,9 +2,6 @@
   "name": "api-ape",
   "version": "4.5.0",
   "description": "Remote Procedure Events (RPE) - A lightweight WebSocket framework for building real-time APIs. Call server functions from the browser like local methods with automatic reconnection, HTTP streaming fallback, and extended JSON encoding.",
-  "engines": {
-    "node": ">=22"
-  },
   "main": "index.js",
   "browser": "./client/index.js",
   "types": "index.d.ts",

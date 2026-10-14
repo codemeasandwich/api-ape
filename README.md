@@ -21,9 +21,9 @@
 npm install api-ape
 ```
 
-**Requirements:** Node.js 22 or newer (server and the server-side client), or Bun; modern browsers (for client)
+**Requirements:** Node.js for the server (tested on 22 and 24) and modern browsers for the client. Only the server-side client (`api.connect(host, port)` from one Node service to another) needs Node 22 or newer, for its global `WebSocket`.
 
-> **Security: use 4.4.0 or later.** Every earlier version let any client that could open a socket make the server construct arbitrary globals through a crafted error in a frame (code execution under Bun, outbound connections under Node and Bun). See the [CHANGELOG](CHANGELOG.md#security) before upgrading: 4.4.0 also lists the breaking changes.
+> **Security: use 4.5.0 or later.** Every earlier version let any client that could open a socket make the server construct arbitrary globals through a crafted error in a frame (code execution under Bun, outbound connections under Node and Bun). See the [CHANGELOG](CHANGELOG.md#security) before upgrading: it also lists the breaking changes. (4.4.0 was tagged but never published to npm; its fixes are in 4.5.0.)
 
 ---
 

@@ -250,18 +250,26 @@ function createPostHandler(streamClients, { maxBodyBytes = DEFAULT_MAX_MESSAGE_B
     const chunks = [];
     let received = 0;
     let tooBig = false;
-    req.on("data", (chunk) => {
-      if (tooBig) return;
+    /**
+     * Collect one body chunk; past the limit, answer 413 and stop collecting.
+     *
+     * @param {Buffer} chunk - A piece of the request body
+     * @returns {void}
+     */
+    const onData = (chunk) => {
       received += chunk.length;
       if (received > maxBodyBytes) {
         tooBig = true;
         chunks.length = 0;
+        req.off("data", onData); // keep nothing more...
+        req.resume(); // ...but drain what the client is still sending
         res.writeHead(413, { "Content-Type": "application/json", Connection: "close" });
         res.end(JSON.stringify({ error: `Request body over ${maxBodyBytes} bytes (maxMessageBytes)` }));
         return;
       }
       chunks.push(chunk);
-    });
+    };
+    req.on("data", onData);
 
     req.on("end", async () => {
       if (tooBig) return;

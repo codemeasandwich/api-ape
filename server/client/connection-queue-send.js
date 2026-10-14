@@ -7,6 +7,20 @@
  */
 
 /**
+ * Throw a clear error when the runtime has no global WebSocket (Node before 22). The
+ * built-in `lib/ws` class is the SERVER side of a connection and cannot dial out.
+ *
+ * @param {typeof WebSocket|undefined} WebSocketCtor - The runtime's WebSocket constructor
+ * @returns {void}
+ * @throws {Error} If `WebSocketCtor` is not a function
+ */
+function requireWebSocket(WebSocketCtor) {
+  if (typeof WebSocketCtor !== "function") {
+    throw new Error("api-ape: the server-side client needs Node 22 or newer (a global WebSocket); this runtime has none.");
+  }
+}
+
+/**
  * Send immediately when the socket is open; otherwise buffer until connect completes.
  *
  * @param {Object} ctx - Live bindings from connection.js
@@ -26,6 +40,15 @@ function queueOrSend(ctx, type, data) {
   const ws = ctx.getWs();
   if (ctx.getReady() && ws && ws.readyState === ctx.WebSocketCtor.OPEN) {
     return ctx.send(type, data);
+  }
+
+  // About to connect on a runtime that cannot: reject now, before an entry and a timer are queued.
+  if (!ws && ctx.getServerUrl()) {
+    try {
+      requireWebSocket(ctx.WebSocketCtor);
+    } catch (err) {
+      return Promise.reject(err);
+    }
   }
 
   return new Promise((resolve, reject) => {
@@ -51,4 +74,4 @@ function queueOrSend(ctx, type, data) {
   });
 }
 
-module.exports = { queueOrSend };
+module.exports = { queueOrSend, requireWebSocket };

@@ -57,7 +57,7 @@ const receivers = require("./connection-receivers");
 const reconnect = require("./connection-reconnect");
 const { createSend } = require("./connection-send");
 const { buildWsConnectUrl: buildWsConnectUrlWithResume } = require("./connection-ws-url");
-const { queueOrSend: queueOrSendImpl } = require("./connection-queue-send");
+const { queueOrSend: queueOrSendImpl, requireWebSocket } = require("./connection-queue-send");
 /**
  * The runtime's global WebSocket client (Node 22+, Bun, Deno). There is no fallback: the
  * built-in `lib/ws` class is the SERVER side of a connection (it wraps an already
@@ -246,7 +246,7 @@ receivers.bindConnection({
  * connect()
  */
 function connect(host, port, options) {
-  if (typeof WebSocket !== "function") throw new Error("api-ape: the server-side client needs Node 22 or newer (a global WebSocket); this runtime has none.");
+  requireWebSocket(WebSocket);
   if (options && typeof options === "object" && "logging" in options) {
     configureApeLogging(options.logging);
   }

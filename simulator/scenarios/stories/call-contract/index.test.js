@@ -611,6 +611,29 @@ describe("Call contract", () => {
         if (saved) Object.defineProperty(globalThis, "WebSocket", saved);
       }
     });
+
+    test("a call made with APE_SERVER set rejects at once with that message and leaves no queued call or timer", async () => {
+      const saved = Object.getOwnPropertyDescriptor(globalThis, "WebSocket");
+      const savedUrl = process.env.APE_SERVER;
+      delete globalThis.WebSocket;
+      process.env.APE_SERVER = "ws://localhost:1/api/ape";
+      jest.useFakeTimers();
+      try {
+        let api;
+        jest.isolateModules(() => {
+          ({ api } = require("../../../../server"));
+        });
+
+        await expect(api.anything({})).rejects.toThrow(/server-side client needs Node 22 or newer/);
+
+        expect(jest.getTimerCount()).toBe(0);
+      } finally {
+        jest.useRealTimers();
+        if (savedUrl === undefined) delete process.env.APE_SERVER;
+        else process.env.APE_SERVER = savedUrl;
+        if (saved) Object.defineProperty(globalThis, "WebSocket", saved);
+      }
+    });
   });
 
   describe("server-side client subscriptions", () => {
