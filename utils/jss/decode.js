@@ -243,11 +243,15 @@ const tagLookup = {
  * parseKeyWithTags('items<![D,D,D]') // ['items', '[D,D,D]']
  */
 function parseKeyWithTags(key) {
-  const match = key.match(/(.+)<!(.*)>/);
+  // Linear scan for what `/(.+)<!(.*)>/` matched (the LAST `<!` that has a `>` after it,
+  // the LAST `>` closing it). The regex backtracked cubically on a key such as
+  // "a<!a<!a<!..." with no `>`: a few KB froze the event loop, before any auth.
+  const close = key.lastIndexOf(">");
+  const open = close < 3 ? -1 : key.lastIndexOf("<!", close - 2);
 
-  if (match) {
-    const name = match[1];
-    let tag = match[2];
+  if (open >= 1) {
+    const name = key.slice(0, open);
+    let tag = key.slice(open + 2, close);
 
     // Handle array type tags that may be split across chunks
     // e.g., '[D,D,D' needs the closing ']'

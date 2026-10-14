@@ -162,6 +162,27 @@ const scenarios: Scenario[] = [
             assert(result.strays.length === 0, `a keepalive reached the page as a message: ${JSON.stringify(result.strays)}`);
         },
     },
+    {
+        ...base,
+        name: 'over streaming, a page keeps receiving pushes after the server recycles its stream (every ~25 s; here every 1.5 s)',
+        fixtures: {
+            'announce.js': `module.exports = function (d) { this.broadcast('shout', d); return 'announced'; };`,
+        },
+        apeOptions: { longPollingOptions: { recycleTimeout: 1500, heartbeatInterval: 500 } },
+        browser: async ({ api, sleep }) => {
+            const heard: number[] = [];
+            api.on('shout', (m: any) => heard.push(m.data.n));
+            await api.announce({ n: 1 });
+            await sleep(4200); // the stream has been closed and reopened twice by now
+            await api.announce({ n: 2 });
+            await sleep(400);
+            return { heard };
+        },
+        timeoutMs: 30000,
+        check: ({ result }) => {
+            assert(result.heard.join() === '1,2', `the page heard ${JSON.stringify(result.heard)}, expected the broadcasts before and after the recycle`);
+        },
+    },
 ];
 
 await runScenarios(import.meta.path, 'HTTP streaming (browser client)', scenarios);

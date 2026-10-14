@@ -54,7 +54,7 @@ Restores JavaScript types from JSS-encoded format:
 
 - Parses tagged keys to identify encoded types
 - Reconstructs Date, RegExp, Error, Map, Set, and undefined
-- Builds Errors from a static list of the standard classes only (`Error`, `TypeError`, `RangeError`, `SyntaxError`, `ReferenceError`, `EvalError`, `URIError`, `AggregateError`); any other name becomes a plain `Error` whose `name` is that string. The decoder never indexes `global` and matches tags, keys and pointer paths against own properties only (`utils/safeKeys.js`)
+- Builds Errors from a static list of the standard classes only (`Error`, `TypeError`, `RangeError`, `SyntaxError`, `ReferenceError`, `EvalError`, `URIError`, `AggregateError`); any other name becomes a plain `Error` whose `name` is that string. Tagged keys are parsed with a linear scan (the old regex backtracked cubically on `a<!a<!a<!...`). The decoder never indexes `global` and matches tags, keys and pointer paths against own properties only (`utils/safeKeys.js`)
 - Resolves circular reference pointers to restore object cycles
 - Handles nested structures recursively
 

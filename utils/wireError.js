@@ -3,7 +3,7 @@
  *
  * Domain context: a controller throws; the caller's promise must reject with an
  * Error that still says what went wrong (class, message, and the `code` / `data` the
- * controller attached), not just a message string (4.3.0).
+ * controller attached), not just a message string (4.3.0 sent only the message).
  *
  * Technical context: the reply frame is
  * `{ err: <Error via JSS>, errCode?, errData?, type, queryId }`. JSS carries the
@@ -32,12 +32,15 @@ const { hasOwn } = require("./safeKeys");
 /** Deepest nesting `errData` may have and still be forwarded. */
 const MAX_DATA_DEPTH = 32;
 
+/** Most distinct objects `errData` may hold and still be forwarded. */
+const MAX_DATA_NODES = 10000;
+
 /**
  * Make the Error that goes on the wire for whatever a controller threw.
  *
  * @param {any} thrown - An Error, a string, an Error-shaped object (`{name, message}`) or anything else
  * @returns {any} A fresh Error (name and message kept, no stack frames); values with no
- *   message (numbers, plain objects) are returned as 4.3.0 sent them, except that an
+ *   message (numbers, plain objects) are returned unchanged, except that an
  *   own `stack` is never forwarded
  */
 function toWireError(thrown) {
@@ -58,24 +61,44 @@ function toWireError(thrown) {
 /**
  * Is this value plain data that is safe to hand to a caller?
  *
+ * Walks at most `MAX_DATA_NODES` distinct objects and checks each shared object once
+ * (a peer can build a diamond ladder with JSS pointers whose paths multiply per level).
+ *
  * @param {any} value - Candidate `data`
- * @param {any[]} [ancestors=[]] - Objects being walked (cycle guard)
+ * @param {{ancestors: any[], checked: WeakSet<Object>, budget: number}} [walk] - Walk state
  * @returns {boolean} True for primitives (not BigInt/symbol/function), Dates, and arrays /
  *   plain objects of such values nested under `MAX_DATA_DEPTH` without cycles
  */
-function isPlainData(value, ancestors = []) {
+function isPlainData(value, walk = { ancestors: [], checked: new WeakSet(), budget: MAX_DATA_NODES }) {
   if (value === null || ["string", "number", "boolean", "undefined"].includes(typeof value)) return true;
   if (typeof value !== "object") return false;
-  const kind = Object.prototype.toString.call(value);
-  if (kind === "[object Date]") return true;
+  if (isRealDate(value)) return true;
   const proto = Object.getPrototypeOf(value);
-  const plain = kind === "[object Object]" && (proto === null || Object.getPrototypeOf(proto) === null);
+  const plain = Object.prototype.toString.call(value) === "[object Object]" && (proto === null || Object.getPrototypeOf(proto) === null);
   if (!(plain || Array.isArray(value))) return false;
-  if (ancestors.length >= MAX_DATA_DEPTH || ancestors.includes(value)) return false;
-  ancestors.push(value);
-  const ok = Object.values(value).every((inner) => isPlainData(inner, ancestors));
-  ancestors.pop();
+  if (walk.ancestors.length >= MAX_DATA_DEPTH || walk.ancestors.includes(value)) return false;
+  if (walk.checked.has(value)) return true;
+  if (--walk.budget < 0) return false;
+  walk.ancestors.push(value);
+  const ok = Object.values(value).every((inner) => isPlainData(inner, walk));
+  walk.ancestors.pop();
+  if (ok) walk.checked.add(value);
   return ok;
+}
+
+/**
+ * Is this a real Date (not an object that merely claims `Symbol.toStringTag` "Date")?
+ *
+ * @param {any} value - Candidate
+ * @returns {boolean} True when `Date.prototype.getTime` accepts it
+ */
+function isRealDate(value) {
+  try {
+    Date.prototype.getTime.call(value);
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 /**
@@ -112,9 +135,9 @@ function errorDetails(thrown) {
  * Serialise an error reply frame.
  *
  * `code` and `data` are sent when the rule in the module comment allows it. The reply
- * always leaves: if the thrown value itself cannot be serialised (a plain object
- * holding a BigInt, say), the caller gets an `Error` saying so rather than waiting
- * for its timeout.
+ * always leaves: if the thrown value cannot be read or serialised (a plain object
+ * holding a BigInt, a getter that throws ...), the caller gets an `Error` saying so
+ * rather than waiting for its timeout, and this function never throws.
  *
  * @param {any} thrown - What the controller threw
  * @param {string|false|null} type - Frame `type` (false for replies)
@@ -122,12 +145,14 @@ function errorDetails(thrown) {
  * @returns {string} JSS text ready for `socket.send`
  */
 function errorFrame(thrown, type, queryId) {
-  const frame = { err: toWireError(thrown), type, queryId, ...errorDetails(thrown) };
   try {
-    return jss.stringify(frame);
+    return jss.stringify({ err: toWireError(thrown), type, queryId, ...errorDetails(thrown) });
   } catch (_) {
-    frame.err = new Error("The controller threw a value that cannot be sent");
-    return jss.stringify(frame);
+    // Whatever was thrown cannot be read or serialised (a BigInt, a getter that throws,
+    // a Proxy ...). The caller still gets a reply, with a stack that names no path.
+    const err = new Error("The controller threw a value that cannot be sent");
+    err.stack = `Error: ${err.message}`;
+    return jss.stringify({ err, type, queryId });
   }
 }
 

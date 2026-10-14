@@ -204,4 +204,30 @@ describe("JSS decode: tag names and keys from a peer are data, never lookups", (
       delete Object.prototype.leaked;
     }
   });
+
+  test.each([
+    ["a<!a<!a<!".repeat(2000), "no closing bracket"],
+    ["x".repeat(3000) + "<!".repeat(1500), "unclosed tag opens"],
+    ["<!".repeat(20000) + ">", "a closing bracket only at the end"],
+  ])("a hostile key (%#: %s) is decoded at once, not after seconds of backtracking", (key) => {
+    const started = Date.now();
+
+    const got = jss.parse(JSON.stringify({ [key]: 1 }));
+
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(Object.keys(got)).toHaveLength(1);
+  });
+
+  test.each([
+    ["when<!D>", "when", true],
+    ["a<!b<!D>", "a<!b", true],
+    ["list<![D,D>", "list", true],
+    ["plain", "plain", false],
+    ["<!D>", "<!D>", false],
+    ["x<!>", "x", true],
+  ])("the key %p decodes under the name %p (tagged: %p)", (key, name, tagged) => {
+    const got = jss.parse(JSON.stringify({ [key]: tagged ? 0 : "v" }));
+
+    expect(Object.keys(got)).toEqual([name]);
+  });
 });

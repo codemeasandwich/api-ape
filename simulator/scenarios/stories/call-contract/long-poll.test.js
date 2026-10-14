@@ -179,4 +179,18 @@ describe("Long poll", () => {
 
     expect(jss.parse(await res.text()).data).toEqual({ clientId: "mine", sessionId: "S-1" });
   });
+
+  test("a polled controller sees the session from the x-ape-session-id header, or a URL-encoded cookie, as on a WebSocket", async () => {
+    const call = async (headers) => {
+      const res = await fetch(`http://${server.host}:${server.port}/poll/ape/poll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: "apeClientId=ABC", ...headers },
+        body: jss.stringify({ type: "who", data: {}, createdAt: new Date() }),
+      });
+      return jss.parse(await res.text()).data.sessionId;
+    };
+
+    expect(await call({ "x-ape-session-id": "FROM-HEADER" })).toBe("FROM-HEADER");
+    expect(await call({ Cookie: "apeClientId=ABC; sessionId=a%20b" })).toBe("a b");
+  });
 });

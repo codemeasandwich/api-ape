@@ -33,7 +33,7 @@ Security stories with a raw WebSocket peer against a real server: an error tag n
 
 ### `long-poll.test.js`
 
-The HTTP long-poll path spoken with plain `fetch`: the reply frame (with `undefined` tagged), a 500 carrying the Error with its code and data and no stack, an unserialisable thrown value, 404 for unknown and inherited endpoint names (same message as a WebSocket), 401 without a session, a call with no open stream, `this.keepalive()` / `this.broadcast` / `this.send` (including an error push) arriving on the open stream, and an embed that names `clientId` / `sessionId`.
+The HTTP long-poll path spoken with plain `fetch`: the reply frame (with `undefined` tagged), a 500 carrying the Error with its code and data and no stack, an unserialisable thrown value, 404 for unknown and inherited endpoint names (same message as a WebSocket), 401 without a session, a call with no open stream, `this.keepalive()` / `this.broadcast` / `this.send` (including an error push) arriving on the open stream, an embed that names `clientId` / `sessionId`, and the session read from `x-ape-session-id` or a URL-encoded cookie.
 
 ### `wire-protocol.test.js`
 

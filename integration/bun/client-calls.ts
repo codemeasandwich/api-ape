@@ -126,6 +126,22 @@ const scenarios: Scenario[] = [
         },
     },
     {
+        name: 'a call whose arguments cannot be serialised throws at once and leaves nothing behind to fire later',
+        fixtures: { 'hello.js': hello },
+        browser: async ({ api, waitForState, sleep }) => {
+            await warmUp({ api, waitForState });
+            let thrown = 'nothing';
+            try { await api.hello({ n: 10n }); } catch (e: any) { thrown = e.message; }
+            await sleep(10600); // a timer armed before the payload was built would fire now
+            return thrown;
+        },
+        timeoutMs: 30000,
+        check: ({ result, errors }) => {
+            assert(result !== 'nothing', 'a BigInt argument should have been refused');
+            assert(errors.length === 0, `an orphaned call timer fired: ${errors.join('; ')}`);
+        },
+    },
+    {
         name: 'a call whose socket refuses the send rejects at once with the socket\'s own error',
         fixtures: { 'hello.js': hello },
         browser: async ({ api, waitForState }) => {

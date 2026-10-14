@@ -142,7 +142,6 @@ export function createWsSend(getSocket, waitingOn) {
         rej(new Error("Request Timed out for: " + type));
       }, ms);
     };
-    armTimer(timeLeftForReqToBeMade);
 
     // Process binary data in the payload
     const { processedData, uploads } = processBinaryForUpload(data);
@@ -159,6 +158,10 @@ export function createWsSend(getSocket, waitingOn) {
     // Serialize and generate query ID for response correlation
     const message = jss.stringify(payload);
     const queryId = messageHash(message);
+
+    // Armed only now: if the payload cannot be serialised (a BigInt argument) the call
+    // throws above, and a timer armed earlier would fire 10 s later on a call that is gone.
+    armTimer(timeLeftForReqToBeMade);
 
     /**
      * Promise that resolves when server responds to this query

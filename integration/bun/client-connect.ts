@@ -130,7 +130,8 @@ const scenarios: Scenario[] = [
         },
         check: ({ result, ctl }) => {
             assert(result.includes('walled'), `a redirect to a login page must read as walled: ${result.join(' > ')}`);
-            assert(!result.includes('disconnected'), `the page called a captive portal's redirect a dead server: ${result.join(' > ')}`);
+            // (the page's initial state is `disconnected` until its first attempt starts; only what follows counts)
+            assert(!result.slice(result.indexOf('connecting')).includes('disconnected'), `the page called a captive portal's redirect a dead server: ${result.join(' > ')}`);
             assert(ctl.connects === 0, `the page opened ${ctl.connects} socket(s) behind the portal`);
         },
     },

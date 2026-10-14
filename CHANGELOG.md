@@ -18,7 +18,7 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
 
 **Upgrade to 4.4.0 if your server accepts connections from anyone you do not control.**
 
-- **Affected:** every earlier version of api-ape.
+- **Affected:** every release from 1.0.1 (the first tag) to 4.3.0 contains the flaw (versions older than the tags were not checked). Treat all earlier versions as affected.
 - **Impact:** every frame a client sends is decoded before the server looks at what it
   asks for, and the decoder built the error class **named in the frame** by looking the
   name up among the process's globals. A client that could open a socket, with no login
@@ -27,12 +27,17 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
   any non-browser client is not.) Under **Bun** that includes a worker that runs the client's own script
   inside the server process: remote code execution. Under **Node and Bun** it includes a
   WebSocket the server opens to an address the client picked (on Node 22 and later, where
-  `WebSocket` is a global): the server can be made to call hosts only it can reach. `api-ape/jss`, which wraps the same decoder, had the same
-  flaw wherever an application parsed text from outside.
+  `WebSocket` is a global): the server can be made to call hosts only it can reach. The WebSocket path, the HTTP long-poll `POST`, the server-side
+  client (`server/client`, parsing what another server sends) and `api-ape/jss` (wherever an
+  application parsed text from outside) all use the same decoder.
 - **Fix:** the decoder builds only the standard Error classes from a fixed list (`Error`,
   `TypeError`, `RangeError`, `SyntaxError`, `ReferenceError`, `EvalError`, `URIError`,
   `AggregateError`); any other name becomes a plain `Error` that carries the name as
   text. Nothing in api-ape indexes the globals with text from a peer any more.
+- **Denial of service in the same decoder:** the parser for tagged keys (`name<!D>`)
+  backtracked cubically on a key such as `a<!a<!a<!...` with no closing `>`; a 6 KB key
+  froze the event loop for tens of seconds, again before any endpoint is looked up. It
+  is a linear scan now.
 - **Related holes closed in the same change** (all reachable by the same kind of client,
   found by reading every place peer text is used as a name): a call whose endpoint name is
   one every object inherits (`valueOf`, `constructor`) was answered by that built-in
@@ -68,14 +73,6 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
   message. The browser, Node and Bun clients, including 4.3.0's, are unaffected. The HTTP
   long-poll path now answers in the same shape (HTTP 500 / 404 with the same frame; it was
   `{ err: "<message>", queryId }`, or `{ error }` for a missing endpoint).
-- **`errCode` / `errData` are forwarded less than before.** `code` only when it is a
-  string or a number on the thrown error's own enumerable properties; `data` only when it
-  is own plain data (strings, numbers, booleans, `null`, arrays, plain objects, `Date`s;
-  not functions, class instances, `BigInt`s or cycles); nothing at all from a Node system
-  error (`syscall` / `errno`: `ECONNREFUSED`, `ENOENT` carry paths and addresses). Library
-  errors used to leak whatever `code` / `data` they carried. Attach them to errors you
-  throw and wrap a library's error before it leaves a controller. A thrown plain object
-  no longer forwards its own `stack`.
 
 ### Fixed
 
@@ -134,8 +131,18 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
   so the handler ran twice for every state change. It is registered once.
 - **Errors arrived as the message string only.** The caller now gets an `Error`
   with the thrown class and message and the `code` / `data` the controller attached
-  (`err.code`, `err.data`; see Breaking for what is forwarded). The server stack is not
-  sent. A thrown string arrives as an `Error`.
+  (`err.code`, `err.data`). The server stack is not sent. A thrown string arrives as an
+  `Error`. 4.3.0 sent the message only; what 4.4.0 forwards is deliberately narrow, because
+  a thrown value is whatever a controller's libraries produced: `code` only when it is a
+  string or a number on the error's own enumerable properties; `data` only when it is own
+  plain data (strings, numbers, booleans, `null`, arrays, plain objects, `Date`s; not
+  functions, class instances, `BigInt`s, cycles, nesting over 32 levels or more than 10000
+  objects); nothing at all from a Node system error (`syscall` / `errno`: `ECONNREFUSED`,
+  `ENOENT` carry paths and addresses). Attach them to errors you throw and wrap a
+  library's error before it leaves a controller. A thrown plain object arrives without its
+  own `stack`, and a thrown value that cannot be read or serialised arrives as an `Error`
+  saying so (the caller no longer waits out its timeout; the server never throws while
+  building the reply).
 - **A call over the HTTP long-poll / streaming fallback did not behave like one over a
   WebSocket.** A controller error reached the page as `Request failed: 500`;
   `this.broadcast`, `this.broadcastOthers` and `this.keepalive()` were missing from the
@@ -149,6 +156,14 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
   connected go over the streaming transport. One difference stays: an `embed` that names
   `clientId` or `sessionId` replaces them on this transport, as it always did; on a
   WebSocket the connection's own win.
+- **The HTTP streaming client never reconnected its stream** after the server recycled it
+  (about every 25 s) or it broke: the reconnect timer called `connect()`, which refuses to
+  run while the transport is active. The page then had no pushes, and the server had
+  dropped its state (embed, keepalive target). It reopens the stream now.
+- **A call with an argument that cannot be serialised (a `BigInt`)** left a timer armed
+  that fired 10 s later with an uncaught exception (a crash in the Node and Bun client).
+- **On the HTTP long-poll path `this.sessionId` ignored `x-ape-session-id` and URL-encoded
+  cookies**, which the WebSocket path honours; both use one parser now.
 - **`export default` controllers failed** with "controller.call is not a function";
   a function `default` is now unwrapped. `*.d.ts`, `*.test.*` and `*.spec.*` files in
   the controller folder are no longer registered as endpoints.
@@ -178,6 +193,11 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
 ### Behaviour changes
 
 - A controller that returns nothing now sends a reply (`undefined`).
+- The ping no longer follows redirects. A server or proxy that redirects `/api/ape/ping`
+  itself (an http-to-https or canonical-host redirect) now reads `walled` and is retried
+  every 30 s: serve the ping directly.
+- On the long-poll path `embed` values are applied as on a WebSocket, so an embed that
+  names `req`, `send` or `agent` replaces them (before, `req` always won).
 - An unreachable server is `disconnected`, not `walled`; check for `walled` only for
   captive portals. While the next ping is scheduled, calls only queue.
 - An error whose class is not one of the eight standard ones arrives as a plain `Error`
@@ -188,8 +208,13 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
 - Not fixed here: binary transfer under Bun, the generated `api-ape.d.ts` type
   checking, a TypeScript controller that mixes `import` with `module.exports`
   (does not load under Bun; use `export default`), `{ subscribe }` frames over the HTTP
-  long-poll path (the POST handler only routes calls), and the decoder still builds
-  whatever `RegExp` a peer sends (a pathological pattern costs CPU).
+  long-poll path (the POST handler only routes calls), the decoder still builds whatever
+  `RegExp` a peer sends (a pathological pattern costs CPU), calls over HTTP streaming have
+  no client-side timeout (a POST that never answers never rejects), the long-poll endpoints
+  have no Origin check and the POST body has no size cap, a call made while the live
+  socket is closing queues until the reconnect, the 30 s WebSocket-upgrade retry does not
+  look at a pending handshake, and the server-side client (`server/client`) still leaves a
+  call's timer armed when its `send` throws.
 
 ### Mixed versions
 
@@ -202,7 +227,8 @@ scenarios are in `simulator/scenarios/stories/call-contract/`).
 - **A 4.4.0 client with an older server:** a controller that returns nothing sends no
   reply on 4.3.0, so the call times out after 10 s (the 4.3.0 client hung forever);
   errors arrive as a plain string, as before; a 4.3.0 streaming server's `{ error }` bodies are
-  still understood.
+  still understood (a 4.3.0 server's `{ err: "message" }` body becomes an `Error` with that
+  message).
 - Upgrade servers first; they are the ones exposed to the security flaw.
 
 ## 4.3.0

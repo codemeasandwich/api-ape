@@ -51,7 +51,7 @@
 
 const jss = require("../../../utils/jss");
 const { errorFrame, dataFrame } = require("../../../utils/wireError");
-const { createControllerContext, createCallContext } = require("../../socket/receiveContext");
+const { createControllerContext, createCallContext, getSessionId } = require("../../socket/receiveContext");
 const messageHash = require("../../../utils/messageHash");
 const { hasOwn } = require("../../../utils/safeKeys");
 
@@ -272,11 +272,9 @@ function createPostHandler(streamClients) {
         const clientState = streamClients.get(clientId);
         const embedValues = clientState?.embed || {};
 
-        // Extract session ID from cookie if present.
-        const sessionIdMatch = req.headers.cookie.match(
-          /(?:^|;\s*)sessionId=([^;]*)/,
-        );
-        const sessionId = sessionIdMatch ? sessionIdMatch[1] : null;
+        // Same session parser as the WebSocket and the stream (`sessionId` cookie, URL-decoded,
+        // else the `x-ape-session-id` header).
+        const sessionId = getSessionId(req);
 
         // The same context the WebSocket path builds (broadcast, broadcastOthers,
         // publish, clients, embed ...), and the same per-call layer (keepalive, a

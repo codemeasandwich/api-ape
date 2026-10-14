@@ -247,7 +247,7 @@ function createStreamingTransport() {
     if (!isActive) return;
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = setTimeout(() => {
-      if (isActive) connect();
+      if (isActive) openStream();
     }, 500);
   }
 
@@ -285,6 +285,21 @@ function createStreamingTransport() {
   async function connect() {
     if (isActive) return;
     isActive = true;
+    return openStream();
+  }
+
+  /**
+   * Open the stream: the first connect, and every reconnect after the server recycles it
+   * (about every 25 s) or it breaks. `connect()` refuses to run while `isActive`, which
+   * stays true until `close()`, so the reconnect timer must come here: before 4.4.0 it
+   * called `connect()`, which returned at once, and the transport stayed "connected" with
+   * no stream (no pushes, and the server had dropped the client's state).
+   *
+   * @async
+   * @returns {Promise<void>}
+   * @private
+   */
+  async function openStream() {
     abortController = new AbortController();
 
     try {
@@ -435,11 +450,14 @@ function createStreamingTransport() {
     try {
       frame = jss.parse(text);
     } catch (_) {
-      frame = {}; // a proxy's HTML error page, an empty body ...
+      frame = null; // a proxy's HTML error page, an empty body ...
     }
+    if (frame === null || typeof frame !== "object") frame = {};
 
     if (!response.ok) {
       // As over a WebSocket: whatever the controller threw (an Error, or a plain value) rejects the call.
+      // A 4.3.0 server answered `{ err: "<message>" }`: that string becomes an Error.
+      if (typeof frame.err === "string") throw new Error(frame.err);
       if (frame.err !== undefined) throw attachErrorDetails(frame.err, frame);
       throw new Error(frame.error || `Request failed: ${response.status}`);
     }

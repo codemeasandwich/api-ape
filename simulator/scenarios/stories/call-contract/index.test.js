@@ -272,6 +272,11 @@ describe("Call contract", () => {
           case "too-deep": { let data = 1; for (let i = 0; i < 40; i++) data = { data }; throw Object.assign(new Error("n"), { code: "C", data }); }
           case "plain-stack": throw { status: 409, stack: "Error: x\\n    at /srv/app/secret/handler.js:10:5" };
           case "plain-bigint": throw { status: 500, big: 10n };
+          case "too-many": throw Object.assign(new Error("n"), { code: "C", data: Array.from({ length: 10001 }, () => ({})) });
+          case "throwing-message": throw { get message() { throw new Error("getter failed at /srv/app/secret.js"); } };
+          case "nested-getter": throw Object.assign(new Error("n"), { code: "C", data: { get inner() { throw new Error("no"); } } });
+          case "diamond": { let data = { leaf: 1 }; for (let i = 0; i < 28; i++) data = { a: data, b: data }; throw Object.assign(new Error("n"), { code: "C", data }); }
+          case "fake-date": throw Object.assign(new Error("n"), { code: "C", data: { when: { [Symbol.toStringTag]: "Date" } } });
           case "code-bigint": throw Object.assign(new Error("n"), { code: 10n });
         }
       };`,
@@ -329,7 +334,7 @@ describe("Call contract", () => {
       expect(frame.errData).toBe("kept");
     });
 
-    test.each([["instance-data", "a Map"], ["function-data", "an object holding a function"], ["circular", "a cycle"], ["too-deep", "nesting 40 deep"]])(
+    test.each([["instance-data", "a Map"], ["function-data", "an object holding a function"], ["circular", "a cycle"], ["too-deep", "nesting 40 deep"], ["too-many", "10001 objects"]])(
       "data that is not plain data (%s: %s) is dropped and the code still goes",
       async (kind) => {
         const frame = await failWith(kind);
@@ -338,6 +343,37 @@ describe("Call contract", () => {
         expect(frame.errData).toBeUndefined();
       },
     );
+
+    test("a thrown value that cannot be read at all (a getter that throws) still gets a reply with no server path", async () => {
+      const frame = await failWith("throwing-message");
+
+      expect(frame.err.message).toMatch(/cannot be sent/);
+      expect(frame.err.stack).toBe("Error: The controller threw a value that cannot be sent");
+    });
+
+    test("error data with a getter that throws downgrades to an error reply, not a hang", async () => {
+      const frame = await failWith("nested-getter");
+
+      expect(frame.err).toBeInstanceOf(Error);
+      expect(frame.err.stack).not.toContain("wireError");
+    });
+
+    test("error data shared 2^28 ways (a diamond of references) is checked once and delivered", async () => {
+      const started = Date.now();
+
+      const frame = await failWith("diamond");
+
+      expect(Date.now() - started).toBeLessThan(5000);
+      expect(frame.errCode).toBe("C");
+      expect(frame.errData.a).toBe(frame.errData.b);
+    });
+
+    test("data holding an object that only claims to be a Date is dropped", async () => {
+      const frame = await failWith("fake-date");
+
+      expect(frame.errCode).toBe("C");
+      expect(frame.errData).toBeUndefined();
+    });
 
     test("a code that is a BigInt is dropped and the caller still gets the reply", async () => {
       const frame = await failWith("code-bigint");
@@ -364,6 +400,7 @@ describe("Call contract", () => {
 
       expect(frame.err).toBeInstanceOf(Error);
       expect(frame.err.message).toMatch(/cannot be sent/);
+      expect(frame.err.stack).toBe("Error: The controller threw a value that cannot be sent"); // no server path
     });
   });
 

@@ -56,7 +56,7 @@ Connection stories through the real browser client: a page that makes calls befo
 
 ### `client-calls.ts`
 
-Call stories through the real browser client: five identical calls in the same millisecond each get their own reply (per-client `nonce`); a controller that returns nothing resolves `undefined`; a call the server never answers times out after 10 s; `.then(ok, err)` receives the error; a failed or expired call nobody looks at raises no unhandled rejection or uncaught exception (the runner reports those as `errors`); a reply that arrives after its call timed out is dropped, not delivered as a message; a call whose socket refuses the send rejects at once with the socket's error.
+Call stories through the real browser client: five identical calls in the same millisecond each get their own reply (per-client `nonce`); a controller that returns nothing resolves `undefined`; a call the server never answers times out after 10 s; `.then(ok, err)` receives the error; a failed or expired call nobody looks at raises no unhandled rejection or uncaught exception (the runner reports those as `errors`); a reply that arrives after its call timed out is dropped, not delivered as a message; a call whose socket refuses the send rejects at once with the socket's error; a call with a `BigInt` argument throws at once and leaves no timer behind.
 
 ### `client-race.ts`
 
@@ -64,7 +64,7 @@ Calls that land while the page is retrying after a server restart: one call ever
 
 ### `client-streaming.ts`
 
-The HTTP streaming transport through the real browser client against `ape()` on a Node `http.Server` (`Scenario.server: 'node'`; `apeBun()` has no long-poll path) with the page's WebSocket refused (`Scenario.noWebSocket`): calls before and after the page has connected, a TypeError with its message, `err.code` / `err.data` and no server paths, a thrown string and a thrown plain object (no stack), unknown and inherited endpoint names, `undefined` replies, `this.broadcast` / `this.broadcastOthers`, `this.keepalive()` (no stray message reaches the page) and a private `this.foo` per call.
+The HTTP streaming transport through the real browser client against `ape()` on a Node `http.Server` (`Scenario.server: 'node'`; `apeBun()` has no long-poll path) with the page's WebSocket refused (`Scenario.noWebSocket`): calls before and after the page has connected, a TypeError with its message, `err.code` / `err.data` and no server paths, a thrown string and a thrown plain object (no stack), unknown and inherited endpoint names, `undefined` replies, `this.broadcast` / `this.broadcastOthers`, `this.keepalive()` (no stray message reaches the page) and a private `this.foo` per call, and pushes keep arriving after the server recycles the stream (reconnect).
 
 ### `client-api.ts`
 
