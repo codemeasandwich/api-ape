@@ -51,7 +51,7 @@ function runScenario(watchExpr) {
             }, 300);
           } else setTimeout(poll, 25);
         })();
-      }, 300);
+      }, 600);
     `;
     const r = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", timeout: 20000 });
     if (r.status !== 0) throw new Error(r.stderr || r.stdout);
@@ -68,6 +68,15 @@ describe("deepRequire hot reload in a real Node process", () => {
   test("watch.paths reloads imported service modules and untouched controllers coherently", () => {
     // the expression is evaluated in the child, where `root` is the fixture dir
     const r = runScenario("{ debounceMs: 20, paths: [path.join(root, 'svc')] }");
+    expect(r.before).toEqual(["a1:svc1", "b1:svc1"]);
+    expect(r.after).toEqual(["a2:svc2", "b1:svc2"]);
+  }, 30000);
+
+  // Scenario: the same coherent reload through the per-directory fallback that
+  // Linux before Node 20 uses (forced here with watch.recursive:false so it is
+  // exercised on every platform against the real filesystem).
+  test("per-directory fallback (recursive:false) reloads coherently too", () => {
+    const r = runScenario("{ debounceMs: 20, recursive: false, paths: [path.join(root, 'svc')] }");
     expect(r.before).toEqual(["a1:svc1", "b1:svc1"]);
     expect(r.after).toEqual(["a2:svc2", "b1:svc2"]);
   }, 30000);
@@ -119,7 +128,7 @@ describe("deepRequire hot reload in a real Node process", () => {
               process.exit(0);
             } else setTimeout(poll, 25);
           })();
-        }, 300);
+        }, 600);
       `;
       const r = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", timeout: 20000 });
       if (r.status !== 0) throw new Error(r.stderr || r.stdout);

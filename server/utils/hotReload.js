@@ -34,8 +34,11 @@
  *   a library clear. Bun (1.3.14, tested) evicts `require()`d `.js` and `.ts`
  *   modules; a manual probe showed `import`ed ESM files reloading too, but no
  *   test covers that, so treat it as unverified and use `bun --hot` if you rely on it.
- * - Recursive `fs.watch` is needed (macOS, Windows, Linux with Node 20+).
- *   Elsewhere a warning is logged and nothing is watched.
+ * - Where recursive `fs.watch` is supported (macOS, Windows, Linux with Node 20+) one
+ *   recursive watcher is opened per root. Elsewhere, or with `watch.recursive: false`,
+ *   api-ape opens one non-recursive watcher per directory (skipping `node_modules` and
+ *   dot-directories) and adds watchers for directories created while running. A very large
+ *   tree can exhaust the OS watch limit (inotify) in that mode; it is reported, not fatal.
  * - Calls already running mostly finish on the old code, but a lazy `require()` inside
  *   a running call made after an eviction loads the new module. The next call uses the new set.
  * - `watch.paths` entries are resolved against `process.cwd()` when `ape` starts (`where`
@@ -79,9 +82,9 @@ function realRoot(dir) {
 /**
  * Normalise the `watch` option.
  *
- * @param {boolean|{paths?: string[], debounceMs?: number}|undefined} watch - User option
+ * @param {boolean|{paths?: string[], debounceMs?: number, recursive?: boolean}|undefined} watch - User option
  * @param {string} controllersDir - Absolute controller directory
- * @returns {{roots: string[], debounceMs: number}|null} Null when hot reload is off
+ * @returns {{roots: string[], debounceMs: number, recursive: (boolean|undefined)}|null} Null when hot reload is off
  * @throws {Error} When `watch.paths` is not an array
  */
 function normaliseWatch(watch, controllersDir) {
@@ -97,6 +100,7 @@ function normaliseWatch(watch, controllersDir) {
   return {
     roots: roots.map(realRoot).filter((r, i, all) => all.indexOf(r) === i),
     debounceMs: opts.debounceMs === undefined ? DEFAULT_DEBOUNCE_MS : opts.debounceMs,
+    recursive: opts.recursive,
   };
 }
 
@@ -165,35 +169,139 @@ function relevant(filename, extensions) {
 }
 
 /**
+ * Watch one directory tree with a SINGLE recursive `fs.watch` (macOS, Windows,
+ * Linux with Node 20+).
+ *
+ * @param {string} root - Absolute directory
+ * @param {Function} doWatch - `fs.watch`-compatible function
+ * @param {Function} handle - Called with a root-relative file name (or null)
+ * @param {Function} report - Warning sink
+ * @param {Object[]} watchers - Receives the opened watcher
+ * @returns {void}
+ * @private
+ */
+function openRecursive(root, doWatch, handle, report, watchers) {
+  let watcher;
+  try {
+    watcher = doWatch(root, { recursive: true }, (eventType, filename) => handle(filename));
+  } catch (err) {
+    report(`[api-ape] watch: cannot watch ${root}: ${err.message}`);
+    return;
+  }
+  watcher.on("error", (err) => report(`[api-ape] watch: ${root}: ${err.message}`));
+  if (typeof watcher.unref === "function") watcher.unref();
+  watchers.push(watcher);
+}
+
+/**
+ * Fallback for platforms without recursive `fs.watch` (Linux before Node 20), or
+ * when `watch.recursive` is false: one non-recursive watcher per directory,
+ * skipping `node_modules` and dot-directories, and a new watcher for every
+ * directory created while running.
+ *
+ * @param {string} root - Absolute directory
+ * @param {Function} doWatch - `fs.watch`-compatible function
+ * @param {Function} handle - Called with a root-relative file name (or null)
+ * @param {Function} report - Warning sink
+ * @param {Object[]} watchers - Receives every opened watcher
+ * @returns {void}
+ * @private
+ */
+function openTree(root, doWatch, handle, report, watchers) {
+  const seen = new Set();
+
+  /**
+   * Watch `dir`, then every sub-directory of it.
+   *
+   * @param {string} dir - Absolute directory
+   * @returns {void}
+   */
+  function add(dir) {
+    if (seen.has(dir)) return;
+    seen.add(dir);
+    let watcher;
+    try {
+      watcher = doWatch(dir, {}, (eventType, filename) => {
+        if (!filename) return handle(null);
+        const full = path.join(dir, filename);
+        if (isDirectory(full)) {
+          // A new directory may arrive with files already inside it (a copy, a
+          // checkout): watch it and reload once, since we missed its first events
+          if (!skipDir(filename)) {
+            add(full);
+            handle(null);
+          }
+          return;
+        }
+        handle(path.relative(root, full));
+      });
+    } catch (err) {
+      report(`[api-ape] watch: cannot watch ${dir}: ${err.message}`);
+      return;
+    }
+    watcher.on("error", (err) => report(`[api-ape] watch: ${dir}: ${err.message}`));
+    if (typeof watcher.unref === "function") watcher.unref();
+    watchers.push(watcher);
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory() && !skipDir(entry.name)) {
+        add(path.join(dir, entry.name));
+      }
+    }
+  }
+
+  add(root);
+}
+
+/**
+ * Directories the per-directory fallback never watches.
+ *
+ * @param {string} name - Directory name
+ * @returns {boolean} True for node_modules and dot-directories
+ * @private
+ */
+function skipDir(name) {
+  return name === "node_modules" || name.startsWith(".");
+}
+
+/**
+ * Whether `file` is an existing directory (false when it vanished).
+ *
+ * @param {string} file - Absolute path
+ * @returns {boolean} True for a directory
+ * @private
+ */
+function isDirectory(file) {
+  try {
+    return fs.statSync(file).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Watch directories and call `onChange` once per burst of relevant changes.
  *
+ * Uses one recursive `fs.watch` per root where the platform supports it, and the
+ * per-directory fallback elsewhere, so behaviour is the same on every platform.
+ *
  * @param {Object} options
- * @param {string[]} options.roots - Absolute directories to watch recursively
+ * @param {string[]} options.roots - Absolute directories to watch
  * @param {string[]} options.extensions - Extensions (no dot) that trigger a reload
  * @param {number} options.debounceMs - Quiet period before `onChange` fires
  * @param {Function} options.onChange - Called with the absolute changed paths
  * @param {Function} [options.watch=fs.watch] - Watch function (injectable)
- * @param {boolean} [options.supported] - Override platform detection
+ * @param {boolean} [options.recursive] - Force (true) or forbid (false) a single recursive
+ *     watcher; default is platform detection
  * @param {Function} [options.warn] - Warning sink (defaults to the api-ape logger)
  * @returns {{close: Function}} Handle; `close()` stops watching
  */
-function watchDirs({ roots, extensions, debounceMs, onChange, watch, supported, warn }) {
+function watchDirs({ roots, extensions, debounceMs, onChange, watch, recursive, warn }) {
   const doWatch = watch || ((...args) => fs.watch(...args));
   const report = warn || ((m) => apeLog.warn(m));
+  const open = (recursive === undefined ? supportsRecursiveWatch() : recursive) ? openRecursive : openTree;
   const watchers = [];
   const changed = new Set();
   let timer = null;
-
-  if (!(supported === undefined ? supportsRecursiveWatch() : supported)) {
-    report(
-      "[api-ape] watch: recursive fs.watch is not supported on this platform/Node version; " +
-        "hot reload is disabled (use Node 20+ on Linux, or restart on change).",
-    );
-    return {
-      /** Nothing was watched, so there is nothing to close. */
-      close() {},
-    };
-  }
 
   /** Restart the debounce timer; when it fires, report the batched changes once. */
   function schedule() {
@@ -207,22 +315,19 @@ function watchDirs({ roots, extensions, debounceMs, onChange, watch, supported, 
   }
 
   for (const root of roots) {
-    let watcher;
-    try {
-      watcher = doWatch(root, { recursive: true }, (eventType, filename) => {
+    open(
+      root,
+      doWatch,
+      (filename) => {
         if (filename) {
           if (!relevant(filename, extensions)) return;
           changed.add(path.join(root, filename));
         }
         schedule();
-      });
-    } catch (err) {
-      report(`[api-ape] watch: cannot watch ${root}: ${err.message}`);
-      continue;
-    }
-    watcher.on("error", (err) => report(`[api-ape] watch: ${root}: ${err.message}`));
-    if (typeof watcher.unref === "function") watcher.unref();
-    watchers.push(watcher);
+      },
+      report,
+      watchers,
+    );
   }
 
   return {

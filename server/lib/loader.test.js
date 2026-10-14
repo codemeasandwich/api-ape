@@ -17,6 +17,16 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const loader = require("./loader");
+const { EventEmitter } = require("events");
+
+/** A fake fs.watch result: real recursive watching differs between platforms. */
+function fakeWatcher() {
+  const w = new EventEmitter();
+  w.close = jest.fn();
+  w.unref = jest.fn();
+  return w;
+}
+
 
 describe("loader — `dirname` resolution", () => {
   let tmpAbsoluteFixture;
@@ -90,7 +100,7 @@ describe("loader — hot reload is opt-in", () => {
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   test("no watcher by default; `options.watch` reaches deepRequire", () => {
-    const watchSpy = jest.spyOn(fs, "watch");
+    const watchSpy = jest.spyOn(fs, "watch").mockImplementation(() => fakeWatcher());
     try {
       loader(dir);
       loader(dir, undefined, { watch: false });

@@ -20,6 +20,16 @@ const messageHash = require("../../utils/messageHash");
 const { apeBun } = require("./bun");
 const { _clients } = require("./broadcast/clients");
 const { resetFileTransferManager } = require("./fileTransfer");
+const { EventEmitter } = require("events");
+
+/** A fake fs.watch result: real recursive watching differs between platforms. */
+function fakeWatcher() {
+  const w = new EventEmitter();
+  w.close = jest.fn();
+  w.unref = jest.fn();
+  return w;
+}
+
 
 let dir;
 let ape;
@@ -153,7 +163,7 @@ describe("apeBun websocket config and hot reload", () => {
   });
 
   test("hot reload is off by default and on only with `watch`", () => {
-    const watchSpy = jest.spyOn(fs, "watch");
+    const watchSpy = jest.spyOn(fs, "watch").mockImplementation(() => fakeWatcher());
     try {
       apeBun({ where: dir });
       expect(watchSpy).not.toHaveBeenCalled();

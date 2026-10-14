@@ -61,7 +61,9 @@ change; see "Behaviour changes".
   while its imports stayed stale. A controller that fails to load keeps the
   previous set serving. Deleting a file removes its endpoint. Limits are in the
   server README (modules outside the watched directories stay cached; ESM
-  `import` graphs are not evicted on Node; recursive `fs.watch` is required).
+  `import` graphs are not evicted on Node). Watching behaves the same everywhere:
+  one recursive `fs.watch` where supported, otherwise (Linux before Node 20, or
+  `watch: { recursive: false }`) one watcher per directory.
 - **Under Bun the Origin default is `exact`** (host and port). A page served
   from another origin, such as a dev server on another port, is refused unless
   listed in `origin.allowedOrigins` or you pass `origin: { mode: 'root-domain' }`.

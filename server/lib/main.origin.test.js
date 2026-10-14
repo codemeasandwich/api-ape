@@ -17,6 +17,16 @@ const path = require("path");
 const WebSocket = require("ws");
 const ape = require("./main");
 const { resetFileTransferManager } = require("./fileTransfer");
+const { EventEmitter } = require("events");
+
+/** A fake fs.watch result: real recursive watching differs between platforms. */
+function fakeWatcher() {
+  const w = new EventEmitter();
+  w.close = jest.fn();
+  w.unref = jest.fn();
+  return w;
+}
+
 
 let dir;
 beforeAll(() => {
@@ -111,7 +121,7 @@ describe("ape(server) on Node: origin policy", () => {
   });
 
   test("hot reload is off by default", async () => {
-    const watchSpy = jest.spyOn(fs, "watch");
+    const watchSpy = jest.spyOn(fs, "watch").mockImplementation(() => fakeWatcher());
     const { server } = await listen({});
     try {
       expect(watchSpy).not.toHaveBeenCalled();
@@ -123,7 +133,7 @@ describe("ape(server) on Node: origin policy", () => {
   });
 
   test("watch:true starts the watcher; the controllers object can be stopped", async () => {
-    const watchSpy = jest.spyOn(fs, "watch");
+    const watchSpy = jest.spyOn(fs, "watch").mockImplementation(() => fakeWatcher());
     const { server, core } = await listen({ watch: true });
     try {
       expect(watchSpy).toHaveBeenCalledTimes(1);

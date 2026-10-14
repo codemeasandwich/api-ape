@@ -7,6 +7,7 @@
  */
 
 const fs = require("fs");
+const { EventEmitter } = require("events");
 const os = require("os");
 const path = require("path");
 const deepRequire = require("./deepRequire");
@@ -148,9 +149,13 @@ describe("deepRequire — endpoint mapping", () => {
 });
 
 // ============================================================================
-// Hot reload is OPT-IN (`options.watch`). These tests spy on `fs.watch` to
-// capture each watcher so it can be closed (otherwise jest would hang), and
-// emit watch events directly to avoid platform fs.watch timing flakes.
+// Hot reload is OPT-IN (`options.watch`). These tests replace `fs.watch` with a
+// fake that hands back an EventEmitter wired to the listener api-ape registers,
+// so they are deterministic on every platform: real recursive fs.watch differs
+// between macOS (one native watcher) and Linux/Node 20 (Node opens inner
+// watchers itself, which made call counts and event routing platform-specific).
+// Watch events are emitted directly. The real-filesystem behaviour is covered by
+// deepRequire.reload.test.js (child Node process) and integration/bun.
 //
 // Jest owns its module registry and ignores `delete require.cache[...]`, so the
 // tests use `jest.resetModules()` as the stand-in for cache eviction. True
@@ -166,9 +171,11 @@ describe("deepRequire — opt-in hot reload", () => {
   const logs = [];
 
   beforeAll(() => {
-    const realWatch = fs.watch.bind(fs);
-    watchSpy = jest.spyOn(fs, "watch").mockImplementation((...args) => {
-      const w = realWatch(...args);
+    watchSpy = jest.spyOn(fs, "watch").mockImplementation((root, opts, listener) => {
+      const w = new EventEmitter();
+      w.on("change", listener);
+      w.close = jest.fn();
+      w.unref = jest.fn();
       openWatchers.push(w);
       return w;
     });
@@ -194,9 +201,7 @@ describe("deepRequire — opt-in hot reload", () => {
 
   afterEach(() => {
     watchedMaps.splice(0).forEach((m) => deepRequire.stopWatching(m));
-    openWatchers.splice(0).forEach((w) => {
-      try { w.close(); } catch { /* already closed */ }
-    });
+    openWatchers.splice(0);
     errors.length = 0;
     logs.length = 0;
   });
@@ -231,17 +236,72 @@ describe("deepRequire — opt-in hot reload", () => {
     }
   });
 
-  // Scenario: `watch: true` watches the controller directory recursively.
-  test("watch:true opens one recursive watcher on the controller directory", () => {
+  /** Run `fn` as if on the given platform / Node version. */
+  function onPlatform(platform, nodeMajor, fn) {
+    const realPlatform = process.platform;
+    const realVersions = process.versions;
+    Object.defineProperty(process, "platform", { value: platform, configurable: true });
+    Object.defineProperty(process, "versions", {
+      value: { ...realVersions, node: `${nodeMajor}.0.0` },
+      configurable: true,
+    });
+    try {
+      return fn();
+    } finally {
+      Object.defineProperty(process, "platform", { value: realPlatform, configurable: true });
+      Object.defineProperty(process, "versions", { value: realVersions, configurable: true });
+    }
+  }
+
+  // Scenario: `watch: true` where recursive fs.watch exists (macOS, Windows,
+  // Linux with Node 20+) opens ONE recursive watcher on the controller directory.
+  test.each([
+    ["darwin", 18],
+    ["win32", 18],
+    ["linux", 20],
+  ])("watch:true on %s (Node %i) opens one recursive watcher on the controller directory", (platform, major) => {
     const root = tmpDir({ "users.js": "module.exports = () => 'v1';" });
     try {
-      const packages = load(root, { watch: true });
+      const packages = onPlatform(platform, major, () => load(root, { watch: true }));
       expect(watchSpy).toHaveBeenCalledTimes(1);
       expect(watchSpy.mock.calls[0][0]).toBe(fs.realpathSync(root));
       expect(watchSpy.mock.calls[0][1]).toEqual({ recursive: true });
-      deepRequire.stopWatching(packages);
+      expect(packages.users()).toBe("v1");
     } finally {
-      watchSpy.mockClear();
+      cleanup(root);
+    }
+  });
+
+  // Scenario: Linux before Node 20 has no recursive fs.watch. The same option
+  // works through one watcher per directory, and an event in a sub-directory still
+  // reloads.
+  test("watch:true on Linux Node 18 falls back to one watcher per directory and still reloads", async () => {
+    const root = tmpDir({ "a/x.js": "module.exports = () => 'x1';", "b/y.js": "module.exports = () => 'y1';" });
+    try {
+      const packages = onPlatform("linux", 18, () => load(root, { watch: { debounceMs: 1 } }));
+      const real = fs.realpathSync(root);
+      expect(watchSpy.mock.calls.map((c) => c[0]).sort()).toEqual(
+        [real, path.join(real, "a"), path.join(real, "b")].sort(),
+      );
+      watchSpy.mock.calls.forEach((c) => expect(c[1]).toEqual({}));
+      fs.writeFileSync(path.join(root, "a/x.js"), "module.exports = () => 'x2';");
+      jest.resetModules();
+      const inA = watchSpy.mock.calls.findIndex((c) => c[0] === path.join(real, "a"));
+      openWatchers[inA].emit("change", "change", "x.js");
+      expect(await waitFor(() => packages["a/x"]() === "x2")).toBe(true);
+    } finally {
+      cleanup(root);
+    }
+  }, 10000);
+
+  // Scenario: `watch.recursive: false` forces the per-directory mode on any platform.
+  test("watch.recursive:false forces per-directory watchers", () => {
+    const root = tmpDir({ "a/x.js": "module.exports = () => 'x1';" });
+    try {
+      load(root, { watch: { recursive: false } });
+      expect(watchSpy).toHaveBeenCalledTimes(2);
+      expect(watchSpy.mock.calls.every((c) => !c[1].recursive)).toBe(true);
+    } finally {
       cleanup(root);
     }
   });
@@ -358,8 +418,6 @@ describe("deepRequire — opt-in hot reload", () => {
     const root = tmpDir({ "x.js": "module.exports = () => 'x';" });
     try {
       load(root, { watch: { debounceMs: 1 } }, ["js"]);
-      await new Promise((r) => setTimeout(r, 150));
-      logs.length = 0;
       fire(path.join("svc", "db.ts"), "change");
       expect(await waitFor(() => logs.length > 0)).toBe(true);
     } finally {
@@ -371,10 +429,6 @@ describe("deepRequire — opt-in hot reload", () => {
     const root = tmpDir({ "x.js": "module.exports = () => 'x';" });
     try {
       load(root, { watch: { debounceMs: 1 } }, ["js"]);
-      // FSEvents may replay the fixture's own creation just after the watcher
-      // arms (a legitimate reload); let that settle before measuring.
-      await new Promise((r) => setTimeout(r, 150));
-      logs.length = 0;
       fire("notes.md");
       await new Promise((r) => setTimeout(r, 40));
       expect(logs).toEqual([]);

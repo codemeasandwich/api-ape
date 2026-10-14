@@ -143,6 +143,8 @@ export type ApeWatchOption = boolean | {
     paths?: string[]
     /** Quiet period before a reload, in ms (default 50) */
     debounceMs?: number
+    /** `false` forces one watcher per directory instead of one recursive watcher (default: by platform) */
+    recursive?: boolean
 }
 
 /**

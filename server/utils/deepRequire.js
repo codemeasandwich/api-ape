@@ -277,6 +277,7 @@ module.exports = function (dirname, selector, options = {}) {
         roots: watch.roots,
         extensions: [...new Set([...selector, ...SOURCE_EXTENSIONS])],
         debounceMs: watch.debounceMs,
+        recursive: watch.recursive,
         onChange: (files) => {
           const saved = new Map();
           invalidateModules(watch.roots, undefined, saved);

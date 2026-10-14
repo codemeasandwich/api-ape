@@ -31,7 +31,7 @@ describe("normaliseWatch", () => {
   });
 
   test("true watches only the controller directory with a 50ms debounce", () => {
-    expect(normaliseWatch(true, "/a")).toEqual({ roots: ["/a"], debounceMs: 50 });
+    expect(normaliseWatch(true, "/a")).toEqual({ roots: ["/a"], debounceMs: 50, recursive: undefined });
   });
 
   test("an object adds resolved extra paths and a custom debounce", () => {
@@ -41,7 +41,7 @@ describe("normaliseWatch", () => {
   });
 
   test("an object without paths or debounce uses the defaults", () => {
-    expect(normaliseWatch({}, "/a")).toEqual({ roots: ["/a"], debounceMs: 50 });
+    expect(normaliseWatch({}, "/a")).toEqual({ roots: ["/a"], debounceMs: 50, recursive: undefined });
   });
 
   test("roots are real paths, so a symlinked directory matches require.cache keys", () => {
@@ -74,6 +74,11 @@ describe("normaliseWatch", () => {
     ["ts", "mts", "cts", "tsx", "jsx", "js", "cjs", "mjs", "json"].forEach((e) =>
       expect(SOURCE_EXTENSIONS).toContain(e),
     );
+  });
+
+  test("recursive can be forced off; otherwise it is left to platform detection", () => {
+    expect(normaliseWatch({ recursive: false }, "/a").recursive).toBe(false);
+    expect(normaliseWatch(true, "/a").recursive).toBeUndefined();
   });
 
   test("a non-array paths value is refused", () => {
@@ -153,7 +158,7 @@ describe("supportsRecursiveWatch", () => {
   });
 });
 
-describe("watchDirs", () => {
+describe("watchDirs — single recursive watcher", () => {
   jest.useFakeTimers();
 
   function harness(extra = {}) {
@@ -175,7 +180,7 @@ describe("watchDirs", () => {
       debounceMs: 40,
       onChange,
       watch,
-      supported: true,
+      recursive: true,
       warn,
       ...extra,
     });
@@ -234,19 +239,11 @@ describe("watchDirs", () => {
     handle.close(); // idempotent
   });
 
-  test("close() with no pending reload and a watcher that already closed is safe", () => {
+  test("close() tolerates a watcher that already closed", () => {
     const { watchers, handle } = harness();
     watchers[0].close.mockImplementation(() => {
       throw new Error("already closed");
     });
-    expect(() => handle.close()).not.toThrow();
-  });
-
-  test("an unsupported platform warns once and watches nothing", () => {
-    const { watch, warn, handle } = harness({ supported: false });
-    expect(watch).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toMatch(/recursive/);
     expect(() => handle.close()).not.toThrow();
   });
 
@@ -266,7 +263,7 @@ describe("watchDirs", () => {
       debounceMs: 1,
       onChange: () => {},
       watch,
-      supported: true,
+      recursive: true,
       warn,
     });
     expect(warn.mock.calls[0][0]).toMatch(/\/a.*ENOENT/);
@@ -286,19 +283,175 @@ describe("watchDirs", () => {
     const warn = jest.fn();
     logger.configureApeLogging({ warn, log() {}, error() {}, info() {}, debug() {} });
     try {
-      watchDirs({ roots: ["/a"], extensions: ["js"], debounceMs: 1, onChange: () => {}, supported: false });
+      watchDirs({
+        roots: ["/a"],
+        extensions: ["js"],
+        debounceMs: 1,
+        onChange: () => {},
+        recursive: true,
+        watch: () => {
+          throw new Error("boom");
+        },
+      });
       expect(warn).toHaveBeenCalled();
     } finally {
       logger.resetApeLoggingForTesting();
     }
   });
 
-  test("defaults: real fs.watch, platform detection and the api-ape logger", () => {
+  test("defaults: real fs.watch and platform detection", () => {
     const fs = require("fs");
     const os = require("os");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hr-default-"));
     const handle = watchDirs({ roots: [dir], extensions: ["js"], debounceMs: 1, onChange: () => {} });
     handle.close();
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("watchDirs — per-directory fallback (no recursive fs.watch)", () => {
+  const fs = require("fs");
+  const os = require("os");
+  jest.useFakeTimers();
+
+  let root;
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "hr-tree-"));
+    fs.mkdirSync(path.join(root, "a", "deep"), { recursive: true });
+    fs.mkdirSync(path.join(root, "node_modules", "pkg"), { recursive: true });
+    fs.mkdirSync(path.join(root, ".git"));
+    fs.writeFileSync(path.join(root, "top.js"), "");
+  });
+  afterEach(() => {
+    jest.clearAllTimers();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  function open(extra = {}) {
+    const watchers = [];
+    const watch = jest.fn((dir, opts, cb) => {
+      const w = new EventEmitter();
+      w.close = jest.fn();
+      w.unref = jest.fn();
+      w.dir = dir;
+      w.cb = cb;
+      watchers.push(w);
+      return w;
+    });
+    const onChange = jest.fn();
+    const warn = jest.fn();
+    const handle = watchDirs({
+      roots: [root],
+      extensions: ["js"],
+      debounceMs: 10,
+      onChange,
+      watch,
+      recursive: false,
+      warn,
+      ...extra,
+    });
+    return { watchers, watch, onChange, warn, handle, byDir: (d) => watchers.find((w) => w.dir === d) };
+  }
+
+  test("one non-recursive watcher per directory, skipping node_modules and dot-directories", () => {
+    const { watchers, watch } = open();
+    expect(watchers.map((w) => w.dir).sort()).toEqual(
+      [root, path.join(root, "a"), path.join(root, "a", "deep")].sort(),
+    );
+    watch.mock.calls.forEach((c) => expect(c[1]).toEqual({}));
+    watchers.forEach((w) => expect(w.unref).toHaveBeenCalled());
+  });
+
+  test("an event in a nested directory is reported with its path under the root", () => {
+    const { byDir, onChange } = open();
+    byDir(path.join(root, "a", "deep")).cb("change", "x.js");
+    jest.advanceTimersByTime(10);
+    expect(onChange).toHaveBeenCalledWith([path.join(root, "a", "deep", "x.js")]);
+  });
+
+  test("irrelevant files, and events with no filename in a directory, behave like the recursive mode", () => {
+    const { byDir, onChange } = open();
+    byDir(root).cb("change", "notes.md");
+    jest.advanceTimersByTime(10);
+    expect(onChange).not.toHaveBeenCalled();
+    byDir(root).cb("rename", null);
+    jest.advanceTimersByTime(10);
+    expect(onChange).toHaveBeenCalledWith([]);
+  });
+
+  test("a directory created while running gets its own watcher and triggers one reload", () => {
+    const { byDir, watchers, onChange } = open();
+    fs.mkdirSync(path.join(root, "fresh", "inner"), { recursive: true });
+    byDir(root).cb("rename", "fresh");
+    jest.advanceTimersByTime(10);
+    expect(watchers.map((w) => w.dir)).toEqual(
+      expect.arrayContaining([path.join(root, "fresh"), path.join(root, "fresh", "inner")]),
+    );
+    expect(onChange).toHaveBeenCalledTimes(1);
+    // the same directory is not watched twice
+    byDir(root).cb("rename", "fresh");
+    expect(watchers.filter((w) => w.dir === path.join(root, "fresh"))).toHaveLength(1);
+  });
+
+  test("a new node_modules or dot-directory is ignored", () => {
+    const { byDir, watchers, onChange } = open();
+    fs.mkdirSync(path.join(root, "a", "node_modules"));
+    fs.mkdirSync(path.join(root, "a", ".cache"));
+    const before = watchers.length;
+    byDir(path.join(root, "a")).cb("rename", "node_modules");
+    byDir(path.join(root, "a")).cb("rename", ".cache");
+    jest.advanceTimersByTime(10);
+    expect(watchers).toHaveLength(before);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test("an event for a path that vanished is treated as a file event", () => {
+    const { byDir, onChange } = open();
+    byDir(root).cb("rename", "gone.js");
+    jest.advanceTimersByTime(10);
+    expect(onChange).toHaveBeenCalledWith([path.join(root, "gone.js")]);
+  });
+
+  test("a directory that cannot be watched is reported and the rest keep working", () => {
+    const opened = [];
+    const { warn } = open({
+      watch: jest.fn((dir) => {
+        if (dir.endsWith(`${path.sep}deep`)) throw new Error("ENOSPC");
+        const w = new EventEmitter();
+        w.close = jest.fn();
+        opened.push(w);
+        return w;
+      }),
+    });
+    expect(warn.mock.calls[0][0]).toMatch(/deep.*ENOSPC/);
+    expect(opened).toHaveLength(2);
+  });
+
+  test("watcher errors are reported and close() closes every directory watcher", () => {
+    const { watchers, warn, handle } = open();
+    watchers[0].emit("error", new Error("EMFILE"));
+    expect(warn.mock.calls.pop()[0]).toMatch(/EMFILE/);
+    handle.close();
+    watchers.forEach((w) => expect(w.close).toHaveBeenCalled());
+  });
+
+  test("without an explicit choice the platform decides", () => {
+    const watch = jest.fn(() => {
+      const w = new EventEmitter();
+      w.close = jest.fn();
+      return w;
+    });
+    const real = process.platform;
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+    const versions = process.versions;
+    Object.defineProperty(process, "versions", { value: { ...versions, node: "18.0.0" }, configurable: true });
+    try {
+      watchDirs({ roots: [root], extensions: ["js"], debounceMs: 1, onChange() {}, watch });
+    } finally {
+      Object.defineProperty(process, "platform", { value: real, configurable: true });
+      Object.defineProperty(process, "versions", { value: versions, configurable: true });
+    }
+    // Linux on Node 18: per-directory mode, so root + a + a/deep
+    expect(watch).toHaveBeenCalledTimes(3);
   });
 });

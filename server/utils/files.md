@@ -38,7 +38,7 @@ Hot reload is **off by default**. `deepRequire(dir, selector, { watch })` starts
 
 ### `hotReload.js`
 
-The opt-in hot-reload machinery used by `deepRequire.js`: `normaliseWatch` (option parsing, real paths), `watchDirs` (debounced recursive `fs.watch`), `invalidateModules` (evict every cached module under the watched roots except `node_modules`). The file header states the contract and the limits (what is and is not reloaded).
+The opt-in hot-reload machinery used by `deepRequire.js`: `normaliseWatch` (option parsing, real paths), `watchDirs` (debounced; one recursive `fs.watch` where supported, a per-directory fallback elsewhere), `invalidateModules` (evict every cached module under the watched roots except `node_modules`). The file header states the contract and the limits (what is and is not reloaded).
 
 ### `genId.js`
 
