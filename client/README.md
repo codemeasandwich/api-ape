@@ -68,8 +68,8 @@ api.onConnectionChange((state) => {
 
 **Connection States:**
 - `offline` — Browser reports no network
-- `walled` — Captive portal detected: the server's address answered, but with something that is not the api-ape ping (a login page, a redirect). Retried every 30 s.
-- `disconnected` — Had connection, lost it, or the server is down or restarting (the ping got no answer: connection refused or timed out). Retried with backoff, 0.5 s up to 30 s, so a restarted server is picked up within a second or two.
+- `walled` — Captive portal detected: the server's address answered, but with something that is not the api-ape ping (a login page, a redirect: the ping does not follow redirects). Retried every 30 s. While the next ping is scheduled, calls only queue (a call still queued after 5 s rejects with `Request not sent`); the browser's `online` event pings at once.
+- `disconnected` — Had connection, lost it, or the server is down or restarting (the ping got no answer: connection refused or timed out). Retried with backoff, 0.5 s up to a 30 s cap (plus up to 20 % jitter on top, so at most 36 s), so a restarted server is picked up within a second or two.
 - `connecting` — Actively connecting
 - `connected` — Ready to use
 - `closing` — Connection is closing
@@ -86,7 +86,7 @@ WebSocket disconnects are expected in production (Wi‑Fi handoffs, laptop sleep
 
 **Node (`server/client`)** — Handshake **`Cookie: sessionId=…`** (after the first `__connected__`) plus **`resume`** as a query parameter on the WS URL (mirrors the browser). Headers such as **`x-ape-session-id`** / **`x-ape-resume`** are accepted where cookies or query strings are awkward.
 
-**Backoff** — Browser reconnect delay matches the Node client pattern (exponential cap 30s with jitter). Tune resume grace with **`APE_RESUME_TTL_MS`** (milliseconds; default 120000).
+**Backoff** — Browser reconnect delay matches the Node client pattern (exponential, capped at 30 s, plus up to 20 % jitter on top of the cap: at most 36 s). Tune resume grace with **`APE_RESUME_TTL_MS`** (milliseconds; default 120000).
 
 **In-flight RPC** — Responses for requests already **sent** may still be lost on disconnect (Phase 2 mailbox covers deeper guarantees). Pending browser RPC callbacks are **rejected on socket close** so callers fail fast instead of hanging.
 

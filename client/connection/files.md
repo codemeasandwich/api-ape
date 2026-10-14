@@ -32,7 +32,7 @@ connection/
 
 ### `connectAttempt.js`
 
-`createConnectAttempt()` returns the guard `connectSocket.js` uses so only one connection attempt (ping, then socket open) runs at a time. Every queued call asks the client to connect; without the guard, N calls made before the first connect opened N+1 sockets. The flag expires after 15 s so a stuck attempt cannot block connecting forever.
+`createConnectAttempt()` returns the guard `connectSocket.js` uses so only one connection attempt (ping, then socket open) runs at a time. Every queued call asks the client to connect; without the guard, N calls made before the first connect opened N+1 sockets. The flag expires after 15 s so a stuck attempt cannot block connecting forever, except while a WebSocket handshake is still pending (expiring then would let a second attempt open a second socket).
 
 ### `streamingFallback.js`
 
@@ -44,7 +44,7 @@ Creates the Proxy-based API that allows `api.users.list()` syntax. Intercepts pr
 
 ### `sender.js`
 
-Handles message serialization and request/response correlation. Generates unique `queryId` for each request, tracks pending requests, manages timeouts, and resolves Promises when responses arrive. A keepalive frame (`this.keepalive()` on the server) restarts the call's timeout and does not settle it. `flushQueue` sends the calls queued while disconnected, emptying the queue in place.
+Handles message serialization and request/response correlation. A call that times out, or whose `send` throws, is removed from `waitingOn` (and its timer stopped); a reply that arrives for a call that is gone is dropped, never handed to the page as a push. Generates unique `queryId` for each request, tracks pending requests, manages timeouts, and resolves Promises when responses arrive. A keepalive frame (`this.keepalive()` on the server) restarts the call's timeout and does not settle it. `flushQueue` sends the calls queued while disconnected, emptying the queue in place.
 
 ### `state.js`
 
@@ -54,15 +54,17 @@ Connection state machine that tracks the current connection status. Emits state 
 
 ### `reconnectBackoff.js`
 
-Pure helpers implementing the same exponential cap (**30s**) and jitter (**20%**) as **`server/client/connection-reconnect.js`** so browser reconnect storms match Node timing. `pingRetryDelayMs` is the same curve starting at 0.5 s, used between reachability pings while the server is unreachable.
+Pure helpers implementing the same exponential cap (**30s**) and jitter (**up to 20%**, added on top of the cap, so at most 36 s) as **`server/client/connection-reconnect.js`** so browser reconnect storms match Node timing. `pingRetryDelayMs` is the same curve starting at 0.5 s, used between reachability pings while the server is unreachable.
 
 ### `network.js`
 
 Detects network conditions to provide accurate connection state:
 - **Offline** — Browser reports no network (`navigator.onLine`)
-- **Walled garden** — Captive portal detected: an HTTP answer that is not the ape ping (WiFi login page)
-- **Unreachable** — No answer at all (refused, reset, timeout, 5xx gateway): the server is down or restarting; the client reports `disconnected` and retries with backoff (`pingRetryDelayMs`, 0.5 s to 30 s)
+- **Walled garden** — Captive portal detected: an HTTP answer that is not the ape ping (WiFi login page), or a redirect (the ping is fetched with `redirect: "manual"`, so a cross-origin redirect is seen as one instead of as a thrown CORS failure that reads as a dead server)
+- **Unreachable** — No answer at all (refused, reset, timeout, 5xx gateway): the server is down or restarting; the client reports `disconnected` and retries with backoff (`pingRetryDelayMs`, 0.5 s to a 30 s cap plus up to 20 % jitter)
 - **Online** — Full internet connectivity confirmed
+
+`scheduleNetworkRetry` / `cancelNetworkRetry` / `isNetworkRetryPending` own the one scheduled ping retry: a connection attempt starting and a socket opening both cancel it, and while it is pending a call only queues (no ping of its own), so calls during an outage cannot bypass the backoff or open a second socket. The ping's 3 s abort covers reading the body as well, so a server that answers headers and stalls is `unreachable`, not a hang.
 
 Also builds the WebSocket URL (**`getSocketUrl(resumeClientId)`**) including optional **`?resume=`** for Phase 1.
 

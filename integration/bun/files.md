@@ -21,6 +21,7 @@ bun/
 ├── client-keepalive.ts  # Keepalive user stories through the real browser client
 ├── client-connect.ts    # Connection user stories (one socket per page, restart recovery, captive portal)
 ├── client-calls.ts      # Call user stories (identical calls, awaited calls, errors)
+├── client-race.ts       # Calls landing while the page retries: few pings, one socket, one subscription
 ├── client-streaming.ts  # HTTP streaming transport (WebSockets blocked): errors, context, keepalive
 ├── client-api.ts        # Page API: nested api.dir.thing(), early subscribe, api.on, transport
 ├── client-errors.ts     # Errors (class, code, data) and controller files (export default, .d.ts, tests)
@@ -51,11 +52,15 @@ Keepalive stories: a slow call resolves with its real result (not `undefined` fr
 
 ### `client-connect.ts`
 
-Connection stories through the real browser client: a page that makes calls before it has connected opens exactly one socket; after a server restart (or a server that is not up yet) the page says `disconnected`, never `walled`, and reconnects within seconds; a call made during the outage is sent when the server is back; a login page in place of the ping still reads `walled`. `Scenario.startDown`, `Scenario.fetch` and `onEvent` (server stop/start) drive these.
+Connection stories through the real browser client: a page that makes calls before it has connected opens exactly one socket; after a server restart (or a server that is not up yet) the page says `disconnected`, never `walled`, and reconnects within seconds; a call made during the outage is sent when the server is back; a login page in place of the ping, or a redirect to a login page on another site, reads `walled` (not `disconnected`); a ping that answers headers and then stalls is retried and the queued call goes through. `Scenario.startDown`, `Scenario.fetch` and `onEvent` (server stop/start) drive these.
 
 ### `client-calls.ts`
 
-Call stories through the real browser client: five identical calls in the same millisecond each get their own reply (per-client `nonce`); a controller that returns nothing resolves `undefined`; a call the server never answers times out after 10 s; `.then(ok, err)` receives the error; a failed or expired call nobody looks at raises no unhandled rejection or uncaught exception (the runner reports those as `errors`).
+Call stories through the real browser client: five identical calls in the same millisecond each get their own reply (per-client `nonce`); a controller that returns nothing resolves `undefined`; a call the server never answers times out after 10 s; `.then(ok, err)` receives the error; a failed or expired call nobody looks at raises no unhandled rejection or uncaught exception (the runner reports those as `errors`); a reply that arrives after its call timed out is dropped, not delivered as a message; a call whose socket refuses the send rejects at once with the socket's error.
+
+### `client-race.ts`
+
+Calls that land while the page is retrying after a server restart: one call every 40 ms through a 3 s outage costs a handful of pings (not ~75, the 0.5-30 s backoff holds) and every call succeeds once the server is back; a call every 100 / 250 / 400 ms through a 2.5 s outage leaves exactly one socket (two `onConnect`s in all) and a channel broadcast arrives once. Each scenario has a channel of its own because the server replays a channel's last message to new subscribers.
 
 ### `client-streaming.ts`
 

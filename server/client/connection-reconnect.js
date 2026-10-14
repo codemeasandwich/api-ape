@@ -5,7 +5,7 @@
  * throttles repetitive error log messages to prevent terminal flooding
  * when the server is unreachable for extended periods.
  *
- * Backoff: 1s → 2s → 4s → 8s → 16s → 30s cap, with 20% jitter.
+ * Backoff: 1s → 2s → 4s → 8s → 16s → 30s cap, plus up to 20% jitter on top of the cap (at most 36s).
  * Error throttle: logs first error immediately, then suppresses
  * duplicates for 30 seconds (printing suppressed count on resume).
  *

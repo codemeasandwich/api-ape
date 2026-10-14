@@ -115,6 +115,42 @@ const scenarios: Scenario[] = [
             assert(ctl.connects === 0, `the page opened ${ctl.connects} socket(s) behind the portal`);
         },
     },
+    {
+        name: 'behind a captive portal that redirects every request to its login page on another site, the page says walled, not disconnected',
+        fixtures: { 'hello.js': hello },
+        // The portal's login host is another origin the page may not read (here: nothing listens there),
+        // so following the redirect fails exactly as a cross-origin CORS failure does in a browser.
+        fetch: (req) => new URL(req.url).pathname === '/api/ape/ping'
+            ? Response.redirect('http://127.0.0.1:9/portal/login', 302)
+            : undefined,
+        browser: async ({ waitForState, sleep, states }) => {
+            await waitForState('walled', 8000);
+            await sleep(300);
+            return states.map((s) => s.state);
+        },
+        check: ({ result, ctl }) => {
+            assert(result.includes('walled'), `a redirect to a login page must read as walled: ${result.join(' > ')}`);
+            assert(!result.includes('disconnected'), `the page called a captive portal's redirect a dead server: ${result.join(' > ')}`);
+            assert(ctl.connects === 0, `the page opened ${ctl.connects} socket(s) behind the portal`);
+        },
+    },
+    (() => {
+        let pings = 0;
+        return {
+            name: 'a ping whose answer starts and never finishes does not hold the page: it is retried and the queued call goes through',
+            fixtures: { 'hello.js': hello },
+            // The first ping answers 200 with half a JSON body and then nothing, ever.
+            fetch: (req: Request) => new URL(req.url).pathname === '/api/ape/ping' && pings++ === 0
+                ? new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{"ok":')); } }), { headers: { 'Content-Type': 'application/json' } })
+                : undefined,
+            browser: async ({ api }) => api.hello({ n: 1 }),
+            timeoutMs: 20000,
+            check: ({ result, ctl }) => {
+                assert(result?.hello?.n === 1, `the call queued behind the stalled ping got ${JSON.stringify(result)}`);
+                assert(ctl.connects === 1, `the server saw ${ctl.connects} sockets, expected 1`);
+            },
+        } as Scenario;
+    })(),
 ];
 
 await runScenarios(import.meta.path, 'Connecting (browser client)', scenarios);

@@ -137,6 +137,8 @@ export function createWsSend(getSocket, waitingOn) {
     const armTimer = (ms) => {
       clearTimeout(timer);
       timer = setTimeout(() => {
+        // Expired: forget the call, or its callback stays in `waitingOn` for good.
+        delete waitingOn[queryId];
         rej(new Error("Request Timed out for: " + type));
       }, ms);
     };
@@ -180,8 +182,16 @@ export function createWsSend(getSocket, waitingOn) {
         }
       };
 
-      // Send the message
-      getSocket().send(message);
+      // Send the message. If that throws (no socket, or it is closing) the call is
+      // over: stop its timer and forget it, rather than leave both behind.
+      try {
+        getSocket().send(message);
+      } catch (sendErr) {
+        clearTimeout(timer);
+        delete waitingOn[queryId];
+        reject(sendErr);
+        return;
+      }
 
       // Upload any binary data via HTTP
       if (uploads.length > 0) {

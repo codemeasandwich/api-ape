@@ -7,7 +7,9 @@
  * N calls made before the first connect opened N+1 sockets (4.3.0).
  *
  * A stuck attempt can never block connecting forever: the flag expires after
- * `maxMs` (default 15 s: ping 3 s + WebSocket fallback window 4 s + margin).
+ * `maxMs` (default 15 s: ping 3 s + WebSocket fallback window 4 s + margin), EXCEPT
+ * while a WebSocket handshake is still pending: expiring then would let a second
+ * attempt open a second socket while the first is about to open.
  *
  * @module client/connection/connectAttempt
  * @see {@link module:client/connectSocket} for the caller
@@ -23,17 +25,18 @@ export const CONNECT_ATTEMPT_MAX_MS = 15000;
  * Create the guard.
  *
  * @param {number} [maxMs=CONNECT_ATTEMPT_MAX_MS] - How long a started attempt counts as in flight
+ * @param {function(): boolean} [handshakePending] - True while a WebSocket handshake is still pending
  * @returns {{inFlight: function(): boolean, start: function(): void, end: function(): void}}
- *   `inFlight()` is true from `start()` until `end()` or `maxMs`
+ *   `inFlight()` is true from `start()` until `end()`, or until `maxMs` when no handshake is pending
  */
-export function createConnectAttempt(maxMs = CONNECT_ATTEMPT_MAX_MS) {
+export function createConnectAttempt(maxMs = CONNECT_ATTEMPT_MAX_MS, handshakePending = () => false) {
   let since = 0;
   return {
     /**
      * Whether an attempt is in flight.
-     * @returns {boolean} True while an attempt started less than `maxMs` ago and has not ended
+     * @returns {boolean} True while an attempt has not ended and is under `maxMs` old or has a handshake pending
      */
-    inFlight: () => since > 0 && Date.now() - since < maxMs,
+    inFlight: () => since > 0 && (Date.now() - since < maxMs || handshakePending()),
     /**
      * Mark an attempt as started.
      * @returns {void}

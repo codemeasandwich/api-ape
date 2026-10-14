@@ -75,6 +75,8 @@ import {
   getSocketUrl,
   checkCaptivePortal,
   scheduleNetworkRetry,
+  cancelNetworkRetry,
+  isNetworkRetryPending,
   setupOnlineListeners,
 } from "./connection/network";
 import { reconnectDelayMs, pingRetryDelayMs } from "./connection/reconnectBackoff.js";
@@ -205,7 +207,33 @@ let failedPings = 0;
  * @type {ReturnType<typeof createConnectAttempt>}
  * @private
  */
-const connectAttempt = createConnectAttempt();
+let connectingSocket = null;
+
+/**
+ * Is a connection open, opening or (HTTP streaming) already made?
+ *
+ * @returns {boolean} True when another attempt would only duplicate it
+ * @private
+ */
+function isConnectedOrConnecting() {
+  return Boolean(
+    ready ||
+      (__socket && __socket.readyState !== WebSocket.CLOSED) ||
+      isHandshakePending(),
+  );
+}
+
+/**
+ * Is a WebSocket handshake still pending?
+ *
+ * @returns {boolean} True while the socket `tryWebSocket` opened has not opened or closed
+ * @private
+ */
+function isHandshakePending() {
+  return Boolean(connectingSocket && connectingSocket.readyState === WebSocket.CONNECTING);
+}
+
+const connectAttempt = createConnectAttempt(undefined, isHandshakePending);
 
 /**
  * WebSocket send function bound to current socket
@@ -216,7 +244,7 @@ const wsSend = createWsSend(() => __socket, waitingOn);
 
 // Setup browser online/offline listeners on module load
 if (typeof window !== "undefined") {
-  setupOnlineListeners(attemptConnection);
+  setupOnlineListeners(() => attemptConnection(true));
 }
 
 /**
@@ -291,6 +319,11 @@ const tryWebSocket = require("./connectSocket-tryWs.js").createTryWebSocket({
   },
   getReadySnapshot: () => ready,
   endConnectAttempt: connectAttempt.end,
+  cancelNetworkRetry,
+  setConnectingSocket: (v) => {
+    connectingSocket = v;
+  },
+  getSocketRef: () => __socket,
   setSendFn,
   resubscribeAll,
   notifyConnectionChange,
@@ -319,14 +352,28 @@ const tryWebSocket = require("./connectSocket-tryWs.js").createTryWebSocket({
  * 2. Detects captive portals (hotel/airport WiFi login pages)
  * 3. Initiates appropriate transport based on configuration
  *
+ * Called by a call that needs a connection, by the retry timer, by the reconnect backoff
+ * and by the browser's `online` event (only that one passes `force`).
+ *
  * @async
+ * @param {boolean} [force=false] - Skip the "a retry is already scheduled" wait (the `online` event)
  * @private
  */
-async function attemptConnection() {
+async function attemptConnection(force = false) {
+  // Already connected or connecting: nothing to do. The retry timer and the `online`
+  // event call this directly, and a call that lands between a failed ping and its retry
+  // used to open a second socket (the retry then opened a third).
+  if (isConnectedOrConnecting()) return;
+
   // One attempt at a time: a second request to connect while one is in flight
   // (every queued call asks for one) must not open a second socket.
   if (connectAttempt.inFlight()) return;
 
+  // A retry is scheduled: it is the next attempt. A call made now only queues, so calls
+  // during an outage do not each ping again and bypass the 0.5-30 s backoff.
+  if (!force && isNetworkRetryPending()) return;
+
+  cancelNetworkRetry();
   clearReconnectBackoffTimer();
 
   // Check browser online status first

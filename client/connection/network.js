@@ -121,7 +121,9 @@ export function getPingUrl() {
  *   reset, DNS, offline) or timed out, or a gateway answered 5xx. The server is down
  *   or restarting; retry soon (see `pingRetryDelayMs`).
  * - `'walled'` — an HTTP answer arrived that is not the ape ping: a captive portal's
- *   login page or redirect, a 3xx/4xx, `{ ok }` missing, or a stale replayed timestamp.
+ *   login page or redirect (a redirect is not followed: `redirect: "manual"`, so a
+ *   cross-origin one is seen as a redirect rather than as a thrown CORS failure), a
+ *   3xx/4xx, `{ ok }` missing, or a stale replayed timestamp.
  *
  * Before 4.3.1 every failure was `'walled'`, so a restarted server kept the page in
  * "walled" for the 30 s captive-portal retry.
@@ -137,19 +139,44 @@ export function getPingUrl() {
 export async function checkCaptivePortal() {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT);
+  try {
+    return await classifyPing(controller.signal);
+  } finally {
+    // After the BODY is read too: a server that sends headers and then stalls would
+    // otherwise hold the connection attempt (and every queued call) forever.
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Fetch the ping and classify the answer (see `checkCaptivePortal`).
+ *
+ * `redirect: "manual"`: a captive portal answers every HTTP request with a redirect to
+ * its login page, usually on another origin, where following it is a CORS failure that
+ * `fetch` reports as a thrown TypeError, indistinguishable from "the server is down".
+ * Not following it makes the redirect itself visible (an `opaqueredirect` response).
+ * The ape ping never redirects.
+ *
+ * @param {AbortSignal} signal - Aborts the request and the body read after `PING_TIMEOUT`
+ * @returns {Promise<'ok'|'walled'|'unreachable'>} The classification
+ * @private
+ */
+async function classifyPing(signal) {
   let response;
   try {
-    response = await fetch(getPingUrl(), {
-      cache: "no-store",
-      signal: controller.signal,
-    });
+    response = await fetch(getPingUrl(), { cache: "no-store", redirect: "manual", signal });
   } catch (err) {
     if (isDevMode()) {
       apeLog.debug("[DEV] Ping failed:", err.message || err);
     }
     return "unreachable";
-  } finally {
-    clearTimeout(timeoutId);
+  }
+
+  if (response.type === "opaqueredirect") {
+    if (isDevMode()) {
+      apeLog.error("[DEV] Ping redirected: a captive portal's login page");
+    }
+    return "walled";
   }
 
   if (!response.ok) {
@@ -234,6 +261,32 @@ export function scheduleNetworkRetry(attemptConnectionFn, delayMs = WS_RETRY_INT
     networkCheckTimer = null;
     attemptConnectionFn();
   }, delayMs);
+}
+
+/**
+ * Cancel the scheduled network retry, if any.
+ *
+ * Called when a connection attempt starts and when a socket opens: a retry that stays
+ * scheduled after the connection it was waiting for has been made would fire later and
+ * open a second socket.
+ *
+ * @returns {void}
+ */
+export function cancelNetworkRetry() {
+  clearTimeout(networkCheckTimer);
+  networkCheckTimer = null;
+}
+
+/**
+ * Whether a network retry is scheduled.
+ *
+ * While one is, a new call must only queue: the timer is the next attempt, so calls made
+ * during an outage do not each ping again and bypass the backoff.
+ *
+ * @returns {boolean} True when a retry timer is pending
+ */
+export function isNetworkRetryPending() {
+  return networkCheckTimer !== null;
 }
 
 /**

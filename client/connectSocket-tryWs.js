@@ -50,6 +50,9 @@ const { attachErrorDetails } = require("../utils/wireError");
  * @param {function(ReturnType<typeof setTimeout>|null): void} d.setReconnectBackoffTimer
  * @param {function(): void} d.connectSocketRoot
  * @param {function(): void} d.endConnectAttempt - Marks the in-flight connection attempt finished
+ * @param {function(): void} d.cancelNetworkRetry - Cancels the scheduled ping retry once a socket opens
+ * @param {function(WebSocket|null): void} d.setConnectingSocket - Records the socket whose handshake is pending
+ * @param {function(): WebSocket|false} d.getSocketRef - The live socket (false when none)
  * @returns {function(boolean=): void}
  */
 function createTryWebSocket(d) {
@@ -62,6 +65,8 @@ function createTryWebSocket(d) {
   return function tryWebSocket(isRetry = false) {
     d.clearReconnectBackoffTimer();
     const ws = new d.WebSocketCtor(d.getSocketUrl(d.getLastResumeClientId()));
+    d.setConnectingSocket(ws); // a handshake is pending until this opens or closes
+    let opened = false;
     let fallbackTimer = null;
 
     if (!isRetry && d.getConfiguredTransport() === "auto") {
@@ -78,7 +83,11 @@ function createTryWebSocket(d) {
      * @returns {void}
      */
     ws.onopen = () => {
+      opened = true;
       d.endConnectAttempt();
+      // The connection the retry timer was waiting for is made: a retry left scheduled
+      // would fire later and open a second socket.
+      d.cancelNetworkRetry();
       if (fallbackTimer) clearTimeout(fallbackTimer);
 
       d.setReconnectBackoffAttempt(0);
@@ -127,10 +136,14 @@ function createTryWebSocket(d) {
         d.applyConnectedHandshake(data);
       }
 
-      if (queryId && d.waitingOn[queryId]) {
-        const hydratedData = await d.processIncomingData(data, err);
-        d.waitingOn[queryId](err, hydratedData);
-        delete d.waitingOn[queryId];
+      if (queryId) {
+        // A reply. Its call may already be gone (timed out, or its send failed): a late
+        // reply is dropped, never handed to the page as if the server had pushed it.
+        if (d.waitingOn[queryId]) {
+          const hydratedData = await d.processIncomingData(data, err);
+          d.waitingOn[queryId](err, hydratedData);
+          delete d.waitingOn[queryId];
+        }
         return;
       }
 
@@ -154,8 +167,16 @@ function createTryWebSocket(d) {
      * @returns {void}
      */
     ws.onclose = () => {
-      d.endConnectAttempt();
       if (fallbackTimer) clearTimeout(fallbackTimer);
+      // Only the live socket's close changes the client's state. A socket that never
+      // opened, or one that a newer socket has replaced, must not mark the client not
+      // ready, reject the live socket's pending calls or schedule a reconnect while the
+      // live socket is open.
+      if (d.getSocketRef() !== ws) {
+        if (!opened) d.endConnectAttempt(); // a handshake that failed ends its own attempt
+        return;
+      }
+      d.endConnectAttempt();
       d.setSocketRef(false);
       d.setReady(false);
 

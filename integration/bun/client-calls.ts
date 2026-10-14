@@ -108,6 +108,42 @@ const scenarios: Scenario[] = [
             assert(errors.length === 0, `an ignored queued call raised when it expired: ${errors.join('; ')}`);
         },
     },
+    {
+        name: 'a reply that arrives after its call timed out is dropped: the page never receives it as a message',
+        fixtures: { 'hello.js': hello, 'late.js': `module.exports = async function () { await new Promise((r) => setTimeout(r, 11000)); return 'too late'; };` },
+        browser: async ({ api, connectSocket, waitForState, sleep }) => {
+            await warmUp({ api, waitForState });
+            const strays: string[] = [];
+            connectSocket().setOnReceiver((m: any) => strays.push(`${m.type}:${JSON.stringify(m.data)}`));
+            const outcome = await api.late({}).then(() => 'resolved', (e: any) => e.message);
+            await sleep(1800); // the reply is on the wire by now
+            return { outcome, strays };
+        },
+        timeoutMs: 30000,
+        check: ({ result }) => {
+            assert(/Timed out/i.test(result.outcome), `the call should have timed out, got ${JSON.stringify(result.outcome)}`);
+            assert(result.strays.length === 0, `the late reply reached the page as a message: ${JSON.stringify(result.strays)}`);
+        },
+    },
+    {
+        name: 'a call whose socket refuses the send rejects at once with the socket\'s own error',
+        fixtures: { 'hello.js': hello },
+        browser: async ({ api, waitForState }) => {
+            await warmUp({ api, waitForState });
+            const proto = (globalThis as any).WebSocket.prototype;
+            const realSend = proto.send;
+            proto.send = () => { throw new Error('the socket refused the send'); };
+            const began = Date.now();
+            try {
+                const outcome = await api.hello({}).then(() => 'resolved', (e: any) => e.message);
+                return { outcome, ms: Date.now() - began };
+            } finally { proto.send = realSend; }
+        },
+        check: ({ result }) => {
+            assert(result.outcome === 'the socket refused the send', `the call got ${JSON.stringify(result.outcome)}`);
+            assert(result.ms < 1000, `the rejection took ${result.ms} ms instead of being immediate`);
+        },
+    },
 ];
 
 await runScenarios(import.meta.path, 'Calls (browser client)', scenarios);
