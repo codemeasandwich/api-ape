@@ -120,7 +120,36 @@ function createControllerContext({ sharedValues, embedValues, clientId, sessionI
   return context;
 }
 
+/**
+ * The `this` for ONE call: the connection's context with the call's own `keepalive`.
+ *
+ * Layered with `Object.create` so `this.keepalive` and `this._currentQueryId` belong to
+ * THIS call. A shared context let a second concurrent call overwrite the first one's
+ * keepalive, so the first one's frames carried the second one's queryId, and a
+ * `this.foo = x` made by one call was visible to the next. Used by the WebSocket and the
+ * HTTP long-poll paths alike, so a controller behaves the same on either transport.
+ *
+ * @param {Object} connectionContext - From `createControllerContext`
+ * @param {string} queryId - The call being served
+ * @param {function(string, boolean, boolean, boolean, boolean): void} send - The connection's
+ *   sender; called as `send(queryId, false, false, false, true)` for a keepalive
+ * @returns {Object} Context for `controller.call(context, data)`
+ */
+function createCallContext(connectionContext, queryId, send) {
+  const callContext = Object.create(connectionContext);
+  callContext._currentQueryId = queryId;
+  // Long-running controllers call this.keepalive() periodically to send a heartbeat
+  // that resets the client's RPC timeout timer without resolving the call.
+  callContext.keepalive = () => {
+    try {
+      send(queryId, false, false, false, true);
+    } catch (_) { /* socket may be closed */ }
+  };
+  return callContext;
+}
+
 module.exports = {
   getSessionId,
   createControllerContext,
+  createCallContext,
 };

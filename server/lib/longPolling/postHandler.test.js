@@ -9,6 +9,7 @@
 
 const EventEmitter = require("events");
 const { createPostHandler } = require("./postHandler");
+const jss = require("../../../utils/jss");
 
 function makeReqRes({ cookie } = {}) {
   const req = new EventEmitter();
@@ -24,7 +25,7 @@ function makeReqRes({ cookie } = {}) {
 }
 
 describe("longPolling/postHandler — non-Error throw path", () => {
-  test("controller throws a string — response uses String(err) fallback", (done) => {
+  test("controller throws a string — the response is an error frame carrying it as an Error", (done) => {
     const streamClients = new Map();
     const handle = createPostHandler(streamClients);
     const { req, res } = makeReqRes({ cookie: "apeClientId=client-x" });
@@ -38,9 +39,10 @@ describe("longPolling/postHandler — non-Error throw path", () => {
     // Simulate the response end so we can assert
     res.end.mockImplementation((body) => {
       try {
-        const parsed = JSON.parse(body);
+        const parsed = jss.parse(body);
         expect(res.writeHead).toHaveBeenCalledWith(500, expect.any(Object));
-        expect(parsed.err).toBe("string-thrown-as-error");
+        expect(parsed.err).toBeInstanceOf(Error);
+        expect(parsed.err.message).toBe("string-thrown-as-error");
         done();
       } catch (e) { done(e); }
     });

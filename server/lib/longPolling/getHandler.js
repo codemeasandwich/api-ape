@@ -40,7 +40,7 @@
 const { apeLog } = require("../../../utils/apeLogger");
 const { addClient, removeClient, updateClientEmbed } = require("../broadcast");
 const makeid = require("../../utils/genId");
-const jss = require("../../../utils/jss");
+const { errorFrame, dataFrame, keepaliveFrame } = require("../../../utils/wireError");
 const parseUserAgent = require("../../utils/parseUserAgent");
 const {
   effectiveSessionIdForRequest,
@@ -222,25 +222,29 @@ function createGetHandler(streamClients, onConnect, options = {}) {
     };
 
     /**
-     * Sends an event to the client.
+     * Sends an event to the client, as the same frames a WebSocket gets.
      * Signature matches WebSocket send for compatibility with broadcast system.
      *
-     * @param {string|null} queryId - Query ID (not used for polling, included for API compat)
+     * @param {string|null} queryId - Query ID the frame answers (null / false for a push)
      * @param {string} type - Event type (e.g., 'message', 'broadcast')
      * @param {*} data - Event payload
-     * @param {*} [err] - Optional error information
+     * @param {*} [err] - Optional error information (sent as an error frame)
+     * @param {boolean} [keepalive] - True to send `{ queryId, _keepalive: true }` instead
      */
-    const send = (queryId, type, data, err) => {
+    const send = (queryId, type, data, err, keepalive) => {
       if (!clientState.isActive) return;
 
       try {
-        // Send in SSE format: data: {...}\n\n
-        // Note: queryId is ignored for polling (it's for WS response correlation)
-        res.write(
-          "data: " +
-            jss.stringify({ type, data, err: err || undefined, queryId }) +
-            "\n\n",
-        );
+        // Same frames as the WebSocket path (utils/wireError.js): a keepalive, an
+        // error with its class / code / data and no stack, or data (`undefined` tagged).
+        // Sent in SSE format: data: {...}\n\n
+        const frame =
+          keepalive
+            ? keepaliveFrame(queryId)
+            : err
+              ? errorFrame(err, type, queryId)
+              : dataFrame(data, type, queryId);
+        res.write("data: " + frame + "\n\n");
       } catch (e) {
         /* istanbul ignore next - stream write error, requires network failure */
         cleanup();
@@ -300,7 +304,10 @@ function createGetHandler(streamClients, onConnect, options = {}) {
     // Register client with the broadcast system
     addClient({ clientId, sessionId, agent, send, embed: null });
 
-    // Add to stream clients map
+    // Add to stream clients map. The POST handler reads `send` (to push keepalives down
+    // this stream), `agent` and `embed` from here when it builds a call's context.
+    clientState.send = send;
+    clientState.agent = agent;
     streamClients.set(clientId, clientState);
 
     // Send connection acknowledgment immediately

@@ -1,5 +1,5 @@
 /**
- * @fileoverview How a failed call travels from a controller to its caller.
+ * @fileoverview How a reply travels from a controller to its caller, on every transport.
  *
  * Domain context: a controller throws; the caller's promise must reject with an
  * Error that still says what went wrong (class, message, and the `code` / `data` the
@@ -132,6 +132,31 @@ function errorFrame(thrown, type, queryId) {
 }
 
 /**
+ * Serialise a successful reply, or a push, as the same frame on every transport.
+ *
+ * JSON drops an `undefined` property, which would leave a reply with no `data` key at
+ * all; the `<!U>` tag makes the caller's `data` come back as `undefined`.
+ *
+ * @param {any} data - What the controller returned (or the pushed payload)
+ * @param {string|false|null} type - Frame `type` (false for replies)
+ * @param {string|false|null} queryId - The call being answered
+ * @returns {string} JSS text ready for `socket.send` or an SSE `data:` line
+ */
+function dataFrame(data, type, queryId) {
+  return jss.stringify(data === undefined ? { "data<!U>": 0, type, queryId } : { data, type, queryId });
+}
+
+/**
+ * The frame `this.keepalive()` sends: the call is still running; not a reply.
+ *
+ * @param {string} queryId - The running call
+ * @returns {string} JSS text ready for `socket.send` or an SSE `data:` line
+ */
+function keepaliveFrame(queryId) {
+  return jss.stringify({ queryId, _keepalive: true });
+}
+
+/**
  * Put the `code` and `data` a controller attached back on the Error a caller received.
  *
  * @param {any} err - The decoded `err` of a reply frame
@@ -146,4 +171,4 @@ function attachErrorDetails(err, frame) {
   return err;
 }
 
-module.exports = { toWireError, errorFrame, attachErrorDetails };
+module.exports = { toWireError, errorFrame, dataFrame, keepaliveFrame, attachErrorDetails };

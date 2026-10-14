@@ -622,7 +622,8 @@ Send messages to server when using HTTP streaming transport.
 
 - **Session**: Cookie-based (`apeClientId`)
 - **Body**: JSS-encoded message
-- **Response**: JSS-encoded result
+- **Response**: the same frame a WebSocket gets, JSS text: `{ data, type: false, queryId }` (`data<!U>` for a controller that returns nothing), or, with HTTP 500, `{ err, errCode?, errData?, type: false, queryId }`, and with HTTP 404 the "was not found" error. Before 4.4.0 an error was `{ err: "<message>", queryId }`, and `code` / `data` were lost.
+- **Context**: the controller's `this` is built by the same code as on a WebSocket (`this.broadcast`, `this.broadcastOthers`, `this.publish`, `this.send`, `this.clients`, embed values, a per-call `this.keepalive()` that writes `{ queryId, _keepalive: true }` to the client's open GET stream, a private `this.foo`). One difference: an `embed` that names `clientId` or `sessionId` replaces them on this transport, as it always did; on a WebSocket the connection's own win.
 
 ### How It Works
 

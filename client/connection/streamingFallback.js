@@ -74,6 +74,10 @@ export function createStreamingFallback(d) {
       streamingTransport = createStreamingTransport();
 
       streamingTransport.onMessage = async (msg) => {
+        // `this.keepalive()` on the server: the call is still running. Over streaming the
+        // reply is the POST's response and the call has no client timer to restart, so
+        // the frame is just not a message for the page.
+        if (msg._keepalive) return;
         const data = await processIncomingData(msg.data, msg.err);
         dispatchMessage(msg.type, msg.err, data);
       };

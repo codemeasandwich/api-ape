@@ -25,7 +25,7 @@ transports/
 Implements the HTTP streaming transport as a WebSocket alternative:
 
 - Opens a long-lived GET request to `/api/ape/poll` for receiving events
-- Sends client messages via POST requests to `/api/ape/poll`
+- Sends client messages via POST requests to `/api/ape/poll`; a failed call rejects with what the controller threw (class, message, `err.code`, `err.data`) exactly as over a WebSocket: the 404 / 500 body is the same JSS error frame (an old server's `{ "error": "..." }` body, or none, becomes an `Error` with that message or `Request failed: <status>`)
 - Handles automatic reconnection when streams close (every ~25 seconds)
 - Manages session identity via `apeClientId` cookie
 - Provides the same event interface as the WebSocket transport

@@ -36,7 +36,7 @@ connection/
 
 ### `streamingFallback.js`
 
-`createStreamingFallback(deps)` owns the HTTP streaming transport and the periodic WebSocket-upgrade retry, extracted from `connectSocket.js`. `switchToStreaming()` starts the fallback; the shared connection state is reached through the accessors it is given.
+`createStreamingFallback(deps)` owns the HTTP streaming transport and the periodic WebSocket-upgrade retry, extracted from `connectSocket.js`. `switchToStreaming()` starts the fallback; the shared connection state is reached through the accessors it is given. A `_keepalive` frame arriving on the stream is dropped (it is not a message for the page). Calls made once the fallback is connected go to the streaming transport's POST (`connectSocket.js` picks the sender by `currentTransport`); before 4.4.0 they were handed to the WebSocket sender and failed with `getSocket().send is not a function`.
 
 ### `proxy.js`
 

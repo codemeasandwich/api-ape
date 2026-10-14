@@ -69,6 +69,8 @@ import { apeLog } from "../../utils/apeLogger.js";
 import jss from "../../utils/jss";
 import { parseStreamBuffer } from "./streamParser";
 
+const { attachErrorDetails } = require("../../utils/wireError");
+
 /**
  * Build the polling endpoint URL based on current page location
  *
@@ -378,13 +380,19 @@ function createStreamingTransport() {
    * }
    * ```
    *
-   * or on error:
+   * or on error (HTTP 404 / 500; the same frame a WebSocket gets, JSS text, so the
+   * Error keeps its class and message and `code` / `data` come back as `err.code` /
+   * `err.data`):
    *
    * ```json
    * {
-   *   "error": "Error message"
+   *   "err<!E>": ["TypeError", "wrong type", "TypeError: wrong type"],
+   *   "errCode": "WRONG"
    * }
    * ```
+   *
+   * A 401 (no session yet) or a proxy's own error page carries `{ "error": "..." }` or
+   * no JSON at all; those become an `Error` with that message or `Request failed: <status>`.
    *
    * @async
    * @param {string} type - The message type/endpoint path (e.g., '/chat')
@@ -422,14 +430,21 @@ function createStreamingTransport() {
       body: jss.stringify(payload),
     });
 
-    if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ error: "Unknown error" }));
-      throw new Error(error.error || `Request failed: ${response.status}`);
+    const text = await response.text();
+    let frame;
+    try {
+      frame = jss.parse(text);
+    } catch (_) {
+      frame = {}; // a proxy's HTML error page, an empty body ...
     }
 
-    return jss.parse(await response.text()).data;
+    if (!response.ok) {
+      // As over a WebSocket: whatever the controller threw (an Error, or a plain value) rejects the call.
+      if (frame.err !== undefined) throw attachErrorDetails(frame.err, frame);
+      throw new Error(frame.error || `Request failed: ${response.status}`);
+    }
+
+    return frame.data;
   }
 
   /**

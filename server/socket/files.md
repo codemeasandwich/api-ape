@@ -80,6 +80,7 @@ Controller context factory that creates the `this` binding for controllers:
 - Provides `broadcast()` and `broadcastOthers()` for messaging all clients (declared before the app's `embed`, so an app's own `broadcast` wins)
 - Provides `publish()` for pub/sub channel messaging
 - Exposes `clientId`, `sessionId`, and `clients` Map
+- `createCallContext(connectionContext, queryId, send)` layers ONE call's `keepalive` (and `_currentQueryId`) over the connection's context; the WebSocket receive handler and the HTTP long-poll POST handler both use it, so a controller behaves the same on either transport
 - When auth is configured, adds `isAuthenticated`, `authTier`, `principal`, and `requiresTier()`
 
 ### `tagUtils.js`

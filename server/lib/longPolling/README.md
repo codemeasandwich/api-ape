@@ -35,6 +35,8 @@ The transport is transparent to application code—controllers work identically 
 └─────────────────────────────────────────────────────────────┘
 ```
 
+A POST is answered with the same frame a WebSocket would send: `{ data, type: false, queryId }`, or for a controller that throws, HTTP 500 and `{ err, errCode?, errData?, type: false, queryId }` (JSS text; the Error keeps its class and message, `code` / `data` follow the rules in the server README, no server stack). An unknown endpoint is HTTP 404 with the same "was not found" error as over a WebSocket. A `this.keepalive()` in the controller is written to the client's open GET stream as `{ queryId, _keepalive: true }`.
+
 ## Response Headers
 
 The GET handler sets these headers for proper streaming:

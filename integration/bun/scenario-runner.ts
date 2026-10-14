@@ -21,6 +21,8 @@
  */
 
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
+import http from 'http';
+import { once } from 'events';
 import { tmpdir } from 'os';
 import { dirname, join, resolve } from 'path';
 
@@ -85,6 +87,14 @@ export interface Scenario {
     fetch?: (req: Request) => Response | undefined;
     /** Start with the server down; the page starts first and the scenario brings the server up. */
     startDown?: boolean;
+    /**
+     * Which server runs `apeBun()` ('bun', the default: a `Bun.serve`) or `ape()` on a Node
+     * `http.Server` ('node': the one with the HTTP long-poll / streaming path, which
+     * `apeBun()` does not have).
+     */
+    server?: 'bun' | 'node';
+    /** The page's `WebSocket` fails at once, as behind a proxy that blocks upgrades: the client falls back to HTTP streaming. */
+    noWebSocket?: boolean;
     /** Give the child this long before it is killed. Default 20 s. */
     timeoutMs?: number;
 }
@@ -126,6 +136,33 @@ async function runChild(scenarios: Scenario[], index: number, port: number): Pro
     g.location = { protocol: 'http:', hostname: 'localhost', port: String(port), host: `localhost:${port}` };
     g.navigator = { onLine: true };
     g.addEventListener = () => {};
+    // A browser keeps cookies between requests; the HTTP streaming transport depends on
+    // the `apeClientId` cookie the server sets on the first GET. Minimal jar, name=value only.
+    const jar = new Map<string, string>();
+    const nativeFetch = g.fetch.bind(g);
+    g.fetch = async (input: any, init: any = {}) => {
+        const headers = new Headers(init.headers ?? {});
+        if (jar.size) headers.set('Cookie', [...jar].map(([k, v]) => `${k}=${v}`).join('; '));
+        const response = await nativeFetch(input, { ...init, headers });
+        for (const line of response.headers.getSetCookie?.() ?? []) {
+            const [pair] = line.split(';');
+            const eq = pair.indexOf('=');
+            jar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+        }
+        return response;
+    };
+    if (scenarios[index].noWebSocket) {
+        // Constructed, then refused on the next tick: what a proxy that blocks upgrades looks like.
+        g.WebSocket = class {
+            static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3;
+            readyState = 0;
+            onerror: (() => void) | null = null;
+            onclose: (() => void) | null = null;
+            constructor() { setTimeout(() => { this.readyState = 3; this.onerror?.(); this.onclose?.(); }, 0); }
+            close() {}
+            send() {}
+        };
+    }
 
     const errors: string[] = [];
     process.on('unhandledRejection', (e: any) => { errors.push(`unhandled rejection: ${e?.message ?? e}`); });
@@ -213,31 +250,49 @@ export async function runScenarios(file: string, title: string, scenarios: Scena
         }
         let connects = 0;
         let ape: any;
+        const onConnect = () => { connects++; return {}; };
+        const nodeServer = scenario.server === 'node';
         try {
-            ape = apeBun({
-                where: dir, urlPrefix: 'api', selector: scenario.selector,
-                ...scenario.apeOptions,
-                onConnect: () => { connects++; return {}; },
-            });
+            if (nodeServer) {
+                // ape() keeps one instance per process; a scenario starts from a clean slate.
+                const main = require(resolve(ROOT, 'server/lib/main.js'));
+                main._resetForTesting();
+                (await import(resolve(ROOT, 'utils/apeLogger.js'))).configureApeLogging(false);
+                ape = main;
+            } else {
+                ape = apeBun({
+                    where: dir, urlPrefix: 'api', selector: scenario.selector,
+                    ...scenario.apeOptions,
+                    onConnect,
+                });
+            }
         } catch (e: any) {
             failures++;
             console.log(`  FAIL ${scenario.name}\n       the server did not start: ${String(e.message).split('\n')[0]}`);
             rmSync(dir, { recursive: true, force: true });
             continue;
         }
+        let nodeApe: any;
+        const bootNode = async (port: number) => {
+            const srv = http.createServer((req, res) => { res.statusCode = 404; res.end('not found'); });
+            nodeApe = ape(srv, { where: dir, urlPrefix: 'api', selector: scenario.selector, ...scenario.apeOptions, onConnect });
+            srv.listen(port, '127.0.0.1');
+            await once(srv, 'listening');
+            return { port: (srv.address() as any).port as number, stop: () => { nodeApe?.wss?.close(); srv.closeAllConnections?.(); srv.close(); } };
+        };
         const boot = (port: number) => Bun.serve({
             port,
             fetch(req, srv) { return scenario.fetch?.(req) ?? ape.fetch(req, srv) ?? new Response('not found', { status: 404 }); },
             websocket: ape.websocket,
         });
-        let server = boot(0);
-        const port = server.port;
+        let server: { port: number | undefined; stop: (force?: boolean) => void } = nodeServer ? await bootNode(0) : boot(0);
+        const port = server.port as number;
         const ctl: ServerControl = {
             port, dir,
             get connects() { return connects; },
             publish: (channel, data) => publish(channel, data),
             stop: () => server.stop(true),
-            start: () => { server = boot(port); },
+            start: () => { if (nodeServer) void bootNode(port).then((s) => { server = s; }); else server = boot(port); },
         };
 
         if (scenario.startDown) server.stop(true);
@@ -283,7 +338,7 @@ export async function runScenarios(file: string, title: string, scenarios: Scena
             console.log(`  FAIL ${scenario.name}\n       ${String(e.message).replace(/\n/g, '\n       ')}`);
         } finally {
             server.stop(true);
-            ape.close();
+            (nodeServer ? nodeApe?.core?.close?.() : ape.close());
             rmSync(dir, { recursive: true, force: true });
         }
     }

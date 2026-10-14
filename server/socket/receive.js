@@ -20,7 +20,7 @@ const {
 } = require("./tagUtils");
 const { processPluginReceive, findPluginTags } = require("./pluginHooks");
 const { getAllPlugins } = require("../../utils/jss/plugins");
-const { getSessionId, createControllerContext } = require("./receiveContext");
+const { getSessionId, createControllerContext, createCallContext } = require("./receiveContext");
 const { createAuthMessageHandler } = require("../security/auth/handlers/auth-messages");
 const { isAuthMessage } = require("../security/auth");
 
@@ -174,21 +174,9 @@ module.exports = function receiveHandler(ape) {
 
           checkReply(queryId, createdAt);
 
-          // Each call runs on its own context layered over the connection's
-          // (`Object.create(that)`), so `this.keepalive` and `this._currentQueryId`
-          // belong to THIS call. A shared context let a second concurrent call
-          // overwrite the first one's keepalive, so the first one's frames then
-          // carried the second one's queryId.
-          // Long-running controllers (e.g., sessions/message with stream:false)
-          // call this.keepalive() periodically to send a heartbeat that resets the
-          // client's RPC timeout timer without resolving the call.
-          const callContext = Object.create(that);
-          callContext._currentQueryId = queryId;
-          callContext.keepalive = () => {
-            try {
-              send(queryId, false, false, false, true);
-            } catch (_) { /* socket may be closed */ }
-          };
+          // Each call runs on its own context layered over the connection's, so
+          // `this.keepalive` belongs to THIS call (see createCallContext).
+          const callContext = createCallContext(that, queryId, send);
 
           resolve(controller.call(callContext, processedData));
         } catch (err) {

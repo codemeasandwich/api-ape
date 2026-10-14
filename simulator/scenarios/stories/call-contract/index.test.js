@@ -66,7 +66,7 @@ describe("Call contract", () => {
 
   beforeEach(() => {
     jest.resetModules();
-    harness = new Harness({ basePort: 36000, connectTimeout: 10000 });
+    harness = new Harness({ basePort: 38000, connectTimeout: 10000 });
   });
 
   afterEach(async () => {

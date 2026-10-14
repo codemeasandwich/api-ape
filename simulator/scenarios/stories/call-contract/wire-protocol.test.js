@@ -39,7 +39,7 @@ describe("Wire protocol", () => {
 
   beforeEach(async () => {
     jest.resetModules();
-    harness = new Harness({ basePort: 36500, connectTimeout: 10000 });
+    harness = new Harness({ basePort: 38500, connectTimeout: 10000 });
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "ape-protocol-"));
     for (const [name, source] of Object.entries(CONTROLLERS)) fs.writeFileSync(path.join(dir, name), source);
     server = await harness.createServer({ where: dir, apeOptions: { urlPrefix: "proto" } });

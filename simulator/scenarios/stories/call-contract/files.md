@@ -16,6 +16,7 @@ call-contract/
 ├── files.md        # This file
 ├── hostile-peer.test.js   # What a stranger's frames can make a server do
 ├── index.test.js   # The stories
+├── long-poll.test.js   # A call over HTTP (SSE stream + POST) behaves as over a WebSocket
 ├── raw-client.js   # Raw-socket client that records every frame
 └── wire-protocol.test.js  # The documented wire protocol, spoken with api-ape/jss and api-ape/messageHash
 ```
@@ -29,6 +30,10 @@ The call-contract stories (keepalive, identical calls, replies, errors and what 
 ### `hostile-peer.test.js`
 
 Security stories with a raw WebSocket peer against a real server: an error tag naming `Worker`, `WebSocket`, `XMLHttpRequest`, `EventSource`, `Function`, `Proxy` or `__proto__` constructs nothing; a call to an inherited name (`valueOf`, `constructor`, `__proto__`) is not found like any unknown endpoint; a pointer cannot hand a controller `Function` or `Object`; an upload field path through `constructor.prototype` (or through a text value) is refused instead of changing `Object.prototype`.
+
+### `long-poll.test.js`
+
+The HTTP long-poll path spoken with plain `fetch`: the reply frame (with `undefined` tagged), a 500 carrying the Error with its code and data and no stack, an unserialisable thrown value, 404 for unknown and inherited endpoint names (same message as a WebSocket), 401 without a session, a call with no open stream, `this.keepalive()` / `this.broadcast` / `this.send` (including an error push) arriving on the open stream, and an embed that names `clientId` / `sessionId`.
 
 ### `wire-protocol.test.js`
 

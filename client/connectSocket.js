@@ -359,6 +359,21 @@ async function attemptConnection() {
   configuredTransport === "polling" ? switchToStreaming() : tryWebSocket(false);
 }
 
+// Over HTTP streaming a call is a POST on the streaming transport, not a frame on a socket
+// (before 4.4.0 every call after the first one went to the WebSocket sender and failed
+// with "getSocket().send is not a function").
+/**
+ * Send one call over the HTTP streaming transport (a POST).
+ *
+ * @param {string} type - Endpoint
+ * @param {any} data - Payload
+ * @param {number} createdAt - When the call was made
+ * @returns {Promise<any>} The reply data
+ * @private
+ */
+const streamingSend = (type, data, createdAt) =>
+  fallback.getStreamingTransport().send(type, data, createdAt);
+
 /**
  * Create the sender function with current connection state
  * @type {function(string, any): Promise<any>}
@@ -366,7 +381,7 @@ async function attemptConnection() {
  */
 const sender = createSender(
   () => ready,
-  () => wsSend,
+  () => (currentTransport === "polling" ? streamingSend : wsSend),
   aWaitingSend,
   connectSocket,
 );

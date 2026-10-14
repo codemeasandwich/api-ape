@@ -68,7 +68,7 @@ describe("Hostile peer", () => {
       };
       Object.defineProperty(global, name, { value: Spy, configurable: true, writable: true });
     }
-    harness = new Harness({ basePort: 36800, connectTimeout: 10000 });
+    harness = new Harness({ basePort: 39000, connectTimeout: 10000 });
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "ape-hostile-"));
     for (const [name, source] of Object.entries(CONTROLLERS)) fs.writeFileSync(path.join(dir, name), source);
     server = await harness.createServer({ where: dir, apeOptions: { urlPrefix: "hostile" } });

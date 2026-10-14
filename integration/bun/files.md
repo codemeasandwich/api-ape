@@ -21,6 +21,7 @@ bun/
 ├── client-keepalive.ts  # Keepalive user stories through the real browser client
 ├── client-connect.ts    # Connection user stories (one socket per page, restart recovery, captive portal)
 ├── client-calls.ts      # Call user stories (identical calls, awaited calls, errors)
+├── client-streaming.ts  # HTTP streaming transport (WebSockets blocked): errors, context, keepalive
 ├── client-api.ts        # Page API: nested api.dir.thing(), early subscribe, api.on, transport
 ├── client-errors.ts     # Errors (class, code, data) and controller files (export default, .d.ts, tests)
 └── options.ts           # apeBun options: unsupported auth options throw, typos warn, logging honoured
@@ -42,7 +43,7 @@ The decoder as a security boundary under real Bun: a raw peer sends a frame whos
 
 ### `scenario-runner.ts`
 
-Shared runner for scenarios that need the REAL browser client. The browser client is a process-wide singleton, so the runner starts `Bun.serve` + `apeBun()` in the parent, runs the page half of each scenario in a child `bun` with `window`/`document`/`location`/`navigator` shimmed, and hands both views to the scenario's `check`. A scenario file calls `runScenarios(import.meta.path, title, scenarios)`. `APE_ROOT=/other/checkout` runs the same scenarios against another api-ape checkout; `ONLY=<substring>` runs matching scenarios.
+Shared runner for scenarios that need the REAL browser client. The browser client is a process-wide singleton, so the runner starts `Bun.serve` + `apeBun()` in the parent, runs the page half of each scenario in a child `bun` with `window`/`document`/`location`/`navigator` shimmed, and hands both views to the scenario's `check`. A scenario file calls `runScenarios(import.meta.path, title, scenarios)`. `APE_ROOT=/other/checkout` runs the same scenarios against another api-ape checkout; `ONLY=<substring>` runs matching scenarios. `Scenario.server: 'node'` serves `ape()` on a Node `http.Server` instead (the only server with the HTTP long-poll path), `Scenario.noWebSocket` makes the page's WebSocket fail at once (the client falls back to HTTP streaming), and the page has a minimal cookie jar so the `apeClientId` cookie the streaming transport relies on is kept.
 
 ### `client-keepalive.ts`
 
@@ -55,6 +56,10 @@ Connection stories through the real browser client: a page that makes calls befo
 ### `client-calls.ts`
 
 Call stories through the real browser client: five identical calls in the same millisecond each get their own reply (per-client `nonce`); a controller that returns nothing resolves `undefined`; a call the server never answers times out after 10 s; `.then(ok, err)` receives the error; a failed or expired call nobody looks at raises no unhandled rejection or uncaught exception (the runner reports those as `errors`).
+
+### `client-streaming.ts`
+
+The HTTP streaming transport through the real browser client against `ape()` on a Node `http.Server` (`Scenario.server: 'node'`; `apeBun()` has no long-poll path) with the page's WebSocket refused (`Scenario.noWebSocket`): calls before and after the page has connected, a TypeError with its message, `err.code` / `err.data` and no server paths, a thrown string and a thrown plain object (no stack), unknown and inherited endpoint names, `undefined` replies, `this.broadcast` / `this.broadcastOthers`, `this.keepalive()` (no stray message reaches the page) and a private `this.foo` per call.
 
 ### `client-api.ts`
 

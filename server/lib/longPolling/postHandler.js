@@ -49,8 +49,9 @@
  * console.log('Response:', result.data)
  */
 
-const { clients } = require("../broadcast");
 const jss = require("../../../utils/jss");
+const { errorFrame, dataFrame } = require("../../../utils/wireError");
+const { createControllerContext, createCallContext } = require("../../socket/receiveContext");
 const messageHash = require("../../../utils/messageHash");
 const { hasOwn } = require("../../../utils/safeKeys");
 
@@ -108,6 +109,19 @@ function getClientId(req) {
 function sendJson(res, statusCode, data) {
   res.writeHead(statusCode, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
+}
+
+/**
+ * Send an already-serialised JSS frame as the HTTP response.
+ *
+ * @param {http.ServerResponse} res - Response to write
+ * @param {number} statusCode - 200 for a reply, 404 / 500 for an error frame
+ * @param {string} frame - JSS text from `dataFrame` / `errorFrame`
+ * @returns {void}
+ */
+function sendFrame(res, statusCode, frame) {
+  res.writeHead(statusCode, { "Content-Type": "application/json" });
+  res.end(frame);
 }
 
 /**
@@ -246,15 +260,15 @@ function createPostHandler(streamClients) {
         // Normalize the type (remove leading slash)
         const type = rawType.replace(/^\//, "");
 
-        // Look up the controller
+        // Look up the controller. Own endpoints only: `type` is peer text, and
+        // `valueOf` / `constructor` are not controllers just because objects inherit them.
         const controller = hasOwn(controllers, type) ? controllers[type] : undefined;
         if (!controller) {
-          return sendJson(res, 404, {
-            error: `Controller "${type}" not found`,
-          });
+          // The same error a WebSocket caller gets for an unknown endpoint.
+          return sendFrame(res, 404, errorFrame(`TypeError: "${type}" was not found`, false, queryId));
         }
 
-        // Get client state for embed values
+        // Get client state for embed values and the stream to push keepalives on
         const clientState = streamClients.get(clientId);
         const embedValues = clientState?.embed || {};
 
@@ -264,37 +278,35 @@ function createPostHandler(streamClients) {
         );
         const sessionId = sessionIdMatch ? sessionIdMatch[1] : null;
 
-        /**
-         * Build the controller context.
-         * This matches the WebSocket handler context for consistency.
-         * @type {ControllerContext}
-         */
-        const context = {
-          // Core identifiers (can be overridden by embed)
-          clientId,
-          sessionId,
-
-          // Spread embed values - these take priority over defaults
-          ...embedValues,
-
-          // Request object for advanced use cases
-          req,
-
-          // Access to all connected clients
-          clients,
-        };
+        // The same context the WebSocket path builds (broadcast, broadcastOthers,
+        // publish, clients, embed ...), and the same per-call layer (keepalive, a
+        // private `this.foo`), so a controller behaves the same on either transport.
+        // A keepalive is written to the client's SSE stream; the reply is this response.
+        const toStream = clientState ? clientState.send : () => {};
+        const connection = createControllerContext({
+          sharedValues: {
+            req,
+            agent: clientState?.agent,
+            send: (sendType, sendData, sendErr) => toStream(false, sendType, sendData, sendErr),
+          },
+          embedValues,
+          // On this transport an embedded clientId / sessionId has always won (a
+          // WebSocket's own identifiers win instead); keep that.
+          clientId: hasOwn(embedValues, "clientId") ? embedValues.clientId : clientId,
+          sessionId: hasOwn(embedValues, "sessionId") ? embedValues.sessionId : sessionId,
+        });
+        const context = createCallContext(connection, queryId, toStream);
 
         // Invoke the controller with context as 'this'
         const result = await controller.call(context, data);
 
-        // Send successful response using JSS for rich type support
-        // Include queryId so client can match response to pending request
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(jss.stringify({ data: result, queryId }));
+        // Same frame as a WebSocket reply (`undefined` answers with `data<!U>`),
+        // with the queryId so the client can match it to the pending request.
+        sendFrame(res, 200, dataFrame(result, false, queryId));
       } catch (err) {
-        // Controller threw an error - include queryId for proper error handling
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(jss.stringify({ err: err.message || String(err), queryId }));
+        // Same frame as a WebSocket error reply: the Error with its class and message,
+        // `errCode` / `errData` beside it, no server stack. See utils/wireError.js.
+        sendFrame(res, 500, errorFrame(err, false, queryId));
       }
     });
 

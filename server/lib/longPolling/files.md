@@ -26,7 +26,7 @@ longPolling/
 Creates the HTTP GET handler for streaming server-to-client events:
 
 - Holds HTTP connection open with streaming headers
-- Sends JSON events to the response stream as they occur
+- Sends JSON events to the response stream as they occur, as the same frames a WebSocket gets (reply, error with its class/code/data and no stack, `_keepalive`); keeps `send`, `agent` and `embed` on the client's state for the POST handler
 - Emits heartbeat every 20 seconds to keep connection alive
 - Closes connection after 25 seconds (client automatically reconnects)
 - Manages client identity via `apeClientId` cookie (HTTP LP channel)
@@ -41,5 +41,6 @@ Creates the HTTP POST handler for client-to-server messages:
 - Parses JSON body with JSS encoding support (Date, Set, Map, etc.)
 - Validates client session from `apeClientId` cookie
 - Routes messages to appropriate controllers based on `type` field
-- Returns controller response in JSON format
-- Provides same controller context (`this`) as WebSocket handlers
+- Answers with the same frames a WebSocket sends (`dataFrame` / `errorFrame` from `utils/wireError.js`): 200 with `{ data, queryId }`, 500 with the thrown Error, `errCode` and `errData`, 404 with `TypeError: "x" was not found`; only the 401 (no session) is still `{ error }`
+- Builds the controller context with the same `createControllerContext` + `createCallContext` as the WebSocket path (`this.broadcast`, `this.broadcastOthers`, `this.publish`, `this.send`, `this.clients`, embed, per-call `this.keepalive()` written to the GET stream)
+- Looks the endpoint up with `hasOwn`, so `valueOf` / `constructor` are not endpoints

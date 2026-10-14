@@ -81,8 +81,7 @@
  */
 
 const { apeLog } = require("../../utils/apeLogger");
-const jss = require("../../utils/jss");
-const { errorFrame } = require("../../utils/wireError");
+const { errorFrame, dataFrame, keepaliveFrame } = require("../../utils/wireError");
 const { FileTransferManager } = require("../lib/fileTransfer");
 const { processPluginSend } = require("./pluginHooks");
 const { getAllPlugins } = require("../../utils/jss/plugins");
@@ -401,7 +400,7 @@ module.exports = function sendHandler({
     if (_keepalive && queryId) {
       try {
         checkSocketState(socket);
-        socket.send(jss.stringify({ queryId, _keepalive: true }));
+        socket.send(keepaliveFrame(queryId));
       } catch (_) { /* socket may be closed */ }
       return;
     }
@@ -496,16 +495,8 @@ module.exports = function sendHandler({
         onFinish(err, true);
       }
     } else {
-      // Data message
-      // JSON drops an `undefined` property, which would leave a reply with no data
-      // key at all; the `<!U>` tag makes the caller's `data` come back as `undefined`.
-      socket.send(
-        jss.stringify(
-          processedData === undefined
-            ? { "data<!U>": 0, type, queryId }
-            : { data: processedData, type, queryId },
-        ),
-      );
+      // Data message (`undefined` is tagged so the caller's `data` is `undefined`)
+      socket.send(dataFrame(processedData, type, queryId));
 
       /* istanbul ignore next 3 - onFinish callback for data, needs onSend hook */
       if (typeof onFinish === "function") {

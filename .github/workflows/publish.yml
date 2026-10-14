@@ -117,6 +117,10 @@ jobs:
         if: matrix.runtime == 'bun'
         run: bun run integration/bun/client-api.ts
 
+      - name: Run Bun browser-client HTTP streaming integration
+        if: matrix.runtime == 'bun'
+        run: bun run integration/bun/client-streaming.ts
+
       - name: Run Bun browser-client errors and controller files integration
         if: matrix.runtime == 'bun'
         run: bun run integration/bun/client-errors.ts
