@@ -1,18 +1,33 @@
-# Bun Integration Tests
+# Bun Integration Tests Files
 
-Tests api-ape running in Bun with the native `Bun.serve()` API.
+Tests that run api-ape under the real Bun runtime (`Bun.serve`). They are run by CI (`.github/workflows/publish.yml`, Bun job) and by `npm run test:bun` in `integration/`.
+
+## Guidelines
+
+- **Real runtime only** — These scripts need Bun; the Jest suite covers the same logic on Node with fakes
+- **No fixed ports** — Use `port: 0` so runs never collide
+- **Prove the failure** — `APE_ROOT=/path/to/older/checkout bun integration/bun/security.ts` runs the same checks against another api-ape checkout, to confirm the tests fail on old code
+- **Clean up** — Temporary controller directories are removed and servers stopped before exit
 
 ## Directory Structure
 
 ```
 bun/
-└── run.ts
+├── run.ts          # Core RPC scenarios over Bun.serve (shared scenarios)
+├── security.ts     # Origin, headers, keepalive, Bun idle timeout/pings
+└── hot-reload.ts   # Opt-in hot reload: default off, watch.paths coherent, documented limit
 ```
 
 ## Files
 
 ### `run.ts`
 
-Entry point for the Bun integration tests. It mounts `apeBun()` over `integration/test-api`, runs the shared scenarios (WebSocket connection, RPC calls, binary transfer, broadcasts, error handling), then checks the `selector` option: with `selector: ['js', 'ts']` the TypeScript controller in `integration/test-api-ts` answers, and with the default selector it is ignored.
+Entry point for the core Bun integration tests. Mounts `apeBun()` over `integration/test-api`, runs the shared scenarios (WebSocket connection, RPC calls, binary transfer, broadcasts, error handling), then checks the `selector` option: with `selector: ['js', 'ts']` the TypeScript controller in `integration/test-api-ts` answers, and with the default selector it is ignored.
 
-Run with: `bun integration/bun/run.ts`
+### `security.ts`
+
+Origin check (exact host:port accepted, another port and a foreign domain refused with 403, no Origin accepted, `allowedOrigins`, `allowedHosts`); headers reaching controllers (`cookie`, `sessionId`, `x-ape-session-id`, user agent, `headers.get`, peer address); `this.keepalive()` frames; `GET /ape/ping`; Bun `idleTimeout` with and without `sendPings`.
+
+### `hot-reload.ts`
+
+Without `watch` an edit changes nothing; with `watch.paths` a service module and every controller importing it reload together (including a controller whose file did not change); with `watch: true` alone a module outside the controller directory stays cached (the documented limit).
