@@ -149,25 +149,27 @@ describe("send handler — JSS plugin path", () => {
 });
 
 describe("send handler — error frames", () => {
-  // Scenario: send an error response to a query. Frame must include `err`
-  // with `err.message` (or the string form if no message).
-  test("error with .message uses err.message", () => {
+  // Scenario: send an error response to a query. The frame carries the Error
+  // itself (JSS), with its name and message.
+  test("an Error is sent as an Error with its name and message", () => {
     const ape = makeApe();
     const send = sendHandlerFactory(ape);
-    send("Q-err", null, null, new Error("nope"));
-    const sent = JSON.parse(ape.socket.send.mock.calls[0][0]);
-    expect(sent.err).toBe("nope");
+    send("Q-err", null, null, new RangeError("nope"));
+    const sent = require("../../utils/jss").parse(ape.socket.send.mock.calls[0][0]);
+    expect(sent.err).toBeInstanceOf(RangeError);
+    expect(sent.err.message).toBe("nope");
     expect(sent.queryId).toBe("Q-err");
   });
 
-  // Scenario: send a non-Error err (e.g. throw "string"). The
-  // `err.message || err` short-circuit's RHS engages.
-  test("error without .message uses the err value directly", () => {
+  // Scenario: send a non-Error err (e.g. throw "string"): it arrives as an Error
+  // carrying the string.
+  test("a string is sent as an Error carrying the string", () => {
     const ape = makeApe();
     const send = sendHandlerFactory(ape);
     send("Q-err2", null, null, "plain-string-error");
-    const sent = JSON.parse(ape.socket.send.mock.calls[0][0]);
-    expect(sent.err).toBe("plain-string-error");
+    const sent = require("../../utils/jss").parse(ape.socket.send.mock.calls[0][0]);
+    expect(sent.err).toBeInstanceOf(Error);
+    expect(sent.err.message).toBe("plain-string-error");
   });
 });
 

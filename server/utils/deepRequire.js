@@ -127,6 +127,30 @@ function getFilesFromDir(dir, fileTypes) {
  * @private
  * @type {RegExp}
  */
+/**
+ * Turn what a controller file exports into the function that serves its endpoint.
+ *
+ * Accepts `module.exports = fn` and a function `default` (`export default fn`,
+ * transpiled to `exports.default`). Anything else stops startup, naming the file:
+ * a non-function endpoint would otherwise fail at the first call with
+ * "controller.call is not a function".
+ *
+ * @param {any} exported - The value `require()` returned for the file
+ * @param {string} endpoint - Endpoint the file serves
+ * @param {string} file - File path relative to the controller directory
+ * @returns {Function} The controller function
+ * @throws {Error} If the file exports neither a function nor a function `default`
+ */
+function asController(exported, endpoint, file) {
+  if (typeof exported === "function") return exported;
+  if (exported && typeof exported.default === "function") return exported.default;
+  const found = exported === null ? "null" : typeof exported;
+  throw new Error(
+    `🦍 Endpoint "${endpoint}" (${file}) must export a function, found ${found}.\n` +
+      `   Use \`module.exports = function (data) { ... }\` or \`export default function (data) { ... }\`.`,
+  );
+}
+
 const re = /(?:\.([^.]+))?$/;
 
 /**
@@ -140,6 +164,10 @@ const re = /(?:\.([^.]+))?$/;
 function computeEndpoint(file) {
   // Skip root index.js (typically re-exports or setup)
   if (file === "/index.js") return null;
+
+  // Skip type declarations (thing.d.ts) and test files (thing.test.js, thing.spec.ts):
+  // they live next to controllers but are not endpoints.
+  if (/\.d\.[cm]?ts$/.test(file) || /\.(test|spec)\.[^/.]+$/.test(file)) return null;
 
   // Skip underscore-prefixed files/directories (private/internal modules)
   if (file.includes("/_")) return null;
@@ -257,7 +285,7 @@ module.exports = function (dirname, selector, options = {}) {
 
       // Track source for error messages and load the module
       endpointSources[endpoint] = file;
-      loaded[endpoint] = require(dirname + `/${file}`);
+      loaded[endpoint] = asController(require(dirname + `/${file}`), endpoint, file);
     });
     return loaded;
   }

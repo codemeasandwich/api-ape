@@ -10,6 +10,8 @@
  * @module client/connectSocket-tryWs
  */
 
+const { attachErrorDetails } = require("../utils/wireError");
+
 /**
  * Factory that returns `tryWebSocket(isRetry)` bound to shared browser transport state.
  *
@@ -109,7 +111,10 @@ function createTryWebSocket(d) {
      * @returns {Promise<void>}
      */
     ws.onmessage = async (event) => {
-      const { err, type, queryId, data, _keepalive } = d.jss.parse(event.data);
+      const frame = d.jss.parse(event.data);
+      const { type, queryId, data, _keepalive } = frame;
+      // Error replies carry the Error plus `code`/`data` beside it (utils/wireError.js).
+      const err = attachErrorDetails(frame.err, frame);
 
       // `this.keepalive()` on the server: restart that call's timeout and wait on.
       // It is never the reply and never a broadcast.

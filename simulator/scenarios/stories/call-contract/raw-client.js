@@ -16,11 +16,12 @@ const messageHash = require("../../../../utils/messageHash");
  * Open a raw socket to a harness server and collect every frame it sends.
  *
  * @param {{wsUrl: string, apiPath: string}} server - Harness server instance
+ * @param {string} [prefix=server.apiPath] - URL prefix the server was mounted under (`urlPrefix`)
  * @returns {Promise<{frames: Array<Object>, call: function(string, any): string, framesFor: function(string): Array<Object>, reply: function(string, number=): Promise<Object>, close: function(): void}>}
  *   Client with `call(type, data)` returning the queryId, `framesFor(queryId)`, and `reply(queryId)`
  */
-async function connectRaw(server) {
-  const ws = new WebSocket(`${server.wsUrl}/${server.apiPath}/ape`);
+async function connectRaw(server, prefix = server.apiPath) {
+  const ws = new WebSocket(`${server.wsUrl}/${prefix}/ape`);
   const frames = [];
   ws.on("message", (raw) => frames.push(jss.parse(raw.toString())));
   await new Promise((resolve, reject) => {

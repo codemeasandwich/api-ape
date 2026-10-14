@@ -103,7 +103,7 @@ If you ever need to send a function-shaped payload (you don't, JSON can't carry 
 ## 4. RPC calls
 
 ```js
-// Fire and forget (don't do this — see lazy-timeout below)
+// Fire and forget (fine for beacons; nothing to wait for — see Timeouts below)
 api.metrics.beacon({ event: 'page-view' })
 
 // Await response
@@ -113,21 +113,25 @@ const user = await api.users.get({ id: 42 })
 try {
   await api.payments.charge({ amount, currency })
 } catch (err) {
-  // err is the server-thrown error string, or a timeout/disconnect error
+  // err is an Error: the class the controller threw (err.name, err.message), plus
+  // err.code / err.data when the controller attached them; or a timeout/disconnect Error
+  if (err.code === 'CARD_DECLINED') showDeclined(err.data)
 }
 
-// Path suffix (e.g. resource id)
-const profile = await api.users(`/${userId}/profile`)
+// Dynamic path segment: bracket access
+const profile = await api.users[userId].profile()
 ```
 
-### Lazy timeout — the #1 gotcha
+### Timeouts
 
-Internally each RPC starts a timer **only when you attach `.then` / `.catch` / `await`**. If you fire-and-forget, no timeout will ever fire — the message either gets sent on connect or sits in the queue forever.
+Each RPC's timer starts **when you make the call** (before 4.3.1 it started only when you attached `.then` / `.catch`, so `await` never timed out). `await`, `.then(ok, err)` and `.catch()` all see a timeout, and a call nobody awaits never raises an unhandled rejection.
 
 ```js
-api.metrics.beacon({ … })          // ❌ no timeout — silent if server never replies
-api.metrics.beacon({ … }).catch(noop)  // ✅ timeout active, errors swallowed by you
+api.metrics.beacon({ … })              // ✅ fire and forget: failure or timeout is swallowed
+await api.metrics.beacon({ … })        // ✅ rejects after ~10 s if the server never replies
 ```
+
+A controller that returns nothing still replies (`undefined`), so `await api.x()` settles.
 
 **Default timeouts**: ~10 s total request, ~5 s connect window. If the connection isn't up in time, the queued send rejects.
 
@@ -135,7 +139,7 @@ api.metrics.beacon({ … }).catch(noop)  // ✅ timeout active, errors swallowed
 
 ### What the response looks like
 
-The Promise resolves with whatever the server controller returns. Errors thrown on the server come back as rejected Promises whose error message is the server message. JSS encoding round-trips `Date`, `RegExp`, `Map`, `Set`, `Error`, `undefined`, and circular references — you don't need to JSON-stringify by hand.
+The Promise resolves with whatever the server controller returns. Errors thrown on the server come back as rejected Promises carrying an `Error` with the thrown class and message (`err.name`, `err.message`; no server stack) and the `err.code` / `err.data` the controller attached (`throw Object.assign(new Error('declined'), { code: 'DECLINED', data: { retryIn: 30 } })`). JSS encoding round-trips `Date`, `RegExp`, `Map`, `Set`, `Error`, `undefined`, and circular references — you don't need to JSON-stringify by hand.
 
 ---
 
@@ -635,7 +639,7 @@ Centralize this — subscribe once at the bridge layer to `onConnectionChange`, 
 - **Single client per tab.** Use the default export — let it auto-init. Never create more than one connection.
 - **Gate writes on `'connected'`.** Buffering exists for boot, not for arbitrary offline periods. Show a UI affordance and skip writes when not connected.
 - **Treat `'walled'` as offline-with-an-action.** Show a "Sign in to this network" banner.
-- **`await` RPCs you care about.** Otherwise the lazy-timeout will not fire (§4).
+- **`await` RPCs you care about.** A call you do not look at fails silently (§4).
 - **Type your endpoints.** The TS types use generics — `api.users.create<{name:string},{id:string}>({name})` lets the response be `Promise<{id:string}>`.
 - **Centralize your `api` access** in a bridge (middleware / store action / context). One place to refactor when the contract changes.
 - **Normalize server data** before it lands in your store.
@@ -644,7 +648,7 @@ Centralize this — subscribe once at the bridge layer to `onConnectionChange`, 
 ## 15. Anti-patterns (don't do these)
 
 - ❌ **Don't open your own `connectSocket()` per component.** It works, but you'll spawn N sockets, race subscriptions, and make timeouts inconsistent.
-- ❌ **Don't fire-and-forget RPCs you need acknowledged.** No `.then`/`await` ⇒ no timeout ⇒ no error path.
+- ❌ **Don't fire-and-forget RPCs you need acknowledged.** No `.then`/`await` ⇒ nobody sees the failure.
 - ❌ **Don't store `ArrayBuffer`/`Blob` directly in Redux or Zustand.** They're not serializable, they're huge, and your devtools will choke. Convert to object URLs and store the URL.
 - ❌ **Don't subscribe in render bodies.** Subscribe in effects. Component renders happen many times; subscriptions must be set up once and torn down once.
 - ❌ **Don't assume order between `onConnectionChange('connected')` and your first subscription event.** They're independent. If you need "subscribe ⇒ confirmed ⇒ event", use an RPC that returns confirmation, then subscribe.

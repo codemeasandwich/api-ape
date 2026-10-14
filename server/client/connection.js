@@ -52,6 +52,7 @@ const {
 } = require("../../utils/apeLogger");
 const jss = require("../../utils/jss");
 const messageHash = require("../../utils/messageHash");
+const { attachErrorDetails } = require("../../utils/wireError");
 const { WebSocket: WsPolyfill } = require("../lib/ws");
 const receivers = require("./connection-receivers");
 const reconnect = require("./connection-reconnect");
@@ -303,10 +304,9 @@ function connect(host, port, options) {
    * Routes responses to waiting callbacks, broadcasts to receivers.
    */
   ws.onmessage = (event) => {
-    const msg = jss.parse(
-      typeof event.data === "string" ? event.data : event.data.toString(),
-    );
-    const { err, type, queryId, data, _keepalive } = msg;
+    const msg = jss.parse(String(event.data));
+    const { type, queryId, data, _keepalive } = msg;
+    const err = attachErrorDetails(msg.err, msg);
 
     if (type === "__connected__" && data && typeof data === "object") {
       if (data.sessionId) apeLogicalSessionId = data.sessionId;

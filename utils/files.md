@@ -19,6 +19,7 @@ utils/
 ├── jss.js                   # JSS main entry point (encode/decode/stringify/parse)
 ├── jss.test.js              # JSS test suite
 ├── messageHash.js           # Jenkins hash with Crockford Base32 encoding
+├── wireError.js             # How a failed call travels: Error via JSS + code/data
 ├── messageHash.test.js      # Message hash test suite
 ├── parseUserAgent.test.js   # User-Agent parser test suite
 └── jss/                     # JSS encoder/decoder implementations
@@ -29,6 +30,10 @@ utils/
 ### `apeLogger.js`
 
 Internal logging facade for api-ape on both browser and Node. Exports `configureApeLogging()`, `resetApeLoggingForTesting()`, and `apeLog` (log/warn/error/info/debug) so callers can silence or reroute diagnostics without patching `console`.
+
+### `wireError.js`
+
+How a failed call travels from a controller to its caller. `errorFrame(thrown, type, queryId)` (server) builds the reply `{ err: <Error via JSS>, errCode?, errData?, type, queryId }`: name and message are kept, the stack is replaced by `"Name: message"` so no server paths leak, and unserialisable `data` is dropped rather than losing the reply. `attachErrorDetails(err, frame)` (browser and Node clients) puts `code` / `data` back on the Error. `toWireError` normalises strings and Error-shaped objects.
 
 ### `jss.js`
 

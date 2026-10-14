@@ -212,11 +212,19 @@ export async function runScenarios(file: string, title: string, scenarios: Scena
             writeFileSync(join(dir, name), source);
         }
         let connects = 0;
-        const ape = apeBun({
-            where: dir, urlPrefix: 'api', selector: scenario.selector,
-            ...scenario.apeOptions,
-            onConnect: () => { connects++; return {}; },
-        });
+        let ape: any;
+        try {
+            ape = apeBun({
+                where: dir, urlPrefix: 'api', selector: scenario.selector,
+                ...scenario.apeOptions,
+                onConnect: () => { connects++; return {}; },
+            });
+        } catch (e: any) {
+            failures++;
+            console.log(`  FAIL ${scenario.name}\n       the server did not start: ${String(e.message).split('\n')[0]}`);
+            rmSync(dir, { recursive: true, force: true });
+            continue;
+        }
         const boot = (port: number) => Bun.serve({
             port,
             fetch(req, srv) { return scenario.fetch?.(req) ?? ape.fetch(req, srv) ?? new Response('not found', { status: 404 }); },

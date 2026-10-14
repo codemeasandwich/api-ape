@@ -9,6 +9,8 @@
  * @module simulator/scenarios/stories/call-contract
  */
 
+const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { Harness } = require("../../../harness");
 const { connectRaw } = require("./raw-client");
@@ -17,8 +19,50 @@ jest.setTimeout(20000);
 
 const FIXTURES = path.resolve(__dirname, "../../../test-api-contract");
 
+/**
+ * Write controller files into a fresh temp directory and return it.
+ *
+ * @param {Object<string, string>} files - Relative path to file contents
+ * @returns {string} The directory, to pass as the server's `where`
+ */
+function writeControllers(files) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ape-contract-"));
+  for (const [name, source] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
+    fs.writeFileSync(path.join(dir, name), source);
+  }
+  return dir;
+}
+
 describe("Call contract", () => {
   let harness;
+  const tempDirs = [];
+  afterAll(() => tempDirs.forEach((dir) => fs.rmSync(dir, { recursive: true, force: true })));
+
+  /**
+   * Controllers written for one test.
+   *
+   * @param {Object<string, string>} files - Relative path to file contents
+   * @returns {string} Directory to serve
+   */
+  const controllers = (files) => {
+    const dir = writeControllers(files);
+    tempDirs.push(dir);
+    return dir;
+  };
+
+  /**
+   * Serve controllers written for one test and open a raw socket to them.
+   *
+   * @param {Object<string, string>} files - Relative path to file contents
+   * @param {Object} [options] - Extra harness server options (e.g. `selector`)
+   * @returns {Promise<Object>} The raw client
+   */
+  const serveRaw = async (files, options = {}) => {
+    const where = controllers(files);
+    const server = await harness.createServer({ where, apeOptions: { urlPrefix: "contract" }, ...options });
+    return connectRaw(server, "contract");
+  };
 
   beforeEach(() => {
     jest.resetModules();
@@ -80,6 +124,180 @@ describe("Call contract", () => {
       expect(reply.err).toBeUndefined();
       expect(reply.data).toBeUndefined();
       raw.close();
+    });
+  });
+  describe("errors", () => {
+    const ERRORS = {
+      "boom.js": `module.exports = function (d) {
+        if (d.kind === 'type') throw new TypeError('wrong type');
+        if (d.kind === 'coded') throw Object.assign(new Error('conflict'), { code: 'CONFLICT', data: { current: 3 } });
+        if (d.kind === 'string') throw 'plain string';
+        if (d.kind === 'bigint') throw Object.assign(new Error('unserialisable'), { code: 'BIG', data: { n: 10n } });
+        if (d.kind === 'shaped') throw { name: 'ShapedError', message: 'not an Error instance' };
+        if (d.kind === 'nameless') throw { message: 'only a message' };
+        if (d.kind === 'number') throw 42;
+        throw new Error('generic');
+      };`,
+    };
+
+    test("a controller that throws a TypeError: the caller gets a TypeError with the message and no server stack", async () => {
+      const raw = await serveRaw(ERRORS);
+
+      const frame = await raw.reply(raw.call("boom", { kind: "type" }));
+
+      expect(frame.err).toBeInstanceOf(TypeError);
+      expect(frame.err.name).toBe("TypeError");
+      expect(frame.err.message).toBe("wrong type");
+      expect(frame.err.stack).toBe("TypeError: wrong type"); // no file paths of the server
+      raw.close();
+    });
+
+    test("a controller error carrying code and data: the frame carries both next to the error", async () => {
+      const raw = await serveRaw(ERRORS);
+
+      const frame = await raw.reply(raw.call("boom", { kind: "coded" }));
+
+      expect(frame.err.message).toBe("conflict");
+      expect(frame.errCode).toBe("CONFLICT");
+      expect(frame.errData).toEqual({ current: 3 });
+      raw.close();
+    });
+
+    test("a controller that throws a string: the caller gets an Error carrying that string", async () => {
+      const raw = await serveRaw(ERRORS);
+
+      const frame = await raw.reply(raw.call("boom", { kind: "string" }));
+
+      expect(frame.err).toBeInstanceOf(Error);
+      expect(frame.err.message).toBe("plain string");
+      raw.close();
+    });
+
+    test("a controller that throws an Error-shaped object: its name and message arrive", async () => {
+      const raw = await serveRaw(ERRORS);
+
+      const frame = await raw.reply(raw.call("boom", { kind: "shaped" }));
+
+      expect(frame.err.name).toBe("ShapedError");
+      expect(frame.err.message).toBe("not an Error instance");
+      raw.close();
+    });
+
+    test("a controller that throws an object with only a message: it arrives as a plain Error", async () => {
+      const raw = await serveRaw(ERRORS);
+
+      const frame = await raw.reply(raw.call("boom", { kind: "nameless" }));
+
+      expect(frame.err.name).toBe("Error");
+      expect(frame.err.message).toBe("only a message");
+      raw.close();
+    });
+
+    test("a controller that throws a value with no message (a number): the value itself arrives", async () => {
+      const raw = await serveRaw(ERRORS);
+
+      const frame = await raw.reply(raw.call("boom", { kind: "number" }));
+
+      expect(frame.err).toBe(42);
+      raw.close();
+    });
+
+    test("a service calling another service gets the Error with its class, code and data", async () => {
+      const where = controllers(ERRORS);
+      const server = await harness.createServer({ where, apeOptions: { urlPrefix: "api" } });
+      const { api } = require("../../../../server");
+      api.connect(server.host, server.port);
+      try {
+        const failed = await api.boom({ kind: "coded" }).then(() => null, (e) => e);
+        expect(failed).toBeInstanceOf(Error);
+        expect(failed.message).toBe("conflict");
+        expect(failed.code).toBe("CONFLICT");
+        expect(failed.data).toEqual({ current: 3 });
+
+        // An error with no code or data arrives without them, not as `undefined` properties set.
+        const plain = await api.boom({ kind: "generic" }).then(() => null, (e) => e);
+        expect(plain.message).toBe("generic");
+        expect("code" in plain).toBe(false);
+        expect("data" in plain).toBe(false);
+      } finally {
+        api.close();
+      }
+    });
+
+    test("error data that cannot be serialised does not lose the reply: the error arrives without the data", async () => {
+      const raw = await serveRaw(ERRORS);
+
+      const frame = await raw.reply(raw.call("boom", { kind: "bigint" }));
+
+      expect(frame.err.message).toBe("unserialisable");
+      expect(frame.errCode).toBe("BIG");
+      expect(frame.errData).toBeUndefined();
+      raw.close();
+    });
+
+    test("a call to an endpoint that does not exist: the caller gets a not-found error", async () => {
+      const raw = await serveRaw(ERRORS);
+
+      const frame = await raw.reply(raw.call("nope", {}));
+
+      expect(frame.err.message).toContain('"nope" was not found');
+      raw.close();
+    });
+  });
+
+  describe("controller files", () => {
+    test("a controller written as export default is called like any other", async () => {
+      const raw = await serveRaw({
+        "esm.js": `exports.__esModule = true; exports.default = function (d) { return { viaDefault: d }; };`,
+      });
+
+      const frame = await raw.reply(raw.call("esm", { a: 1 }));
+
+      expect(frame.err).toBeUndefined();
+      expect(frame.data).toEqual({ viaDefault: { a: 1 } });
+      raw.close();
+    });
+
+    test("type declaration files and test files in the controller folder are not endpoints", async () => {
+      const raw = await serveRaw(
+        {
+          "real.js": `module.exports = function () { return 'real'; };`,
+          "real.d.ts": `export declare function real(): string;`,
+          "real.test.js": `throw new Error('a test file must never be loaded as a controller');`,
+          "real.spec.js": `throw new Error('a spec file must never be loaded as a controller');`,
+        },
+        { selector: ["js", "ts"] },
+      );
+
+      const frame = await raw.reply(raw.call("real", {}));
+      const declared = await raw.reply(raw.call("real.d", {}));
+
+      expect(frame.data).toBe("real");
+      expect(declared.err.message).toContain("was not found");
+      raw.close();
+    });
+
+    test("a controller file that exports something that is not a function stops startup naming the file", async () => {
+      const where = controllers({
+        "ok.js": `module.exports = function () { return 1; };`,
+        "settings.js": `module.exports = { retries: 3 };`,
+      });
+
+      await expect(harness.createServer({ where })).rejects.toThrow(/settings\.js.*function|"settings".*function/s);
+    });
+
+    test("a controller file that exports null stops startup naming the file", async () => {
+      const where = controllers({ "nothing.js": `module.exports = null;` });
+
+      await expect(harness.createServer({ where })).rejects.toThrow(/nothing.*found null/s);
+    });
+
+    test("a controller file that exports a default which is not a function stops startup naming the file", async () => {
+      const where = controllers({
+        "weird.js": `exports.__esModule = true; exports.default = 42;`,
+      });
+
+      await expect(harness.createServer({ where })).rejects.toThrow(/weird/);
     });
   });
 });

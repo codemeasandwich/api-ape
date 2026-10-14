@@ -82,6 +82,7 @@
 
 const { apeLog } = require("../../utils/apeLogger");
 const jss = require("../../utils/jss");
+const { errorFrame } = require("../../utils/wireError");
 const { FileTransferManager } = require("../lib/fileTransfer");
 const { processPluginSend } = require("./pluginHooks");
 const { getAllPlugins } = require("../../utils/jss/plugins");
@@ -374,7 +375,7 @@ function processBinaryData(data, queryId, fileTransfer, clientId, path = "") {
  * send('Q7K3M2', null, null, new Error('Not found'))
  *
  * // Client receives:
- * // { queryId: 'Q7K3M2', err: 'Not found' }
+ * // { queryId: 'Q7K3M2', err: <Error 'Not found'> }
  */
 module.exports = function sendHandler({
   socket,
@@ -486,8 +487,9 @@ module.exports = function sendHandler({
 
     // Send error or data message
     if (err) {
-      // Error message
-      socket.send(jss.stringify({ err: err.message || err, type, queryId }));
+      // Error reply: the Error itself (name, message; code/data alongside), not just
+      // its message. See utils/wireError.js.
+      socket.send(errorFrame(err, type, queryId));
 
       /* istanbul ignore next 3 - onFinish callback for error, needs onSend hook */
       if (typeof onFinish === "function") {

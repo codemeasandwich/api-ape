@@ -20,7 +20,8 @@ bun/
 ├── client-keepalive.ts  # Keepalive user stories through the real browser client
 ├── client-connect.ts    # Connection user stories (one socket per page, restart recovery, captive portal)
 ├── client-calls.ts      # Call user stories (identical calls, awaited calls, errors)
-└── client-api.ts        # Page API: nested api.dir.thing(), early subscribe, api.on, transport
+├── client-api.ts        # Page API: nested api.dir.thing(), early subscribe, api.on, transport
+└── client-errors.ts     # Errors (class, code, data) and controller files (export default, .d.ts, tests)
 ```
 
 ## Files
@@ -52,6 +53,10 @@ Call stories through the real browser client: five identical calls in the same m
 ### `client-api.ts`
 
 The default export as the README shows it: `api.dir.thing()` and `api.dir()` for nested endpoints, a subscribe made before connecting returns the unsubscribe function at once and then receives (and stops receiving) the channel, `api.on(type, handler)` receives pushes, `api.transport` and `api.onConnectionChange`.
+
+### `client-errors.ts`
+
+What a page's catch block sees: a `TypeError` with its message and no server paths, `err.code` / `err.data`, a thrown string as an Error; and controller files: a TypeScript `export default` controller answers, `.d.ts` and `.test.ts` files next to controllers are not endpoints.
 
 ### `hot-reload.ts`
 

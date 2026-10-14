@@ -22,7 +22,7 @@ call-contract/
 
 ### `index.test.js`
 
-The call-contract stories. Starts a harness server over `simulator/test-api-contract/` and talks to it with the raw client.
+The call-contract stories (keepalive, identical calls, replies, errors, controller files). Starts a harness server over `simulator/test-api-contract/` or over controller files written to a temp directory for the test, and talks to it with the raw client.
 
 ### `raw-client.js`
 

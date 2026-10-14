@@ -249,6 +249,17 @@ api/
    Remove one of these files to fix this conflict.
 ```
 
+### Controller files
+
+- A controller file exports a function: `module.exports = function (data) { ... }` or `export default function (data) { ... }` (a function `default` is used).
+- Any other export (an object, a number) stops startup with an error naming the file, instead of failing at the first call with "controller.call is not a function".
+- `*.d.ts` declaration files and `*.test.*` / `*.spec.*` files in the controller folder are not endpoints and are never loaded.
+- A TypeScript controller that mixes `import` with `module.exports` does not load under Bun; use `export default` or plain `module.exports`.
+
+### Errors
+
+A controller that throws rejects the caller's promise with an `Error` that keeps its class and message (`TypeError`, `RangeError`, any `name` you set; the server's stack is not sent, so no file paths reach a browser). Attach `code` and `data` to carry details: `throw Object.assign(new Error('conflict'), { code: 'CONFLICT', data: { current: 3 } })` arrives as `err.code` and `err.data` (JSS-serialisable values; data that cannot be serialised is dropped and the error still arrives). A thrown string arrives as `new Error(string)`. A controller that returns nothing replies with `undefined`.
+
 ### Hot Reload
 
 Hot reload is **off by default** (it used to be always on, which loaded files changed on disk into a running production process). Opt in during development:
