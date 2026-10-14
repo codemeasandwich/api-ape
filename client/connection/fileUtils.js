@@ -39,6 +39,8 @@
  * // [{ path: 'image', hash: 'abc123', originalKey: 'image<!L>' }]
  */
 
+import safeKeys from "../../utils/safeKeys";
+
 /**
  * Check if a value is binary data
  *
@@ -166,16 +168,9 @@ export function generateUploadHash(path) {
  * setValueAtPath(obj, 'files.1', anotherBuffer)
  */
 export function setValueAtPath(obj, path, value) {
-  const parts = path.split(".");
-  let current = obj;
-
-  // Navigate to parent of target property
-  for (let i = 0; i < parts.length - 1; i++) {
-    current = current[parts[i]];
-  }
-
-  // Set the value at the final key
-  current[parts[parts.length - 1]] = value;
+  // The path comes from the server's reply; a page must not be polluted by a compromised
+  // or hostile server any more than the server by a client: own properties only.
+  safeKeys.setAtPath(obj, path, value);
 }
 
 /**
@@ -335,10 +330,10 @@ export function cleanTaggedKeys(obj, tag) {
   for (const key of Object.keys(obj)) {
     if (key.endsWith(suffix)) {
       // Remove the tag suffix from the key
-      cleaned[key.slice(0, -4)] = obj[key];
+      safeKeys.setKey(cleaned, key.slice(0, -4), obj[key]);
     } else {
       // Keep key as-is, but recursively clean the value
-      cleaned[key] = cleanTaggedKeys(obj[key], tag);
+      safeKeys.setKey(cleaned, key, cleanTaggedKeys(obj[key], tag));
     }
   }
 

@@ -224,6 +224,12 @@ function unmaskPayload(payload, maskKey) {
  */
 
 /**
+ * A frame (or a message made of fragments) is larger than the receiver accepts.
+ * The connection answers it with close code 1009 (RFC 6455 "Message Too Big").
+ */
+class FrameTooLargeError extends Error {}
+
+/**
  * Parses a WebSocket frame from a buffer.
  *
  * This function handles the full complexity of WebSocket frame parsing:
@@ -237,7 +243,8 @@ function unmaskPayload(payload, maskKey) {
  * @function parseFrame
  * @param {Buffer} buffer - Buffer containing raw frame data
  * @returns {ParseFrameResult|null} Parsed frame and bytes consumed, or null if incomplete
- * @throws {Error} If payload length exceeds JavaScript's safe integer range
+ * @param {number} [maxPayload=Infinity] - Largest payload to accept (checked on the header)
+ * @throws {FrameTooLargeError} If the payload length is over `maxPayload` or over 2^32
  *
  * @example
  * // Parse frames from incoming data
@@ -266,7 +273,7 @@ function unmaskPayload(payload, maskKey) {
  *     console.log('Consumed:', bytesConsumed)  // Bytes to remove from buffer
  * }
  */
-function parseFrame(buffer) {
+function parseFrame(buffer, maxPayload = Infinity) {
   // Need at least 2 bytes for the header
   if (buffer.length < 2) return null;
 
@@ -296,12 +303,17 @@ function parseFrame(buffer) {
     // Check that high 32 bits are zero
     const high = buffer.readUInt32BE(offset);
     const low = buffer.readUInt32BE(offset + 4);
-    /* istanbul ignore next 3 - requires >4GB payload which is impractical to test */
+    // A length of 2^32 or more can never fit; anything over `maxPayload` is refused too.
     if (high !== 0) {
-      throw new Error("Payload too large");
+      throw new FrameTooLargeError("Payload too large");
     }
     payloadLength = low;
     offset += 8;
+  }
+
+  // Refuse on the HEADER, before a byte of the payload is buffered.
+  if (payloadLength > maxPayload) {
+    throw new FrameTooLargeError(`Payload of ${payloadLength} bytes is over the ${maxPayload} byte limit`);
   }
 
   // Read masking key if present (4 bytes)
@@ -545,6 +557,12 @@ function parseClosePayload(payload) {
 }
 
 module.exports = {
+  /**
+   * Error thrown by `parseFrame` for an oversize frame.
+   * @type {Function}
+   */
+  FrameTooLargeError,
+
   /**
    * WebSocket frame opcodes.
    * @type {Object}

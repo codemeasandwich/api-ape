@@ -272,6 +272,12 @@ describe("Call contract", () => {
           case "too-deep": { let data = 1; for (let i = 0; i < 40; i++) data = { data }; throw Object.assign(new Error("n"), { code: "C", data }); }
           case "plain-stack": throw { status: 409, stack: "Error: x\\n    at /srv/app/secret/handler.js:10:5" };
           case "plain-bigint": throw { status: 500, big: 10n };
+          case "shared-error": { const e = new Error("same"); throw { a: e, b: e }; }
+          case "too-deep-thrown": { let v = { leaf: 1 }; for (let i = 0; i < 40; i++) v = { v }; throw v; }
+          case "date-thrown": throw new Date(0);
+          case "date-inside": throw { when: new Date(0), blob: Buffer.from("hi") };
+          case "nameless-error-inside": { const e = new Error("x"); e.name = ""; throw { e }; }
+          case "numeric-message": { const e = new Error("x"); e.message = 5; throw e; }
           case "too-many": throw Object.assign(new Error("n"), { code: "C", data: Array.from({ length: 10001 }, () => ({})) });
           case "throwing-message": throw { get message() { throw new Error("getter failed at /srv/app/secret.js"); } };
           case "nested-getter": throw Object.assign(new Error("n"), { code: "C", data: { get inner() { throw new Error("no"); } } });
@@ -373,6 +379,33 @@ describe("Call contract", () => {
 
       expect(frame.errCode).toBe("C");
       expect(frame.errData).toBeUndefined();
+    });
+
+    test("an Error held by two keys of a thrown object arrives under both, without its stack", async () => {
+      const frame = await failWith("shared-error");
+
+      expect(frame.err.a.message).toBe("same");
+      expect(frame.err.b.message).toBe("same");
+      expect(frame.err.a.stack).toBe("Error: same");
+      expect(frame.err.b.stack).toBe("Error: same");
+    });
+
+    test("a thrown object nested 40 levels deep arrives as an error reply, not a hang", async () => {
+      const frame = await failWith("too-deep-thrown");
+
+      expect(frame.err.message).toMatch(/cannot be sent/);
+    });
+
+    test("a thrown Date, and Dates and Buffers inside a thrown object, are sent as they are", async () => {
+      expect((await failWith("date-thrown")).err).toEqual(new Date(0));
+      const inside = await failWith("date-inside");
+      expect(inside.err.when).toEqual(new Date(0));
+      expect(Object.keys(inside.err.blob)).toHaveLength(2);
+    });
+
+    test("an Error with no name inside a thrown object arrives as an Error, and an Error whose message is a number keeps it as text", async () => {
+      expect((await failWith("nameless-error-inside")).err.e.name).toBe("Error");
+      expect((await failWith("numeric-message")).err.message).toBe("5");
     });
 
     test("a code that is a BigInt is dropped and the caller still gets the reply", async () => {

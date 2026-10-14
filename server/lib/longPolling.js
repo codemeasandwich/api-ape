@@ -139,7 +139,7 @@ const streamClients = new Map();
  *     fileTransfer
  * )
  */
-function createLongPollingHandler(controllers, onConnect, fileTransfer, options = {}) {
+function createLongPollingHandler(controllers, onConnect, fileTransfer, options) {
   /**
    * GET handler for streaming responses.
    * Creates a long-lived HTTP response that streams events to the client.
@@ -152,7 +152,7 @@ function createLongPollingHandler(controllers, onConnect, fileTransfer, options 
    * Processes incoming messages and routes them to controllers.
    * @type {Function}
    */
-  const handleStreamPost = createPostHandler(streamClients);
+  const handleStreamPost = createPostHandler(streamClients, options);
 
   return {
     handleStreamGet,

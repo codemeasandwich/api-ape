@@ -31,7 +31,17 @@ const KNOWN_OPTIONS = [
   "websocketOptions",
   "logging",
   "transport",
+  "maxMessageBytes",
 ];
+
+/**
+ * Default `maxMessageBytes`: the most a peer may send in one WebSocket message or one
+ * long-poll POST body. Every inbound frame is parsed in full before anything checks who
+ * sent it, so the cap is what bounds the memory and CPU a stranger can spend. Uploads are
+ * separate HTTP PUTs and are not affected.
+ * @constant {number}
+ */
+const DEFAULT_MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
 
 /** Documented in 4.3.0 and earlier but never applied. */
 const UNSUPPORTED_OPTIONS = ["authFramework", "authMiddleware"];
@@ -68,4 +78,4 @@ function checkOptions(options) {
   }
 }
 
-module.exports = { checkOptions, KNOWN_OPTIONS, UNSUPPORTED_OPTIONS };
+module.exports = { checkOptions, KNOWN_OPTIONS, UNSUPPORTED_OPTIONS, DEFAULT_MAX_MESSAGE_BYTES };

@@ -168,13 +168,23 @@ class WebSocket extends EventEmitter {
    * WebSocket handshake (HTTP 101 Switching Protocols response sent).
    *
    * @param {net.Socket} socket - TCP socket after WebSocket handshake
+   * @param {Object} [options] - Connection options
+   * @param {number} [options.maxPayload=Infinity] - Largest message (one frame, or all fragments of
+   *     one message) accepted; a bigger one closes the connection with code 1009
    *
    * @example
    * // After HTTP upgrade handshake
    * const ws = new WebSocket(tcpSocket)
    */
-  constructor(socket) {
+  constructor(socket, { maxPayload = Infinity } = {}) {
     super();
+
+    /**
+     * Largest message accepted, in bytes.
+     * @type {number}
+     * @private
+     */
+    this._maxPayload = maxPayload;
 
     /**
      * The underlying TCP socket.
@@ -412,7 +422,18 @@ class WebSocket extends EventEmitter {
 
     // Parse frames until buffer is exhausted
     while (this._buffer.length > 0) {
-      const result = parseFrame(this._buffer);
+      let result;
+      try {
+        result = parseFrame(this._buffer, this._maxPayload);
+      } catch (_) {
+        // `parseFrame` only throws for a frame too large for the limit (judged on the header):
+        // answer 1009 and stop reading. Before a limit existed this buffered whatever a peer
+        // announced, and a 64-bit length threw out of the socket's data handler.
+        this._buffer = Buffer.alloc(0);
+        this._fragments = [];
+        this.close(1009, "Message too big");
+        return;
+      }
 
       // Not enough data for a complete frame
       if (!result) break;
@@ -497,8 +518,14 @@ class WebSocket extends EventEmitter {
       return;
     }
 
-    // Add fragment to collection
+    // Add fragment to collection; all the fragments of one message count against the limit
     this._fragments.push(payload);
+    if (this._fragments.reduce((bytes, part) => bytes + part.length, 0) > this._maxPayload) {
+      this._fragments = [];
+      this._fragmentOpcode = null;
+      this.close(1009, "Message too big");
+      return;
+    }
 
     // If final fragment, reassemble and emit
     if (fin) {

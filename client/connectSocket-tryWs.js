@@ -21,7 +21,6 @@ const { attachErrorDetails } = require("../utils/wireError");
  * @param {function(): string|null} d.getLastResumeClientId
  * @param {typeof WebSocket} d.WebSocketCtor
  * @param {number} d.wsFallbackTimeoutMs
- * @param {function(): string} d.getConfiguredTransport
  * @param {function(): void} d.switchToStreaming
  * @param {function(): number} d.getReconnectBackoffAttempt
  * @param {function(number): void} d.setReconnectBackoffAttempt
@@ -69,7 +68,7 @@ function createTryWebSocket(d) {
     let opened = false;
     let fallbackTimer = null;
 
-    if (!isRetry && d.getConfiguredTransport() === "auto") {
+    if (!isRetry) {
       fallbackTimer = setTimeout(() => {
         if (ws.readyState !== d.WebSocketCtor.OPEN) {
           ws.close();
@@ -158,7 +157,7 @@ function createTryWebSocket(d) {
     ws.onerror = () => {
       d.endConnectAttempt();
       if (fallbackTimer) clearTimeout(fallbackTimer);
-      if (!isRetry && d.getConfiguredTransport() === "auto" && !d.getReadySnapshot())
+      if (!isRetry && !d.getReadySnapshot())
         d.switchToStreaming();
     };
 

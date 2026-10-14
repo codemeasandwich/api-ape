@@ -183,6 +183,38 @@ const scenarios: Scenario[] = [
             assert(result.heard.join() === '1,2', `the page heard ${JSON.stringify(result.heard)}, expected the broadcasts before and after the recycle`);
         },
     },
+    {
+        ...base,
+        name: 'over streaming, a server that is down is retried with a growing delay, and pushes resume once it is back',
+        fixtures: {
+            'announce.js': `module.exports = function (d) { this.broadcast('shout', d); return 'announced'; };`,
+        },
+        browser: async ({ api, emit, sleep }) => {
+            let streamAttempts = 0;
+            const nativeFetch = globalThis.fetch;
+            (globalThis as any).fetch = (input: any, init?: any) => {
+                if (String(input?.url ?? input).includes('/ape/poll') && (init?.method ?? 'GET') === 'GET') streamAttempts++;
+                return nativeFetch(input, init);
+            };
+            const heard: number[] = [];
+            api.on('shout', (m: any) => heard.push(m.data.n));
+            await api.announce({ n: 1 });
+            await emit('server-down'); // stopped now, back in 3.5 s
+            const before = streamAttempts;
+            await sleep(6000);
+            const attemptsDuringOutage = streamAttempts - before;
+            await api.announce({ n: 2 });
+            await sleep(400);
+            return { heard, attemptsDuringOutage };
+        },
+        onEvent: { 'server-down': (ctl) => { ctl.stop(); setTimeout(() => ctl.start(), 3500); } },
+        timeoutMs: 40000,
+        check: ({ result }) => {
+            // a fixed 0.5 s retry made 7 tries in 6 s; 0.5 s doubling makes 3 (the last one succeeds)
+            assert(result.attemptsDuringOutage <= 4, `the page opened the stream ${result.attemptsDuringOutage} times in 6 s, expected a growing delay`);
+            assert(result.heard.join() === '1,2', `the page heard ${JSON.stringify(result.heard)}, expected pushes before and after the outage`);
+        },
+    },
 ];
 
 await runScenarios(import.meta.path, 'HTTP streaming (browser client)', scenarios);

@@ -40,4 +40,30 @@ function setKey(target, key, value) {
   }
 }
 
-module.exports = { hasOwn, setKey };
+/**
+ * Set a value at a dot-notation path whose segments came from a peer. Follows OWN
+ * properties only (`constructor.prototype.x` must not reach `Object.prototype`) and throws
+ * when a segment is missing or goes through a non-object.
+ *
+ * @param {Object|Array} obj - Object to modify (mutated)
+ * @param {string} path - Dot-notation path (e.g. `user.profile.avatar`, `files.0.data`)
+ * @param {any} value - Value to store at the path
+ * @returns {void}
+ * @throws {Error} If the path does not lead to an object that can hold the value
+ */
+function setAtPath(obj, path, value) {
+  const parts = path.split(".");
+  let current = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (current === null || typeof current !== "object" || !hasOwn(current, parts[i])) {
+      throw new Error(`Cannot set a value at "${path}": "${parts[i]}" is not a property of the message`);
+    }
+    current = current[parts[i]];
+  }
+  if (current === null || typeof current !== "object") {
+    throw new Error(`Cannot set a value at "${path}": its parent is not an object`);
+  }
+  setKey(current, parts[parts.length - 1], value);
+}
+
+module.exports = { hasOwn, setKey, setAtPath };

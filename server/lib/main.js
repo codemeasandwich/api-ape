@@ -110,7 +110,7 @@
 
 const { configureApeLogging, resetApeLoggingForTesting } = require("../../utils/apeLogger");
 const loader = require("./loader");
-const { checkOptions } = require("./options");
+const { checkOptions, DEFAULT_MAX_MESSAGE_BYTES } = require("./options");
 const { resolveOriginPolicy } = require("../security/origin");
 const wiring = require("./wiring");
 const { isBun, isDeno, getRuntime } = require("./wsProvider");
@@ -162,6 +162,7 @@ function _resetForTesting() {
  * @param {Object} [options.origin] - Origin policy `{ mode: 'root-domain'|'exact', allowedOrigins, allowedHosts }`.
  *     Default `root-domain` on Node (ports ignored, unchanged), `exact` on Bun.
  * @param {boolean|Object} [options.watch=false] - Hot-reload controllers (opt-in); see README "Hot reload"
+ * @param {number} [options.maxMessageBytes=16777216] - Largest inbound WebSocket message / long-poll POST body
  * @param {Object} [options.websocketOptions] - Bun only: `Bun.serve` websocket tuning (idleTimeout, sendPings, ...)
  * @param {Object} [options.longPollingOptions] - Long polling configuration
  * @param {number} [options.longPollingOptions.heartbeatInterval=20000] - Interval in ms for heartbeat pings
@@ -204,6 +205,7 @@ function createApeCore({
   longPollingOptions,
   origin,
   watch,
+  maxMessageBytes = DEFAULT_MAX_MESSAGE_BYTES,
 }, defaultOriginMode) {
   const path = require("path");
   // `where` may be absolute (passed verbatim) or relative (joined with cwd
@@ -235,13 +237,14 @@ function createApeCore({
     controllers,
     onConnect,
     fileTransfer,
-    longPollingOptions,
+    { ...longPollingOptions, maxBodyBytes: maxMessageBytes },
   );
 
   return {
     controllers,
     controllersDir,
     originPolicy,
+    maxMessageBytes,
     publicPrefix,
     fileTransfer,
     wiringHandler,

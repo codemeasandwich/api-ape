@@ -169,7 +169,10 @@ class Harness {
       fileTransferOptions: options.fileTransferOptions,
       longPollingOptions: options.longPollingOptions,
       selector: options.selector,
-      apeOptions: options.apeOptions,
+      // Stories send multi-MB Buffers in plain calls, which JSS writes at about 15 bytes per
+      // byte; the shipped `maxMessageBytes` default (16 MiB) would refuse them. A story that
+      // tests the limit passes `maxMessageBytes: undefined` (the shipped default) or its own.
+      apeOptions: { maxMessageBytes: 64 * 1024 * 1024, ...options.apeOptions },
       id: options.id,
     };
 

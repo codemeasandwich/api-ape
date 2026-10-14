@@ -68,6 +68,7 @@
 import { apeLog } from "../../utils/apeLogger.js";
 import jss from "../../utils/jss";
 import { parseStreamBuffer } from "./streamParser";
+import { pingRetryDelayMs } from "../connection/reconnectBackoff.js";
 
 const { attachErrorDetails } = require("../../utils/wireError");
 
@@ -207,6 +208,9 @@ function createStreamingTransport() {
    */
   let reconnectTimer = null;
 
+  /** Consecutive failed (re)opens, for the reconnect delay; 0 once a stream opens. */
+  let reconnectAttempt = 0;
+
   /**
    * Handler called when a message is received
    * @type {function({type: string, data: any, err?: any}): void}
@@ -246,9 +250,23 @@ function createStreamingTransport() {
   function scheduleReconnect() {
     if (!isActive) return;
     if (reconnectTimer) clearTimeout(reconnectTimer);
+    // The same 0.5 s doubling to 30 s (plus jitter) as the ping retry, so a server that is
+    // down is not hit every half second by every page; reset by a stream that opens.
     reconnectTimer = setTimeout(() => {
       if (isActive) openStream();
-    }, 500);
+    }, pingRetryDelayMs(reconnectAttempt++));
+  }
+
+  /**
+   * Log a stream failure: an error for the first of an outage, debug for the retries.
+   *
+   * @param {string} what - What failed
+   * @param {any} err - The failure
+   * @returns {void}
+   * @private
+   */
+  function logFailure(what, err) {
+    (reconnectAttempt === 0 ? apeLog.error : apeLog.debug)(what, err);
   }
 
   /**
@@ -300,6 +318,8 @@ function createStreamingTransport() {
    * @private
    */
   async function openStream() {
+    // Bytes of a message cut off by the last stream must not prefix the next stream's first one.
+    streamBuffer = "";
     abortController = new AbortController();
 
     try {
@@ -313,7 +333,11 @@ function createStreamingTransport() {
       if (!response.ok)
         throw new Error(`Stream connect failed: ${response.status}`);
 
-      // Connection established
+      // Connection established. `onOpen` fires again for every reopen (the server recycles
+      // the stream about every 25 s): its work (resubscribe, flush, the Connected state,
+      // which is only announced when it changes) is safe to repeat and is needed, because
+      // the server forgets the client's channels when the stream closes.
+      reconnectAttempt = 0;
       onOpen();
 
       // Start reading the stream
@@ -352,7 +376,7 @@ function createStreamingTransport() {
             // Ignore abort errors (from close())
             if (readErr.name === "AbortError") return;
 
-            apeLog.error("Stream read error:", readErr);
+            logFailure("Stream read error:", readErr);
             scheduleReconnect();
             return;
           }
@@ -365,7 +389,7 @@ function createStreamingTransport() {
       // Ignore abort errors (from close())
       if (err.name === "AbortError") return;
 
-      apeLog.error("Stream connection error:", err);
+      logFailure("Stream connection error:", err);
       onError(err);
       scheduleReconnect();
     }

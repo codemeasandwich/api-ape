@@ -254,11 +254,7 @@ export async function runScenarios(file: string, title: string, scenarios: Scena
         const nodeServer = scenario.server === 'node';
         try {
             if (nodeServer) {
-                // ape() keeps one instance per process; a scenario starts from a clean slate.
-                const main = require(resolve(ROOT, 'server/lib/main.js'));
-                main._resetForTesting();
-                (await import(resolve(ROOT, 'utils/apeLogger.js'))).configureApeLogging(false);
-                ape = main;
+                ape = require(resolve(ROOT, 'server/lib/main.js'));
             } else {
                 ape = apeBun({
                     where: dir, urlPrefix: 'api', selector: scenario.selector,
@@ -274,6 +270,9 @@ export async function runScenarios(file: string, title: string, scenarios: Scena
         }
         let nodeApe: any;
         const bootNode = async (port: number) => {
+            // ape() keeps one instance per process; every (re)start begins from a clean slate.
+            ape._resetForTesting();
+            (await import(resolve(ROOT, 'utils/apeLogger.js'))).configureApeLogging(false);
             const srv = http.createServer((req, res) => { res.statusCode = 404; res.end('not found'); });
             nodeApe = ape(srv, { where: dir, urlPrefix: 'api', selector: scenario.selector, ...scenario.apeOptions, onConnect });
             srv.listen(port, '127.0.0.1');

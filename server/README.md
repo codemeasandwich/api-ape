@@ -127,11 +127,12 @@ This enables server-side microservice patterns while keeping the familiar api-ap
 | `logging` | `boolean` \| `object` | Framework diagnostics (see [Framework logging](#framework-logging) below) |
 | `origin` | `object` | _Optional._ WebSocket Origin policy `{ mode, allowedOrigins, allowedHosts }` (see [Origin check](#origin-check)). Node default `root-domain` (unchanged), Bun default `exact`. |
 | `watch` | `boolean` \| `object` | _Optional, default off._ Hot-reload controllers on file change (see [Hot reload](#hot-reload)). |
+| `maxMessageBytes` | `number` | Most bytes one inbound WebSocket message, or one HTTP long-poll POST body, may hold. Default `16777216` (16 MiB, Bun's own default). Every inbound frame is parsed in full before anything checks who sent it, so this is what bounds the memory and CPU a stranger can spend. An oversize WebSocket message closes the socket with code 1009; an oversize POST gets HTTP 413. Uploads are separate HTTP PUTs and are not limited by it. On Bun `websocketOptions.maxPayloadLength` still overrides it. |
 | `websocketOptions` | `object` | _Bun only._ `Bun.serve` websocket tuning: `idleTimeout`, `sendPings`, `maxPayloadLength`, `backpressureLimit`, `closeOnBackpressureLimit`, `perMessageDeflate`, `publishToSelf` (see [Keepalive and ping](#keepalive-and-ping)). |
 
 ### `apeBun(options)` (Bun)
 
-`require('api-ape/bun').apeBun(options)` returns `{ fetch, websocket, wss, close }` for `Bun.serve()`. It takes the same options as `ape()` (`where`, `urlPrefix`, `selector`, `onConnect`, `fileTransferOptions`, `origin`, `watch`, `websocketOptions`, `logging`). `fetch` answers the api-ape paths and returns `null` for anything else, so your own routes can follow.
+`require('api-ape/bun').apeBun(options)` returns `{ fetch, websocket, wss, close }` for `Bun.serve()`. It takes the same options as `ape()` (`where`, `urlPrefix`, `selector`, `onConnect`, `fileTransferOptions`, `origin`, `watch`, `websocketOptions`, `maxMessageBytes`, `logging`). `fetch` answers the api-ape paths and returns `null` for anything else, so your own routes can follow.
 
 | Option | Type | Description |
 |--------|------|-------------|

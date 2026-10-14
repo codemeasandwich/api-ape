@@ -21,6 +21,7 @@ bun/
 ├── client-keepalive.ts  # Keepalive user stories through the real browser client
 ├── client-connect.ts    # Connection user stories (one socket per page, restart recovery, captive portal)
 ├── client-calls.ts      # Call user stories (identical calls, awaited calls, errors)
+├── client-hostile-server.ts   # What a page does with hostile data from its server
 ├── client-race.ts       # Calls landing while the page retries: few pings, one socket, one subscription
 ├── client-streaming.ts  # HTTP streaming transport (WebSockets blocked): errors, context, keepalive
 ├── client-api.ts        # Page API: nested api.dir.thing(), early subscribe, api.on, transport
@@ -40,7 +41,7 @@ Origin check (exact host:port accepted, another port and a foreign domain refuse
 
 ### `security-decode.ts`
 
-The decoder as a security boundary under real Bun: a raw peer sends a frame whose error tag names `Worker` (carrying a `data:` script that would write a marker file) or `WebSocket` (carrying the address of a local listener). Nothing may run and nothing may connect; honest calls and a standard `TypeError` still work. `APE_ROOT=/older/checkout` shows it failing on 4.4.0 and earlier.
+The decoder as a security boundary under real Bun: a raw peer sends a frame whose error tag names `Worker` (carrying a `data:` script that would write a marker file) or `WebSocket` (carrying the address of a local listener). Nothing may run and nothing may connect; honest calls and a standard `TypeError` still work. Also: a pointer that would land on a prototype changes nothing in the server process, an inline binary tag that only claims a length allocates nothing, an unknown endpoint and a thrown string answer stacks with no server path, and `maxMessageBytes` closes the socket on an oversize message. `APE_ROOT=/older/checkout` shows it failing on 4.4.0 and earlier.
 
 ### `scenario-runner.ts`
 
@@ -57,6 +58,10 @@ Connection stories through the real browser client: a page that makes calls befo
 ### `client-calls.ts`
 
 Call stories through the real browser client: five identical calls in the same millisecond each get their own reply (per-client `nonce`); a controller that returns nothing resolves `undefined`; a call the server never answers times out after 10 s; `.then(ok, err)` receives the error; a failed or expired call nobody looks at raises no unhandled rejection or uncaught exception (the runner reports those as `errors`); a reply that arrives after its call timed out is dropped, not delivered as a message; a call whose socket refuses the send rejects at once with the socket's error; a call with a `BigInt` argument throws at once and leaves no timer behind.
+
+### `client-hostile-server.ts`
+
+A page is not pushed around by its server: a reply naming a file under `constructor.prototype` / `__proto__` (the client's `cleanTaggedKeys` / `setValueAtPath`, called with a hostile reply) changes nothing the page inherits, and a push whose type is `constructor` or `toString` reaches a universal receiver.
 
 ### `client-race.ts`
 

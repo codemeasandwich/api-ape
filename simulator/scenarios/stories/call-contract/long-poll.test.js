@@ -24,12 +24,16 @@ const CONTROLLERS = {
     if (d.kind === 'bigint') throw { big: 1n };
     throw new Error('generic');
   };`,
+  "echo.js": "module.exports = (d) => ({ echo: d });",
+  "strthrow.js": "module.exports = () => { throw 'plain string'; };",
+  "falsy.js": "module.exports = (d) => { throw d.v; };",
   "who.js": "module.exports = function () { return { clientId: this.clientId, sessionId: this.sessionId }; };",
   "context.js": `module.exports = function () {
     this.keepalive();
     this.broadcast('shout', { from: this.clientId });
     this.send('private', { ok: true });
     this.send('failure', undefined, Object.assign(new TypeError('pushed'), { code: 'P' }));
+    this.send('failure2', undefined, 'pushed string');
     return { hasPublish: typeof this.publish, hasOthers: typeof this.broadcastOthers, clients: typeof this.clients };
   };`,
 };
@@ -147,7 +151,7 @@ describe("Long poll", () => {
     await readFor("__connected__");
 
     const { frame } = await post("context", {}, cookie);
-    await readFor("failure");
+    await readFor("failure2");
 
     expect(frame.data.hasOthers).toBe("function");
     const frames = seen.split("\n\n").filter((line) => line.startsWith("data: ")).map((line) => jss.parse(line.slice(6)));
@@ -158,6 +162,7 @@ describe("Long poll", () => {
     expect(failure.err).toBeInstanceOf(TypeError);
     expect(failure.err.stack).toBe("TypeError: pushed");
     expect(failure.errCode).toBe("P");
+    expect(frames.find((f) => f.type === "failure2").err.stack).toBe("Error: pushed string"); // no server path
     await reader.cancel().catch(() => {});
   });
 
@@ -192,5 +197,71 @@ describe("Long poll", () => {
 
     expect(await call({ "x-ape-session-id": "FROM-HEADER" })).toBe("FROM-HEADER");
     expect(await call({ Cookie: "apeClientId=ABC; sessionId=a%20b" })).toBe("a b");
+  });
+
+  test.each([
+    '{"a":{"__proto__":{"__proto__":{"isAdmin<!P>":["data","yes"]}}},"a<!M>":{},"yes":true}',
+    '{"a":{"constructor":{"x<!P>":["yes"]}},"a<!M>":{},"yes":"PWNED"}',
+  ])("a POST whose pointer would land on a prototype changes nothing: %s", async (data) => {
+    const keys = () => [Object.prototype, Map.prototype, Set.prototype, Map].map((o) => Reflect.ownKeys(o).map(String).sort().join());
+    const before = keys();
+
+    const res = await fetch(`http://${server.host}:${server.port}/poll/ape/poll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: "apeClientId=ABC" },
+      body: `{"type":"echo","data":${data},"createdAt<!D>":${Date.now()}}`,
+    });
+    await res.text();
+
+    expect(res.status).toBe(500);
+    expect(keys()).toEqual(before);
+    expect(({}).isAdmin).toBeUndefined();
+    expect(new Map().x).toBeUndefined();
+  });
+
+  test("an unknown endpoint and a thrown string answer stacks with no server path", async () => {
+    for (const type of ["nope", "strthrow"]) {
+      const { frame } = await post(type, {}, "apeClientId=ABC");
+
+      expect(frame.err.stack).toBe(`${frame.err.name}: ${frame.err.message}`);
+      const text = require("util").inspect(frame, { depth: null }); // prints an Error's stack
+      expect(text).not.toMatch(/\n\s+at /);
+      expect(text).not.toContain(dir);
+    }
+  });
+
+  test.each([[0], [""], [null], [false]])("a controller that throws %p is a 500 error frame, not a success", async (value) => {
+    const { status, frame } = await post("falsy", { v: value }, "apeClientId=ABC");
+
+    expect(status).toBe(500);
+    expect(frame.err).toBeInstanceOf(Error);
+  });
+
+  test("a POST body over maxMessageBytes (default 16 MiB) is refused, and the server keeps answering", async () => {
+    const shipped = await harness.createServer({ where: dir, apeOptions: { urlPrefix: "shipped", maxMessageBytes: undefined } });
+    // The server answers 413 as soon as the limit is passed and closes the connection; a client
+    // still writing its 17 MiB may see the reset before it reads the 413. Either is a refusal.
+    const outcome = await fetch(`http://${shipped.host}:${shipped.port}/shipped/ape/poll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: "apeClientId=ABC" },
+      body: jss.stringify({ type: "echo", data: { pad: "x".repeat(17 * 1024 * 1024) }, createdAt: new Date() }),
+    }).then((res) => res.status, () => "reset");
+
+    expect([413, "reset"]).toContain(outcome);
+    expect((await post("echo", { ok: 1 }, "apeClientId=ABC")).frame.data).toEqual({ echo: { ok: 1 } });
+  }, 60000); // builds and sends a 17 MiB body: slow on a loaded machine
+
+  test("maxMessageBytes sets the POST limit too", async () => {
+    const small = await harness.createServer({ where: dir, apeOptions: { urlPrefix: "small", maxMessageBytes: 1000 } });
+    const send = (pad) => fetch(`http://${small.host}:${small.port}/small/ape/poll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: "apeClientId=ABC" },
+      body: jss.stringify({ type: "echo", data: { pad }, createdAt: new Date() }),
+    });
+
+    expect((await send("x".repeat(200))).status).toBe(200);
+    const refused = await send("x".repeat(2000));
+    expect(refused.status).toBe(413);
+    expect((await refused.json()).error).toMatch(/maxMessageBytes/);
   });
 });

@@ -82,6 +82,8 @@ const { WebSocket } = require("./socket");
  * @property {boolean} [noServer=false] - When true, the server doesn't create
  *     its own HTTP server. Upgrade requests must be manually forwarded via
  *     `handleUpgrade()`. This is the typical mode for api-ape integration.
+ * @property {number} [maxPayload=Infinity] - Largest message a client may send, in bytes;
+ *     a bigger one closes the socket with code 1009 (api-ape passes `maxMessageBytes`).
  */
 
 /**
@@ -146,6 +148,7 @@ class WebSocketServer extends EventEmitter {
    *
    * @param {WebSocketServerOptions} [options={}] - Configuration options
    * @param {boolean} [options.noServer=false] - Run without creating HTTP server
+   * @param {number} [options.maxPayload=Infinity] - Largest message a client may send, in bytes
    *
    * @example
    * // Standard noServer mode for integration
@@ -164,6 +167,13 @@ class WebSocketServer extends EventEmitter {
      * @private
      */
     this._noServer = options.noServer || false;
+
+    /**
+     * Largest message a client may send (bytes); bigger ones close the socket with 1009.
+     * @type {number}
+     * @private
+     */
+    this._maxPayload = options.maxPayload || Infinity;
 
     /**
      * Set of all connected WebSocket clients.
@@ -322,7 +332,7 @@ class WebSocketServer extends EventEmitter {
     // We'll handle this in the WebSocket's buffer
 
     // Create WebSocket wrapper around the TCP socket
-    const ws = new WebSocket(socket);
+    const ws = new WebSocket(socket, { maxPayload: this._maxPayload });
     this._clients.add(ws);
 
     // Remove from clients set when connection closes

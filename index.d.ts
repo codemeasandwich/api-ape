@@ -177,6 +177,12 @@ export interface ApeServerOptions {
     fileTransferOptions?: { startTimeout?: number; completeTimeout?: number }
     /** HTTP long-poll fallback settings (Node only) */
     longPollingOptions?: { heartbeatInterval?: number; recycleTimeout?: number }
+    /**
+     * Most bytes one inbound WebSocket message, or one long-poll POST body, may hold
+     * (default 16 MiB). Larger ones close the socket (1009) or get HTTP 413. Uploads are
+     * separate HTTP PUTs and are not limited by this.
+     */
+    maxMessageBytes?: number
     /** Connection lifecycle hook */
     onConnect?: OnConnectCallback
     /** Origin policy for WebSocket upgrades (default: `root-domain` on Node, `exact` on Bun) */

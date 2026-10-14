@@ -25,7 +25,6 @@ import { processIncomingData, dispatchMessage } from "./messageHandler";
  * Create the streaming fallback bound to the client's shared state.
  *
  * @param {Object} d - Shared state accessors and callbacks from `connectSocket.js`
- * @param {function(): string} d.getConfiguredTransport - `auto` | `websocket` | `polling`
  * @param {function(): string|null} d.getCurrentTransport - Active transport
  * @param {function(string|null): void} d.setCurrentTransport - Set the active transport
  * @param {function(boolean): void} d.setReady - Mark the connection ready / not ready
@@ -45,12 +44,7 @@ export function createStreamingFallback(d) {
    * @returns {void}
    */
   function startWsRetry() {
-    if (
-      wsRetryTimer ||
-      d.getCurrentTransport() !== "polling" ||
-      d.getConfiguredTransport() === "polling"
-    )
-      return;
+    if (wsRetryTimer || d.getCurrentTransport() !== "polling") return;
     wsRetryTimer = setInterval(() => {
       if (d.getCurrentTransport() !== "polling") {
         clearInterval(wsRetryTimer);

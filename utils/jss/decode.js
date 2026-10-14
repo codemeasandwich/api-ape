@@ -156,12 +156,19 @@ const tagLookup = {
 
   /**
    * Register circular reference pointer for later resolution
+   * The pointer remembers the decoded object it sits in and its key, rather than a path
+   * to walk later: a path walked from the root is peer text, and following it through a
+   * duplicate key (`a`, then `a<!M>`) or `__proto__` reached the prototypes of Map, Set,
+   * `Object`. The write lands on an object this decoder just created.
+   *
    * @param {string[]} sourcePath - Path to the referenced object
-   * @param {string[]} currentPath - Path where reference should be placed
+   * @param {string[]} currentPath - Unused (kept for the decoder signature)
+   * @param {Object|Array} parent - The decoded object or array holding the pointer
+   * @param {string|number} key - The pointer's key (or index) in `parent`
    * @returns {null} Placeholder (will be replaced during resolution)
    */
-  P: (sourcePath, currentPath) => {
-    pointers2Res.push([sourcePath, currentPath]);
+  P: (sourcePath, currentPath, parent, key) => {
+    pointers2Res.push([sourcePath, parent, key]);
     return null;
   },
 
@@ -205,10 +212,15 @@ const tagLookup = {
 
   /**
    * Decode inline base64 binary data
-   * @param {string} s - Base64 encoded string
+   * @param {string} s - Base64 encoded string (anything else throws)
    * @returns {Buffer|ArrayBuffer} Decoded binary data (Buffer in Node, ArrayBuffer in browser)
    */
   I: (s) => {
+    // Base64 text only. `Buffer.from` also takes `{ length: N }` (allocates N bytes: a
+    // peer's 50-byte frame blocked the server for seconds) and arrays of numbers.
+    if (typeof s !== "string") {
+      throw new TypeError("JSS decode: an inline binary (<!I>) value must be base64 text");
+    }
     // In Node.js, return Buffer
     if (typeof Buffer !== "undefined") {
       return Buffer.from(s, "base64");
@@ -281,8 +293,10 @@ const MAX_DECODE_DEPTH = 500;
  *
  * @param {any} val - The value to decode
  * @param {string|undefined} tag - Type tag (D, R, E, U, M, S, P, or array format)
- * @param {string[]} [path=[]] - Current path for circular reference tracking
- * @param {number} [depth=0] - Internal recursion guard (paired with MAX_DECODE_DEPTH)
+ * @param {string[]} path - ONE shared stack of the keys above this value (pushed before
+ *        descending, popped after); its length is the recursion depth (see MAX_DECODE_DEPTH)
+ * @param {Object|Array} [parent] - The decoded object or array this value goes into
+ * @param {string|number} [key] - This value's key (or index) in `parent`
  * @returns {any} The decoded value with original JavaScript type
  * @private
  *
@@ -302,7 +316,10 @@ const MAX_DECODE_DEPTH = 500;
  * // Returns: [Date, Date]
  */
 
-function decodeValue(val, tag, path, depth = 0) {
+function decodeValue(val, tag, path, parent, key) {
+  // `path` is ONE shared stack (push before descending, pop after), not a copy per node;
+  // anything that keeps it gets a copy.
+  const depth = path.length;
   if (depth > MAX_DECODE_DEPTH) {
     throw new Error(
       `JSS decode depth limit exceeded at depth ${depth}, path: ...${path.slice(-3).join('.')}. ` +
@@ -312,13 +329,13 @@ function decodeValue(val, tag, path, depth = 0) {
 
   // If we have a known tag, use the appropriate decoder
   if (hasOwn(tagLookup, tag)) {
-    return tagLookup[tag](val, path);
+    return tagLookup[tag](val, path.slice(), parent, key);
   }
 
   // Check custom plugins
   const plugin = getPlugin(tag);
   if (plugin) {
-    return plugin.decode(val, path, {});
+    return plugin.decode(val, path.slice(), {});
   }
 
   // Handle arrays
@@ -330,7 +347,9 @@ function decodeValue(val, tag, path, depth = 0) {
     const typeTags = isTaggedArray ? tag.slice(1, -1).split(",") : [];
 
     for (let i = 0; i < val.length; i++) {
-      res.push(decodeValue(val[i], typeTags[i], [...path, i], depth + 1));
+      path.push(i);
+      res.push(decodeValue(val[i], typeTags[i], path, res, i));
+      path.pop();
     }
 
     return res;
@@ -340,9 +359,15 @@ function decodeValue(val, tag, path, depth = 0) {
   if (val !== null && typeof val === "object") {
     const res = {};
 
-    for (const key of Object.keys(val)) {
-      const [name, t] = parseKeyWithTags(key);
-      setKey(res, name, decodeValue(val[key], t, [...path, name], depth + 1));
+    for (const rawKey of Object.keys(val)) {
+      const [name, t] = parseKeyWithTags(rawKey);
+      // `a` and `a<!M>` are two keys in the JSON and one name once decoded; which one
+      // wins would be the peer's choice, and a pointer under the loser points at nothing
+      // the caller sees. No honest encoder writes both.
+      if (hasOwn(res, name)) throw new Error(`JSS decode: duplicate key "${name}" at ...${path.slice(-3).join(".")}`);
+      path.push(name);
+      setKey(res, name, decodeValue(val[rawKey], t, path, res, name));
+      path.pop();
     }
 
     return res;
@@ -360,36 +385,30 @@ function decodeValue(val, tag, path, depth = 0) {
  * by navigating to the referenced object and placing it at the target location.
  *
  * @param {Object} obj - The root decoded object
- * @param {[string[], string[]]} pointerInfo - Tuple of [refPath, attrPath]
- *        - refPath: Path to the object being referenced
- *        - attrPath: Path where the reference should be placed
- * @returns {void} Modifies obj in place
+ * @param {[string[], Object|Array, string|number]} pointerInfo - Tuple of [refPath, parent, key]
+ *        - refPath: Path to the object being referenced (peer text: own properties only)
+ *        - parent, key: the decoded object holding the pointer, and its key there
+ * @returns {void} Modifies the pointer's parent in place
  * @private
  *
  * @example
  * // Given: obj = { child: { name: 'test' }, ref: null }
- * // With pointer: [['child'], ['ref']]
+ * // With pointer: [['child'], obj, 'ref']
  * // After resolution: obj.ref === obj.child
  *
- * resolvePointers(obj, [['child'], ['ref']])
+ * resolvePointers(obj, [['child'], obj, 'ref'])
  * console.log(obj.ref === obj.child)  // true
  */
-function resolvePointers(obj, [refPath, attrPath]) {
+function resolvePointers(obj, [refPath, parent, key]) {
   // Navigate to the referenced object. The path is peer data: follow own properties
   // only, so `["constructor","constructor"]` cannot reach the Function constructor.
   let ref = obj;
-  for (const key of refPath) {
-    ref = ref !== null && typeof ref === "object" && hasOwn(ref, key) ? ref[key] : undefined;
+  for (const step of refPath) {
+    ref = ref !== null && typeof ref === "object" && hasOwn(ref, step) ? ref[step] : undefined;
   }
 
-  // Navigate to the parent of the target location
-  let attrParent = obj;
-  for (let i = 0; i < attrPath.length - 1; i++) {
-    attrParent = attrParent[attrPath[i]];
-  }
-
-  // Set the reference at the target location
-  setKey(attrParent, attrPath[attrPath.length - 1], ref);
+  // Set the reference where the pointer was decoded.
+  setKey(parent, key, ref);
 }
 
 /**

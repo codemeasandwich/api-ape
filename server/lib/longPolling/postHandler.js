@@ -54,6 +54,7 @@ const { errorFrame, dataFrame } = require("../../../utils/wireError");
 const { createControllerContext, createCallContext, getSessionId } = require("../../socket/receiveContext");
 const messageHash = require("../../../utils/messageHash");
 const { hasOwn } = require("../../../utils/safeKeys");
+const { DEFAULT_MAX_MESSAGE_BYTES } = require("../options");
 
 /**
  * Extracts the client ID from request cookies.
@@ -227,7 +228,7 @@ function sendFrame(res, statusCode, frame) {
  *     return users
  * }
  */
-function createPostHandler(streamClients) {
+function createPostHandler(streamClients, { maxBodyBytes = DEFAULT_MAX_MESSAGE_BYTES } = {}) {
   /**
    * HTTP POST request handler for client messages.
    *
@@ -244,11 +245,26 @@ function createPostHandler(streamClients) {
       });
     }
 
-    // Collect request body chunks
+    // Collect request body chunks, up to `maxBodyBytes`: the body is parsed in full before
+    // anything checks the endpoint, so an unbounded one lets any client exhaust memory.
     const chunks = [];
-    req.on("data", (chunk) => chunks.push(chunk));
+    let received = 0;
+    let tooBig = false;
+    req.on("data", (chunk) => {
+      if (tooBig) return;
+      received += chunk.length;
+      if (received > maxBodyBytes) {
+        tooBig = true;
+        chunks.length = 0;
+        res.writeHead(413, { "Content-Type": "application/json", Connection: "close" });
+        res.end(JSON.stringify({ error: `Request body over ${maxBodyBytes} bytes (maxMessageBytes)` }));
+        return;
+      }
+      chunks.push(chunk);
+    });
 
     req.on("end", async () => {
+      if (tooBig) return;
       // Parse request body and generate queryId first (needed for error responses too)
       const body = Buffer.concat(chunks).toString("utf8");
       const queryId = messageHash(body);

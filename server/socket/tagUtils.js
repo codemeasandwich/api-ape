@@ -41,7 +41,7 @@
  * // { avatar: <Buffer ...>, name: 'Alice' }
  */
 
-const { hasOwn, setKey } = require("../../utils/safeKeys");
+const { setKey, setAtPath } = require("../../utils/safeKeys");
 
 /**
  * @typedef {Object} UploadTag
@@ -365,24 +365,7 @@ function cleanUploadTags(obj) {
  * // message: { image: <Buffer ...> }
  */
 function setValueAtPath(obj, path, value) {
-  const parts = path.split(".");
-  let current = obj;
-
-  // Navigate to the parent of the target. The path is built from keys a peer chose,
-  // so follow OWN properties only: `constructor.prototype.x` must not reach
-  // `Object.prototype`.
-  for (let i = 0; i < parts.length - 1; i++) {
-    if (current === null || typeof current !== "object" || !hasOwn(current, parts[i])) {
-      throw new Error(`Cannot set a value at "${path}": "${parts[i]}" is not a property of the message`);
-    }
-    current = current[parts[i]];
-  }
-
-  // Set the value at the final key
-  if (current === null || typeof current !== "object") {
-    throw new Error(`Cannot set a value at "${path}": its parent is not an object`);
-  }
-  setKey(current, parts[parts.length - 1], value);
+  setAtPath(obj, path, value);
 }
 
 module.exports = {

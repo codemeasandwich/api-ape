@@ -31,7 +31,15 @@ const CONTROLLERS = {
     isObject: d.x === Object,
   });`,
   "upload.js": "module.exports = (d) => ({ keys: Object.keys(d) });",
+  "strthrow.js": "module.exports = () => { throw 'plain string'; };",
+  "falsy.js": "module.exports = (d) => { throw d.v; };",
+  "nested.js": "module.exports = () => { throw { why: new Error('inner'), list: [new RangeError('in a list')] }; };",
 };
+
+const PROTOTYPES = () => [Object.prototype, Array.prototype, Map.prototype, Set.prototype, Date.prototype, Function.prototype, Map, Set];
+const snapshot = () => PROTOTYPES().map((o) => Reflect.ownKeys(o).map(String).sort().join());
+/** The text of a call frame, as a peer writes it by hand. */
+const frameText = (type, data) => JSON.stringify({ type, data, "createdAt<!D>": Date.now() });
 
 describe("Hostile peer", () => {
   let harness;
@@ -176,5 +184,153 @@ describe("Hostile peer", () => {
     expect(frame.err).toBeInstanceOf(Error);
     expect((await raw.reply(raw.call("echo", { still: "up" }))).data).toEqual({ echo: { still: "up" } });
     raw.close();
+  });
+
+  describe("pointer targets", () => {
+    test.each([
+      '{"a":{"__proto__":{"__proto__":{"isAdmin<!P>":["data","yes"]}}},"a<!M>":{},"yes":true}',
+      '{"a":{"constructor":{"x<!P>":["yes"]}},"a<!M>":{},"yes":"PWNED"}',
+      '{"a":{"__proto__":{"y<!P>":["yes"]}},"a<!S>":[],"yes":1}',
+      '{"a":{"__proto__":{"y<!P>":["yes"]}},"a<!D>":0,"yes":1}',
+    ])("a frame whose pointer would land on a prototype changes nothing and the socket keeps working: %s", async (data) => {
+      const raw = await peer();
+      const before = snapshot();
+
+      raw.callRaw(`{"type":"echo","data":${data},"createdAt<!D>":${Date.now()}}`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(snapshot()).toEqual(before);
+      expect(({}).isAdmin).toBeUndefined();
+      expect(new Map().x).toBeUndefined();
+      expect((await raw.reply(raw.call("echo", { ok: 1 }))).data).toEqual({ echo: { ok: 1 } });
+      raw.close();
+    });
+  });
+
+  describe("an inline binary tag", () => {
+    test("a tag that only claims a length allocates nothing: the next call is answered at once", async () => {
+      const raw = await peer();
+      const started = Date.now();
+
+      raw.callRaw(frameText("echo", { "a<!I>": { length: 50000000 } }));
+      const frame = await raw.reply(raw.call("echo", { honest: true }));
+
+      expect(Date.now() - started).toBeLessThan(1000);
+      expect(frame.data).toEqual({ echo: { honest: true } });
+      raw.close();
+    });
+  });
+
+  describe("stacks", () => {
+    const noPath = (frame) => {
+      // `inspect` prints an Error's stack, which JSON.stringify would hide
+      const text = require("util").inspect(frame, { depth: null });
+      expect(text).not.toMatch(/\n\s+at /);
+      expect(text).not.toContain(dir);
+      expect(text).not.toContain("node_modules");
+    };
+
+    test("an unknown endpoint answers an Error whose stack is its name and message, no server path", async () => {
+      const raw = await peer();
+
+      const frame = await raw.reply(raw.call("nope", {}));
+
+      expect(frame.err.stack).toBe('Error: TypeError: "nope" was not found');
+      noPath(frame);
+      raw.close();
+    });
+
+    test("a controller that throws a string answers an Error with no server path in its stack", async () => {
+      const raw = await peer();
+
+      const frame = await raw.reply(raw.call("strthrow", {}));
+
+      expect(frame.err.message).toBe("plain string");
+      expect(frame.err.stack).toBe("Error: plain string");
+      noPath(frame);
+      raw.close();
+    });
+
+    test("Errors inside a thrown object or array arrive without their stacks", async () => {
+      const raw = await peer();
+
+      const frame = await raw.reply(raw.call("nested", {}));
+
+      expect(frame.err.why.message).toBe("inner");
+      expect(frame.err.list[0]).toBeInstanceOf(RangeError);
+      noPath(frame);
+      raw.close();
+    });
+  });
+
+  describe("falsy throws", () => {
+    test.each([[0, "0"], ["", "empty"], [null, "null"], [false, "false"]])("a controller that throws %p is an error reply, not a success", async (value) => {
+      const raw = await peer();
+
+      const frame = await raw.reply(raw.call("falsy", { v: value }));
+
+      expect(frame.err).toBeInstanceOf(Error);
+      expect(frame.err.message).toMatch(/threw/);
+      raw.close();
+    });
+  });
+
+  describe("message size", () => {
+    test("a message over the default 16 MiB closes the socket (1009), the server keeps serving", async () => {
+      const shipped = await harness.createServer({ where: dir, apeOptions: { urlPrefix: "shipped", maxMessageBytes: undefined } });
+      const raw = await connectRaw(shipped, "shipped");
+      const closed = new Promise((resolve) => raw.ws.once("close", (code) => resolve(code)));
+
+      raw.callRaw(frameText("echo", { pad: "x".repeat(17 * 1024 * 1024) }));
+
+      expect(await closed).toBe(1009);
+      const other = await peer();
+      expect((await other.reply(other.call("echo", { ok: 1 }))).data).toEqual({ echo: { ok: 1 } });
+      other.close();
+    }, 60000); // builds and sends a 17 MiB frame: slow on a loaded machine
+
+    test("maxMessageBytes sets the limit: a bigger message is refused, a smaller one answered", async () => {
+      const small = await harness.createServer({ where: dir, apeOptions: { urlPrefix: "small", maxMessageBytes: 2000 } });
+      const raw = await connectRaw(small, "small");
+      expect((await raw.reply(raw.call("echo", { pad: "x".repeat(500) }))).data.echo.pad).toHaveLength(500);
+      const closed = new Promise((resolve) => raw.ws.once("close", (code) => resolve(code)));
+
+      raw.callRaw(frameText("echo", { pad: "x".repeat(3000) }));
+
+      expect(await closed).toBe(1009);
+    });
+
+    test("a message sent as fragments counts as one: fragments that add up to over the limit close the socket", async () => {
+      const small = await harness.createServer({ where: dir, apeOptions: { urlPrefix: "frag", maxMessageBytes: 2000 } });
+      const raw = await connectRaw(small, "frag");
+      const closed = new Promise((resolve) => raw.ws.once("close", (code) => resolve(code)));
+      const half = "x".repeat(1500);
+
+      raw.ws.send(half, { fin: false });
+      raw.ws.send(half, { fin: true });
+
+      expect(await closed).toBe(1009);
+    });
+
+    test("a frame announcing a 64-bit length closes the connection with 1009 and the server keeps running", async () => {
+      const net = require("net");
+      const sock = net.connect(server.port, server.host);
+      const received = [];
+      sock.on("data", (chunk) => received.push(chunk));
+      const closed = new Promise((resolve) => sock.on("close", resolve));
+      sock.write(
+        "GET /hostile/ape HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+          "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      sock.write(Buffer.from([0x81, 0xff, 0, 0, 0, 1, 0, 0, 0, 0])); // one text frame, length 2^32
+      await closed;
+
+      expect(Buffer.concat(received).includes(Buffer.from([0x03, 0xf1]))).toBe(true); // close code 1009
+      const other = await peer();
+      expect((await other.reply(other.call("echo", { ok: 1 }))).data).toEqual({ echo: { ok: 1 } });
+      other.close();
+    });
   });
 });

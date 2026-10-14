@@ -10,10 +10,10 @@
  * 3. Periodically retries WebSocket even when using HTTP streaming
  * 4. Handles reconnection automatically when connections drop
  *
- * ## Transport Modes
+ * ## Transports
  * - `websocket` - Real-time bidirectional WebSocket connection
  * - `polling` - HTTP streaming fallback (GET for receiving, POST for sending)
- * - `auto` - Automatically selects best transport (default)
+ * There is no setting to force one: the client always tries the WebSocket first.
  *
  * ## Binary Data Support
  * The module transparently handles binary data (ArrayBuffer, Blob) by:
@@ -117,13 +117,6 @@ import {
  *
  * @private
  */
-
-/**
- * Configured transport mode
- * @type {'auto'|'websocket'|'polling'}
- * @private
- */
-let configuredTransport = "auto";
 
 /**
  * Currently active transport type
@@ -278,7 +271,6 @@ function clearReconnectBackoffTimer() {
  * @private
  */
 const fallback = createStreamingFallback({
-  getConfiguredTransport: () => configuredTransport,
   getCurrentTransport: () => currentTransport,
   setCurrentTransport: (v) => {
     currentTransport = v;
@@ -298,7 +290,6 @@ const tryWebSocket = require("./connectSocket-tryWs.js").createTryWebSocket({
   getLastResumeClientId: () => lastResumeClientId,
   WebSocketCtor: WebSocket,
   wsFallbackTimeoutMs: WS_FALLBACK_TIMEOUT,
-  getConfiguredTransport: () => configuredTransport,
   switchToStreaming,
   getReconnectBackoffAttempt: () => reconnectBackoffAttempt,
   setReconnectBackoffAttempt: (v) => {
@@ -403,7 +394,7 @@ async function attemptConnection(force = false) {
   failedPings = 0;
 
   // Start appropriate transport
-  configuredTransport === "polling" ? switchToStreaming() : tryWebSocket(false);
+  tryWebSocket(false);
 }
 
 // Over HTTP streaming a call is a POST on the streaming transport, not a frame on a socket

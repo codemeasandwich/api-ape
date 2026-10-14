@@ -17,7 +17,7 @@ const messageHash = require("../../../../utils/messageHash");
  *
  * @param {{wsUrl: string, apiPath: string}} server - Harness server instance
  * @param {string} [prefix=server.apiPath] - URL prefix the server was mounted under (`urlPrefix`)
- * @returns {Promise<{frames: Array<Object>, call: function(string, any): string, framesFor: function(string): Array<Object>, reply: function(string, number=): Promise<Object>, close: function(): void}>}
+ * @returns {Promise<{frames: Array<Object>, call: function(string, any): string, callRaw: function(string): string, ws: WebSocket, framesFor: function(string): Array<Object>, reply: function(string, number=): Promise<Object>, close: function(): void}>}
  *   Client with `call(type, data)` returning the queryId, `framesFor(queryId)`, and `reply(queryId)`
  */
 async function connectRaw(server, prefix = server.apiPath) {
@@ -41,6 +41,17 @@ async function connectRaw(server, prefix = server.apiPath) {
     const queryId = messageHash(message);
     ws.send(message);
     return queryId;
+  }
+
+  /**
+   * Send text exactly as given (a hand-written, possibly hostile frame).
+   *
+   * @param {string} text - The frame
+   * @returns {string} The queryId the server would answer on
+   */
+  function callRaw(text) {
+    ws.send(text);
+    return messageHash(text);
   }
 
   /**
@@ -70,7 +81,7 @@ async function connectRaw(server, prefix = server.apiPath) {
     throw new Error(`no reply for ${queryId} within ${ms} ms`);
   }
 
-  return { frames, call, framesFor, reply, close: () => ws.close() };
+  return { frames, call, callRaw, framesFor, reply, ws, close: () => ws.close() };
 }
 
 module.exports = { connectRaw };

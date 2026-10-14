@@ -29,11 +29,11 @@ The call-contract stories (keepalive, identical calls, replies, errors and what 
 
 ### `hostile-peer.test.js`
 
-Security stories with a raw WebSocket peer against a real server: an error tag naming `Worker`, `WebSocket`, `XMLHttpRequest`, `EventSource`, `Function`, `Proxy` or `__proto__` constructs nothing; a call to an inherited name (`valueOf`, `constructor`, `__proto__`) is not found like any unknown endpoint; a pointer cannot hand a controller `Function` or `Object`; an upload field path through `constructor.prototype` (or through a text value) is refused instead of changing `Object.prototype`.
+Security stories with a raw WebSocket peer against a real server: an error tag naming `Worker`, `WebSocket`, `XMLHttpRequest`, `EventSource`, `Function`, `Proxy` or `__proto__` constructs nothing; a call to an inherited name (`valueOf`, `constructor`, `__proto__`) is not found like any unknown endpoint; a pointer cannot hand a controller `Function` or `Object`; an upload field path through `constructor.prototype` (or through a text value) is refused instead of changing `Object.prototype`; a pointer under a duplicate key cannot land on a prototype; an inline binary tag cannot allocate; stacks carry no server path; `throw 0` / `""` / `null` are error replies; messages over `maxMessageBytes` (a single frame, fragments that add up, a 64-bit length) close the socket with 1009.
 
 ### `long-poll.test.js`
 
-The HTTP long-poll path spoken with plain `fetch`: the reply frame (with `undefined` tagged), a 500 carrying the Error with its code and data and no stack, an unserialisable thrown value, 404 for unknown and inherited endpoint names (same message as a WebSocket), 401 without a session, a call with no open stream, `this.keepalive()` / `this.broadcast` / `this.send` (including an error push) arriving on the open stream, an embed that names `clientId` / `sessionId`, and the session read from `x-ape-session-id` or a URL-encoded cookie.
+The HTTP long-poll path spoken with plain `fetch`: the reply frame (with `undefined` tagged), a 500 carrying the Error with its code and data and no stack, an unserialisable thrown value, 404 for unknown and inherited endpoint names (same message as a WebSocket), 401 without a session, a call with no open stream, a POST with a pointer to a prototype, a POST over `maxMessageBytes` (413), no server path in a stack, `this.keepalive()` / `this.broadcast` / `this.send` (including an error push) arriving on the open stream, an embed that names `clientId` / `sessionId`, and the session read from `x-ape-session-id` or a URL-encoded cookie.
 
 ### `wire-protocol.test.js`
 

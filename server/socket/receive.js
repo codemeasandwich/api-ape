@@ -12,6 +12,7 @@ const messageHash = require("../../utils/messageHash");
 const { subscribe, unsubscribe } = require("../lib/broadcast");
 const jss = require("../../utils/jss");
 const { hasOwn } = require("../../utils/safeKeys");
+const { ensureThrown } = require("../../utils/wireError");
 const {
   findUploadTags,
   findFileTags,
@@ -195,7 +196,8 @@ module.exports = function receiveHandler(ape) {
         })
         .catch((err) => {
           try {
-            send(queryId, false, false, err);
+            // `throw 0` / `throw ""` / `throw null` are failures; a falsy `err` would be sent as data.
+            send(queryId, false, false, ensureThrown(err));
           } catch (sendErr) { }
           if (typeof onFinish === "function") onFinish(err, true);
         });

@@ -38,7 +38,7 @@ Module entry point that exports:
 
 RFC 6455 frame protocol implementation:
 
-- `parseFrame(buffer)` — Parse incoming WebSocket frames from raw bytes
+- `parseFrame(buffer, maxPayload)` — Parse incoming WebSocket frames from raw bytes; throws `FrameTooLargeError` on the HEADER when the payload is over `maxPayload` (or 2^32), before any payload byte is buffered
 - `buildFrame(data, opcode)` — Build outgoing frames for transmission
 - `buildCloseFrame(code, reason)` — Build connection close frames
 - `buildPongFrame(payload)` — Build pong response to ping frames
@@ -51,6 +51,7 @@ WebSocket connection class:
 
 - Wraps raw TCP socket with WebSocket frame protocol
 - Handles message fragmentation and reassembly
+- Enforces `maxPayload` (one frame on its header, or all fragments of a message): over it, or a malformed header, closes with 1009 / 1002 instead of buffering or throwing out of the data handler
 - Automatically responds to ping frames with pong
 - Manages connection state transitions (OPEN → CLOSING → CLOSED)
 - Emits `message`, `close`, and `error` events
@@ -61,6 +62,7 @@ WebSocketServer class:
 
 - Handles HTTP upgrade requests for WebSocket connections
 - Validates Sec-WebSocket-Key header per RFC 6455
+- Takes `maxPayload` (api-ape passes `maxMessageBytes`) and hands it to each connection
 - Sends 101 Switching Protocols response
 - Manages connected clients via `clients` Set
 - Emits `connection` event with WebSocket instance and request

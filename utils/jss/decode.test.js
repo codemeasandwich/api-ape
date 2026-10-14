@@ -230,4 +230,78 @@ describe("JSS decode: tag names and keys from a peer are data, never lookups", (
 
     expect(Object.keys(got)).toEqual([name]);
   });
+
+  describe("a pointer's target is where it was decoded, not a path walked afterwards", () => {
+    const WATCHED = [
+      ["Object.prototype", () => Object.prototype],
+      ["Array.prototype", () => Array.prototype],
+      ["Map.prototype", () => Map.prototype],
+      ["Set.prototype", () => Set.prototype],
+      ["Date.prototype", () => Date.prototype],
+      ["Function.prototype", () => Function.prototype],
+      ["Map", () => Map],
+      ["Set", () => Set],
+      ["Object", () => Object],
+    ];
+    const snapshot = () => WATCHED.map(([, get]) => Reflect.ownKeys(get()).map(String).sort().join());
+
+    test.each([
+      ["a duplicate name reaching Object.prototype through __proto__", '{"a":{"__proto__":{"__proto__":{"isAdmin<!P>":["data","yes"]}}},"a<!M>":{},"yes":true}'],
+      ["a duplicate name reaching Map through constructor", '{"a":{"constructor":{"x<!P>":["yes"]}},"a<!M>":{},"yes":"PWNED"}'],
+      ["a duplicate name reaching Set.prototype", '{"a":{"__proto__":{"y<!P>":["yes"]}},"a<!S>":[],"yes":1}'],
+      ["a duplicate name reaching Date.prototype", '{"a":{"__proto__":{"y<!P>":["yes"]}},"a<!D>":0,"yes":1}'],
+      ["a duplicate name reaching Function.prototype", '{"a":{"__proto__":{"y<!P>":["yes"]}},"a<!R>":"/x/","yes":1}'],
+    ])("%s is refused and nothing global changes", (_name, frame) => {
+      const before = snapshot();
+
+      expect(() => jss.parse(frame)).toThrow(/duplicate key "a"/);
+
+      expect(snapshot()).toEqual(before);
+      expect(({}).isAdmin).toBeUndefined();
+      expect(new Map().x).toBeUndefined();
+      expect(Map.x).toBeUndefined();
+    });
+
+    test("a pointer under a __proto__ key (no duplicate) writes only to an object the decoder made", () => {
+      const before = snapshot();
+
+      const got = jss.parse('{"__proto__":{"__proto__":{"isAdmin<!P>":["yes"]}},"yes":true}');
+
+      expect(snapshot()).toEqual(before);
+      expect(({}).isAdmin).toBeUndefined();
+      expect(Object.getPrototypeOf(got)).toBe(Object.prototype);
+    });
+
+    test("honest pointers nested several levels down and inside arrays still resolve", () => {
+      const sent = { level1: { level2: { list: [{ n: 1 }] } } };
+      sent.level1.level2.list.push(sent.level1);
+      sent.level1.level2.self = sent.level1.level2;
+
+      const got = jss.parse(jss.stringify(sent));
+
+      expect(got.level1.level2.list[1]).toBe(got.level1);
+      expect(got.level1.level2.self).toBe(got.level1.level2);
+    });
+  });
+
+  describe("an inline binary tag (<!I>) takes base64 text and nothing else", () => {
+    test.each([
+      [{ length: 50000000 }, "an object that only claims a length"],
+      [[1, 2, 3], "an array of bytes"],
+      [5, "a number"],
+      [null, "null"],
+    ])("%p (%s) is refused without allocating", (value) => {
+      const started = Date.now();
+
+      expect(() => jss.parse(JSON.stringify({ "blob<!I>": value }))).toThrow(/inline binary/);
+
+      expect(Date.now() - started).toBeLessThan(200);
+    });
+
+    test("base64 text still decodes to the bytes", () => {
+      const got = jss.parse(JSON.stringify({ "blob<!I>": Buffer.from("hello").toString("base64") }));
+
+      expect(Buffer.from(got.blob).toString()).toBe("hello");
+    });
+  });
 });

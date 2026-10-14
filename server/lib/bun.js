@@ -62,7 +62,7 @@
  */
 
 const loader = require("./loader");
-const { checkOptions } = require("./options");
+const { checkOptions, DEFAULT_MAX_MESSAGE_BYTES } = require("./options");
 const { configureApeLogging } = require("../../utils/apeLogger");
 const wiring = require("./wiring");
 const path = require("path");
@@ -101,6 +101,8 @@ const { bunWebSocketConfig } = require("./runtimes/bunWebSocketConfig");
  *     Off by default. `true` watches the controller directory;
  *     `{ paths: string[], debounceMs: number }` also invalidates and watches those
  *     directories (the service modules the controllers import). See README "Hot reload".
+ * @property {number} [maxMessageBytes=16777216] - Largest inbound WebSocket message (Bun's `maxPayloadLength`);
+ *     `websocketOptions.maxPayloadLength` overrides it
  * @property {Object} [websocketOptions] - Bun WebSocket tuning passed through to
  *     `Bun.serve({ websocket })`: `idleTimeout`, `sendPings`, `maxPayloadLength`,
  *     `backpressureLimit`, `closeOnBackpressureLimit`, `perMessageDeflate`,
@@ -211,6 +213,7 @@ function apeBun(options) {
     origin,
     watch,
     websocketOptions,
+    maxMessageBytes = DEFAULT_MAX_MESSAGE_BYTES,
   } = options;
   /**
    * Load controllers from the specified directory. Absolute paths are passed
@@ -334,6 +337,8 @@ function apeBun(options) {
    * @type {BunWebSocketHandlers}
    */
   const websocket = {
+    // Bun's own default is 16 MiB; `websocketOptions.maxPayloadLength` still overrides.
+    maxPayloadLength: maxMessageBytes,
     ...bunWebSocketConfig(websocketOptions),
     /**
      * Called when a WebSocket connection is opened.
