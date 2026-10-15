@@ -84,6 +84,8 @@ WebSocket disconnects are expected in production (Wi‑Fi handoffs, laptop sleep
 
 **Stable logical client id (`clientId`)** — After `__connected__`, the browser keeps the server-issued `clientId` in memory and sends **`wss://…/api/ape?resume=<clientId>`** on the next WebSocket open so the server can re-bind the same logical row **within a short TTL** after disconnect. The server also sends **`sessionId`** in `__connected__`; the browser stores it as a **non-HttpOnly** `sessionId` cookie so upgrades carry a **second factor**. Reattach succeeds only when **`(sessionId, clientId)`** matches the row recorded at disconnect — a captured URL alone is not enough.
 
+**Server clock (4.5.1)** — `__connected__` also carries **`serverTime`**; the client keeps the offset between its clock and the server's and stamps every call's `createdAt` in the **server's** clock, so a page whose clock is off is not refused. Calls queued while connecting go out once the greeting is in (at most about a second later; a server that sends none does not stall them). An older server sends no `serverTime`: the page stamps in its own clock, as before. See [Clock skew](../server/README.md#clock-skew).
+
 **Node (`server/client`)** — Handshake **`Cookie: sessionId=…`** (after the first `__connected__`) plus **`resume`** as a query parameter on the WS URL (mirrors the browser). Headers such as **`x-ape-session-id`** / **`x-ape-resume`** are accepted where cookies or query strings are awkward.
 
 **Backoff** — Browser reconnect delay matches the Node client pattern (exponential, capped at 30 s, plus up to 20 % jitter on top of the cap: at most 36 s). Tune resume grace with **`APE_RESUME_TTL_MS`** (milliseconds; default 120000).

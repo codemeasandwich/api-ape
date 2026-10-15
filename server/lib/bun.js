@@ -62,7 +62,7 @@
  */
 
 const { loadControllers, publicPrefix: publicPrefixOf } = require("./controllerSource");
-const { checkOptions, DEFAULT_MAX_MESSAGE_BYTES } = require("./options");
+const { checkOptions, DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_CLOCK_SKEW_MS } = require("./options");
 const { configureApeLogging } = require("../../utils/apeLogger");
 const wiring = require("./wiring");
 const path = require("path");
@@ -112,6 +112,8 @@ const { bunWebSocketConfig } = require("./runtimes/bunWebSocketConfig");
  *     directories (the service modules the controllers import). See README "Hot reload".
  * @property {number} [maxMessageBytes=16777216] - Largest inbound WebSocket message (Bun's `maxPayloadLength`);
  *     `websocketOptions.maxPayloadLength` overrides it
+ * @property {number} [maxClockSkewMs=5000] - How far ahead of the server's clock (ms) a call's
+ *     `createdAt` may be before the call is refused
  * @property {Object} [websocketOptions] - Bun WebSocket tuning passed through to
  *     `Bun.serve({ websocket })`: `idleTimeout`, `sendPings`, `maxPayloadLength`,
  *     `backpressureLimit`, `closeOnBackpressureLimit`, `perMessageDeflate`,
@@ -222,6 +224,7 @@ function apeBun(options) {
     websocketOptions,
     onSubscribe,
     maxMessageBytes = DEFAULT_MAX_MESSAGE_BYTES,
+    maxClockSkewMs = DEFAULT_MAX_CLOCK_SKEW_MS,
   } = options;
   /**
    * Load controllers from the specified directory (`where`) or take the `controllers`
@@ -272,7 +275,7 @@ function apeBun(options) {
   // Exact host:port Origin matching is the default under Bun; resolved once so a
   // bad option throws at start-up, not on the first connection.
   const originPolicy = resolveOriginPolicy(origin, "exact");
-  const wiringHandler = wiring(controllers, onConnect, fileTransfer, { originPolicy, onSubscribe });
+  const wiringHandler = wiring(controllers, onConnect, fileTransfer, { originPolicy, onSubscribe, maxClockSkewMs });
 
   // Handle WebSocket connections through the wiring layer
   wss.on("connection", wiringHandler);

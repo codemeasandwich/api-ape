@@ -34,6 +34,7 @@ const KNOWN_OPTIONS = [
   "logging",
   "transport",
   "maxMessageBytes",
+  "maxClockSkewMs",
 ];
 
 /**
@@ -44,6 +45,16 @@ const KNOWN_OPTIONS = [
  * @constant {number}
  */
 const DEFAULT_MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Default `maxClockSkewMs`: how far ahead of the server's clock a call's `createdAt` may
+ * be before the call is refused. Two machines never agree to the millisecond, so 4.5.0's
+ * "any amount ahead is refused" turned a client clock 1 ms fast into a client whose every
+ * call failed. 5 s is far above ordinary drift and a small share of the 10 s staleness
+ * window, which is unchanged.
+ * @constant {number}
+ */
+const DEFAULT_MAX_CLOCK_SKEW_MS = 5000;
 
 /** Documented in 4.3.0 and earlier but never applied. */
 const UNSUPPORTED_OPTIONS = ["authFramework", "authMiddleware"];
@@ -91,6 +102,23 @@ function checkOnSubscribe(options) {
 }
 
 /**
+ * Reject a `maxClockSkewMs` that is not a number of milliseconds (0 or more): a tolerance
+ * that silently became `NaN` would refuse every call.
+ *
+ * @param {Object} options - The options object passed to `ape()` / `apeBun()`
+ * @returns {void}
+ * @throws {Error} If `maxClockSkewMs` is present and not a finite number >= 0
+ */
+function checkMaxClockSkewMs(options) {
+  const value = options.maxClockSkewMs;
+  if (value !== undefined && !(typeof value === "number" && Number.isFinite(value) && value >= 0)) {
+    throw new Error(
+      `api-ape: maxClockSkewMs must be a number of milliseconds, 0 or more (default ${DEFAULT_MAX_CLOCK_SKEW_MS}), got ${String(value)}.`,
+    );
+  }
+}
+
+/**
  * Reject options that are not supported and warn about unknown ones.
  *
  * @param {Object} options - The options object passed to `ape()` / `apeBun()`
@@ -115,6 +143,7 @@ function checkOptions(options) {
   }
   checkControllerSource(options);
   checkOnSubscribe(options);
+  checkMaxClockSkewMs(options);
   const unknown = given.filter((key) => !KNOWN_OPTIONS.includes(key));
   if (unknown.length > 0) {
     apeLog.warn(
@@ -124,4 +153,10 @@ function checkOptions(options) {
   }
 }
 
-module.exports = { checkOptions, KNOWN_OPTIONS, UNSUPPORTED_OPTIONS, DEFAULT_MAX_MESSAGE_BYTES };
+module.exports = {
+  checkOptions,
+  KNOWN_OPTIONS,
+  UNSUPPORTED_OPTIONS,
+  DEFAULT_MAX_MESSAGE_BYTES,
+  DEFAULT_MAX_CLOCK_SKEW_MS,
+};

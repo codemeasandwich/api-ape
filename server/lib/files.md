@@ -76,7 +76,7 @@ TypeScript declarations for the `api-ape/bun` entry point (`apeBun(options): Ape
 
 ### `options.js`
 
-`checkOptions(options)` runs at the start of `ape()` and `apeBun()`. A missing or non-object `options` throws a message naming what is needed (`{ where: "api" }`) instead of a TypeError. `where` and `controllers` are mutually exclusive (both or neither throws), and an `onSubscribe` that is not a function throws. `authFramework` and `authMiddleware` throw (they were never applied; wiring them would leave the Node long-poll path unauthenticated). Any other unknown key logs a warning naming it.
+`checkOptions(options)` runs at the start of `ape()` and `apeBun()`. A missing or non-object `options` throws a message naming what is needed (`{ where: "api" }`) instead of a TypeError. `where` and `controllers` are mutually exclusive (both or neither throws), an `onSubscribe` that is not a function throws, and a `maxClockSkewMs` that is not a number of 0 or more throws (default `DEFAULT_MAX_CLOCK_SKEW_MS`, 5000). `authFramework` and `authMiddleware` throw (they were never applied; wiring them would leave the Node long-poll path unauthenticated). Any other unknown key logs a warning naming it.
 
 ### `fileTransfer.js`
 

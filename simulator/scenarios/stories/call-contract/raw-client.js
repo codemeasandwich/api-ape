@@ -17,7 +17,7 @@ const messageHash = require("../../../../utils/messageHash");
  *
  * @param {{wsUrl: string, apiPath: string}} server - Harness server instance
  * @param {string} [prefix=server.apiPath] - URL prefix the server was mounted under (`urlPrefix`)
- * @returns {Promise<{frames: Array<Object>, call: function(string, any): string, callRaw: function(string): string, ws: WebSocket, framesFor: function(string): Array<Object>, reply: function(string, number=): Promise<Object>, close: function(): void}>}
+ * @returns {Promise<{frames: Array<Object>, call: function(string, any, number=): string, callRaw: function(string): string, ws: WebSocket, framesFor: function(string): Array<Object>, reply: function(string, number=): Promise<Object>, close: function(): void}>}
  *   Client with `call(type, data)` returning the queryId, `framesFor(queryId)`, and `reply(queryId)`
  */
 async function connectRaw(server, prefix = server.apiPath) {
@@ -34,10 +34,11 @@ async function connectRaw(server, prefix = server.apiPath) {
    *
    * @param {string} type - Endpoint, e.g. `slow`
    * @param {any} data - Payload
+   * @param {number} [createdAt=Date.now()] - Epoch ms to stamp on the call (a story about clocks stamps it ahead or behind)
    * @returns {string} The queryId the server will answer on
    */
-  function call(type, data) {
-    const message = jss.stringify({ type, data, createdAt: new Date(), requestedAt: new Date() });
+  function call(type, data, createdAt = Date.now()) {
+    const message = jss.stringify({ type, data, createdAt: new Date(createdAt), requestedAt: new Date() });
     const queryId = messageHash(message);
     ws.send(message);
     return queryId;

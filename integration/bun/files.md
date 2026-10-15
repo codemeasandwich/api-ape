@@ -27,6 +27,7 @@ bun/
 ├── client-api.ts        # Page API: nested api.dir.thing(), early subscribe, api.on, transport
 ├── client-errors.ts     # Errors (class, code, data) and controller files (export default, .d.ts, tests)
 ├── options.ts           # apeBun options: unsupported auth options throw, typos warn, logging honoured, where/controllers refusals
+├── client-clock-skew.ts # Clock skew (4.5.1) through the real browser client: a page 30 s fast or slow is answered, an older server's refusal is a rejected promise
 ├── controllers.ts       # `apeBun({ controllers })` through the real browser client, no controller folder
 ├── compiled-binary.ts   # A `bun build --compile` binary started from another folder answers an RPC from the page client
 └── subscribe.ts         # `onSubscribe` through the real browser client: refusal callback, no retained leak, `clearLastMessage`, streaming cannot subscribe
@@ -37,6 +38,10 @@ bun/
 ### `run.ts`
 
 Entry point for the core Bun integration tests. Mounts `apeBun()` over `integration/test-api`, runs the shared scenarios (WebSocket connection, RPC calls, binary transfer, broadcasts, error handling), then checks the `selector` option: with `selector: ['js', 'ts']` the TypeScript controller in `integration/test-api-ts` answers, and with the default selector it is ignored.
+
+### `client-clock-skew.ts`
+
+Clock skew (4.5.1) through the real browser client and `apeBun()`: a page whose clock (`Date.now`) is 30 s fast or 30 s slow gets its answers, including the first call made before connecting (stamped in the server's clock from `__connected__`'s `serverTime`); with the greeting's `serverTime` removed (an older server) a page 3 s fast is still answered (the 5 s tolerance), one a minute fast is refused and the page gets a rejected promise carrying the server's message (never `undefined`); `maxClockSkewMs: 20000` accepts 15 s ahead and refuses 30 s ahead; a server that sends no greeting at all does not stall a call made before connecting. `APE_ROOT=/older/checkout` fails on 4.5.0.
 
 ### `controllers.ts`
 

@@ -60,12 +60,13 @@
  * - **Logging** honors **`configureApeLogging`** when diagnostics are enabled from **`connectSocket(options)`**.
  * - **Network retries** delegate to **`scheduleNetworkRetry`** when browsers report offline/walled states.
  * - **Same-site session cookie** attributes balance local dev ergonomics with baseline CSRF posture (`SameSite=Lax`).
- * - **Queued RPC flush** runs through **`flushWaitingMessages`** whenever **`ready`** transitions true.
+ * - **Queued RPC flush** runs through **`flushWaitingMessages`** once the HTTP streaming transport opens, and through **`connectedGate`** once a WebSocket's `__connected__` frame has arrived.
  *
  */
 
 import jss from "../utils/jss";
 import { configureApeLogging } from "../utils/apeLogger.js";
+import { clockOffsetFrom, createConnectedGate } from "../utils/clockOffset";
 import {
   ConnectionState,
   notifyConnectionChange,
@@ -175,6 +176,15 @@ let reconnect = false;
 let lastResumeClientId = null;
 
 /**
+ * Server clock minus this page's clock (ms), from `__connected__`'s `serverTime`; 0 until
+ * it arrives and against an older server that sends none. `wsSend` adds it to each call's
+ * `createdAt`, so the server's tolerance for a skewed clock never depends on the page's.
+ * @type {number}
+ * @private
+ */
+let clockOffsetMs = 0;
+
+/**
  * Browser reconnect backoff attempt counter (mirrors Node `connection-reconnect`).
  * @type {number}
  * @private
@@ -229,11 +239,18 @@ function isHandshakePending() {
 const connectAttempt = createConnectAttempt(undefined, isHandshakePending);
 
 /**
+ * Holds calls queued while connecting until `__connected__` brings the server's clock, so
+ * they are stamped in it (see utils/clockOffset.js). Calls made meanwhile queue behind them.
+ * @private
+ */
+const connectedGate = createConnectedGate(() => flushQueue(aWaitingSend, wsSend));
+
+/**
  * WebSocket send function bound to current socket
  * @type {function(string, any, number, boolean=): Promise<any>}
  * @private
  */
-const wsSend = createWsSend(() => __socket, waitingOn);
+const wsSend = createWsSend(() => __socket, waitingOn, () => clockOffsetMs);
 
 // Setup browser online/offline listeners on module load
 if (typeof window !== "undefined") {
@@ -243,10 +260,13 @@ if (typeof window !== "undefined") {
 /**
  * Persist Phase 1 handshake fields for logical reconnect (`resume` + session cookie).
  *
- * @param {{ clientId?: string, sessionId?: string }} data - `__connected__` payload
+ * Also reads the server's clock (`serverTime`) so calls are stamped in it (`clockOffsetMs`).
+ *
+ * @param {{ clientId?: string, sessionId?: string, serverTime?: number }} data - `__connected__` payload
  * @private
  */
 function applyConnectedHandshake(data) {
+  clockOffsetMs = clockOffsetFrom(data);
   if (data.clientId) lastResumeClientId = data.clientId;
   if (typeof document !== "undefined" && data.sessionId) {
     const maxAgeSec = 60 * 60 * 24 * 30;
@@ -319,7 +339,7 @@ const tryWebSocket = require("./connectSocket-tryWs.js").createTryWebSocket({
   resubscribeAll,
   notifyConnectionChange,
   ConnectionState,
-  flushWaitingMessages: (sendFn) => flushQueue(aWaitingSend, sendFn),
+  connectedGate,
   wsSend,
   jss,
   applyConnectedHandshake,
@@ -418,7 +438,7 @@ const streamingSend = (type, data, createdAt) =>
  * @private
  */
 const sender = createSender(
-  () => ready,
+  () => ready && !connectedGate.isWaiting(),
   () => (currentTransport === "polling" ? streamingSend : wsSend),
   aWaitingSend,
   connectSocket,

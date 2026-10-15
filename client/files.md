@@ -44,7 +44,7 @@ Core WebSocket client implementation with:
 
 ### `connectSocket-tryWs.js`
 
-Internal helper wired by `connectSocket.js` — owns `tryWebSocket()` handlers (open / message / error / close) for repository line-count policy.
+Internal helper wired by `connectSocket.js` — owns `tryWebSocket()` handlers (open / message / error / close) for repository line-count policy. On open it starts the `connectedGate` (queued calls wait for `__connected__`, so they are stamped in the server's clock); `__connected__` settles it and a close cancels it.
 
 ### `connectSocket.test.js`
 

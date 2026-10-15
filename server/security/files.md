@@ -51,3 +51,4 @@ Duplicate request protection to prevent replay attacks:
 - Rejects duplicate requests within a configurable time window
 - Prevents attackers from replaying captured WebSocket messages
 - Automatically cleans up expired entries
+- Refuses a `createdAt` older than 10 s, or more than `maxClockSkewMs` (default 5000 ms, 4.5.1) ahead of the server's clock

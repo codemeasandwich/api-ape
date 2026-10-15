@@ -37,6 +37,7 @@ Main entry point for the server-side WebSocket client. Provides the proxy-based 
 
 Manages outbound WebSocket connections from the server:
 
+- **Server clock (4.5.1)** — **`__connected__`** also gives **`serverTime`**: the offset (`utils/clockOffset.js`) is applied to every call's `createdAt`, and calls queued while connecting wait for the greeting (`connectedGate`, at most ~1 s)
 - **Logical reconnect (Phase 1)** — Parses **`__connected__`** for **`clientId`** / **`sessionId`**; reconnect URLs carry **`resume`** query + **`Cookie: sessionId=…`**; **`connect(host, port)`** clears logical ids when the target changes ([Server README](../README.md#websocket-logical-reconnect-phase-1))
 - **Auto-reconnection** — Exponential backoff with jitter capped at ~30 s plus error log throttling
 - **Configurable logging** — `connect(_, _, { logging })` and `configureApeLogging()`
@@ -55,7 +56,7 @@ Pure helper that appends the Phase 1 `resume=` query when `apeLogicalClientId` i
 
 ### `connection-send.js`
 
-Produces the correlated `send(type, payload)` RPC helper wired to JSS `queryId`, keepalive timer resets, and WebSocket payloads.
+Produces the correlated `send(type, payload)` RPC helper wired to JSS `queryId`, keepalive timer resets, and WebSocket payloads. `getClockOffset` shifts each call's `createdAt` into the server's clock.
 
 ### `connection-reconnect.js`
 

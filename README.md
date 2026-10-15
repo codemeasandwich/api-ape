@@ -128,6 +128,7 @@ await api.message({ text: 'Hello' })                   // RPC call
 * **[Pub/Sub channels](server/README.md#pubsub-channels)** — Clients subscribe to channels, server publishes updates
 * **[Subscribe authorisation](server/README.md#authorising-subscriptions-onsubscribe)** — `onSubscribe(channel, context)` decides who may subscribe; `clearLastMessage(channel)` forgets a channel's retained message
 * **[Compiled executables](server/README.md#compiled-executables-controllers)** — `controllers: { 'cards/move': fn }` in place of `where`, for `bun build --compile` binaries
+* **[Clock skew](server/README.md#clock-skew)** — a client whose clock is a little fast is no longer refused (`maxClockSkewMs`, default 5 s); the bundled clients stamp calls in the server's clock, read from `__connected__`
 * **[Promise-based calls](client/README.md#usage)** — `api.users.list()` maps to `api/users/list.js`
 * **[Origin check](server/README.md#origin-check)** — Exact host:port matching (`origin.mode: 'exact'`, default on Bun), `allowedOrigins`, `allowedHosts`
 * **[Hot reload (opt-in)](server/README.md#hot-reload)** — `watch: true` reloads controllers and the services they import together; off by default

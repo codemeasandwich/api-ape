@@ -110,7 +110,7 @@
 
 const { configureApeLogging, resetApeLoggingForTesting } = require("../../utils/apeLogger");
 const { loadControllers, publicPrefix: publicPrefixOf } = require("./controllerSource");
-const { checkOptions, DEFAULT_MAX_MESSAGE_BYTES } = require("./options");
+const { checkOptions, DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_CLOCK_SKEW_MS } = require("./options");
 const { resolveOriginPolicy } = require("../security/origin");
 const wiring = require("./wiring");
 const { isBun, isDeno, getRuntime } = require("./wsProvider");
@@ -170,6 +170,8 @@ function _resetForTesting() {
  *     Default `root-domain` on Node (ports ignored, unchanged), `exact` on Bun.
  * @param {boolean|Object} [options.watch=false] - Hot-reload controllers (opt-in); see README "Hot reload"
  * @param {number} [options.maxMessageBytes=16777216] - Largest inbound WebSocket message / long-poll POST body
+ * @param {number} [options.maxClockSkewMs=5000] - How far ahead of the server's clock (ms) a call's
+ *     `createdAt` may be before the call is refused
  * @param {Object} [options.websocketOptions] - Bun only: `Bun.serve` websocket tuning (idleTimeout, sendPings, ...)
  * @param {Object} [options.longPollingOptions] - Long polling configuration
  * @param {number} [options.longPollingOptions.heartbeatInterval=20000] - Interval in ms for heartbeat pings
@@ -212,6 +214,7 @@ function createApeCore(options, defaultOriginMode) {
     origin,
     onSubscribe,
     maxMessageBytes = DEFAULT_MAX_MESSAGE_BYTES,
+    maxClockSkewMs = DEFAULT_MAX_CLOCK_SKEW_MS,
   } = options;
   // Controllers come from `where` (a folder scan) or `controllers` (a map the app built,
   // for compiled executables with no folder). `controllersDir` is the resolved on-disk
@@ -232,6 +235,7 @@ function createApeCore(options, defaultOriginMode) {
   const wiringHandler = wiring(controllers, onConnect, fileTransfer, {
     originPolicy,
     onSubscribe,
+    maxClockSkewMs,
   });
   const { handleStreamGet, handleStreamPost } = createLongPollingHandler(
     controllers,

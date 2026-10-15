@@ -36,7 +36,8 @@ const { attachErrorDetails } = require("../utils/wireError");
  * @param {function(): void} d.resubscribeAll
  * @param {function(string): void} d.notifyConnectionChange
  * @param {typeof import('./connection/state').ConnectionState} d.ConnectionState
- * @param {function(function(string, *, number): Promise<*>): void} d.flushWaitingMessages
+ * @param {{begin: function(): void, settle: function(): void, cancel: function(): void}} d.connectedGate -
+ *   Holds queued calls until `__connected__` brings the server's clock (utils/clockOffset.js)
  * @param {function(string, *, number, boolean=): Promise<*>} d.wsSend
  * @param {typeof import('../utils/jss').default} d.jss
  * @param {function(Object): void} d.applyConnectedHandshake
@@ -109,8 +110,10 @@ function createTryWebSocket(d) {
       d.setSendFn((msg) => ws.send(d.jss.stringify(msg)));
       d.resubscribeAll();
 
+      // Queued calls go out when `__connected__` has told this client the server's clock
+      // (or after a short wait for it), not now: stamped now they would carry the page's clock.
+      d.connectedGate.begin();
       d.notifyConnectionChange(d.ConnectionState.Connected);
-      d.flushWaitingMessages(d.wsSend);
     };
 
     /**
@@ -133,6 +136,7 @@ function createTryWebSocket(d) {
 
       if (type === "__connected__" && data && typeof data === "object") {
         d.applyConnectedHandshake(data);
+        if (d.getSocketRef() === ws) d.connectedGate.settle();
       }
 
       if (queryId) {
@@ -176,6 +180,7 @@ function createTryWebSocket(d) {
         return;
       }
       d.endConnectAttempt();
+      d.connectedGate.cancel(); // queued calls stay queued for the next socket
       d.setSocketRef(false);
       d.setReady(false);
 

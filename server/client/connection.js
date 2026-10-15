@@ -53,11 +53,12 @@ const {
 const jss = require("../../utils/jss");
 const messageHash = require("../../utils/messageHash");
 const { attachErrorDetails } = require("../../utils/wireError");
+const { createServerClock } = require("../../utils/clockOffset");
 const receivers = require("./connection-receivers");
 const reconnect = require("./connection-reconnect");
 const { createSend } = require("./connection-send");
 const { buildWsConnectUrl: buildWsConnectUrlWithResume } = require("./connection-ws-url");
-const { queueOrSend: queueOrSendImpl, requireWebSocket } = require("./connection-queue-send");
+const { queueOrSend: queueOrSendImpl, requireWebSocket, flushBufferedCalls } = require("./connection-queue-send");
 /**
  * The runtime's global WebSocket client (Node 22+, Bun, Deno). There is no fallback: the
  * built-in `lib/ws` class is the SERVER side of a connection (it wraps an already
@@ -163,6 +164,15 @@ let apeLogicalSessionId = null;
  */
 let apeLogicalClientId = null;
 
+/**
+ * The server's clock as this client knows it (`serverClock.offset()`, from `__connected__`'s
+ * `serverTime`; 0 against an older server), and the gate that holds calls queued while
+ * connecting until that frame is in, so they are stamped in the server's clock (see
+ * utils/clockOffset.js). Calls made meanwhile queue behind them.
+ * @private
+ */
+const serverClock = createServerClock(() => flushBufferedCalls(bufferedCalls, send));
+
 /* ========== CONFIGURATION CONSTANTS ========== */
 
 /**
@@ -187,6 +197,7 @@ const send = createSend({
   waitingOn,
   getWs: () => ws,
   totalRequestTimeout,
+  getClockOffset: serverClock.offset,
 });
 
 /* ========== RECEIVER MODULE BINDING ========== */
@@ -292,14 +303,8 @@ function connect(host, port, options) {
     // Register any receivers that were added while disconnected
     receivers.flushBufferedReceivers();
 
-    // Send any requests that were queued while disconnected
-    bufferedCalls.forEach(
-      ({ type, data, resolve, reject, createdAt, timer }) => {
-        clearTimeout(timer);
-        send(type, data, createdAt).then(resolve).catch(reject);
-      },
-    );
-    bufferedCalls = [];
+    // Queued requests go out once `__connected__` gives the server's clock (or ~1 s passes).
+    serverClock.begin();
   };
 
   /**
@@ -314,6 +319,7 @@ function connect(host, port, options) {
     if (type === "__connected__" && data && typeof data === "object") {
       if (data.sessionId) apeLogicalSessionId = data.sessionId;
       if (data.clientId) apeLogicalClientId = data.clientId;
+      serverClock.connected(data);
     }
 
     // If this is a response to a pending request, invoke the callback.
@@ -372,6 +378,7 @@ function connect(host, port, options) {
    */
   ws.onclose = () => {
     ready = false;
+    serverClock.cancel(); // queued calls stay queued for the next socket
 
     // Reject all pending RPC callbacks — the socket is gone,
     // they will never receive a response. Fail fast so retry
@@ -461,7 +468,7 @@ function close() {
 function queueOrSend(type, data) {
   return queueOrSendImpl(
     {
-      getReady: () => ready,
+      getReady: () => ready && !serverClock.isWaiting(),
       getWs: () => ws,
       WebSocketCtor: WebSocket,
       send,

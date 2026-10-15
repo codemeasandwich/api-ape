@@ -39,14 +39,20 @@
  *
  * Messages include a `createdAt` timestamp. The server rejects messages that:
  * - Are too old (> 10 seconds in the past)
- * - Are from the future (clock skew attack)
+ * - Are further in the future than `maxClockSkewMs` (default 5000 ms)
+ *
+ * A call stamped a little ahead of the server's clock is accepted: two machines never
+ * agree to the millisecond, and before 4.5.1 a `createdAt` even 1 ms ahead was refused.
+ * The bundled clients also read the server's time from the `__connected__` frame and stamp
+ * calls in the server's clock, so a client whose clock is minutes off still works.
  *
  * ```
- * Server Time: 12:00:00
+ * Server Time: 12:00:00, maxClockSkewMs: 5000
  *
  * createdAt: 11:59:55 ✓ (5 seconds ago, valid)
  * createdAt: 11:59:45 ✗ (15 seconds ago, too old)
- * createdAt: 12:00:05 ✗ (5 seconds in future, invalid)
+ * createdAt: 12:00:03 ✓ (3 seconds ahead, within the skew tolerance)
+ * createdAt: 12:00:08 ✗ (8 seconds ahead, beyond the tolerance)
  * ```
  *
  * ## Window Management
@@ -109,9 +115,9 @@
  * })
  *
  * @example <caption>Error Messages</caption>
- * // Future timestamp
+ * // Future timestamp beyond the tolerance
  * checkReply('abc', Date.now() + 60000)
- * // Throws: "createdAt ahead of server by 60 secs"
+ * // Throws: "createdAt ahead of server by 60 secs (the server accepts up to 5 secs: ...)"
  *
  * // Old timestamp
  * checkReply('abc', Date.now() - 30000)
@@ -123,17 +129,23 @@
  * // Throws: "Reply: abc"
  */
 
+const { DEFAULT_MAX_CLOCK_SKEW_MS } = require("../lib/options");
+
 /**
  * Create a replay attack checker for a WebSocket connection
  *
  * Returns a function that validates incoming requests against:
  * - Previously seen request IDs (prevents duplicates)
- * - Request timestamps (prevents stale/future requests)
+ * - Request timestamps (prevents stale requests, and requests stamped further ahead
+ *   of the server's clock than `maxClockSkewMs`)
  *
  * Each checker maintains its own request history, isolated from other
  * connections. The history is automatically pruned to only keep requests
  * from the last 10 seconds.
  *
+ * @param {Object} [options]
+ * @param {number} [options.maxClockSkewMs=5000] - How far ahead of the server's clock a
+ *   call's `createdAt` may be (ms). `0` refuses any call stamped ahead, as 4.5.0 did.
  * @returns {function(string, number): void} Check function that throws on invalid requests
  *
  * @example
@@ -150,7 +162,7 @@
  *   console.log(err.message)  // "Reply: queryId123"
  * }
  */
-module.exports = function () {
+module.exports = function ({ maxClockSkewMs = DEFAULT_MAX_CLOCK_SKEW_MS } = {}) {
   /**
    * Array of recently seen requests
    *
@@ -166,7 +178,7 @@ module.exports = function () {
    * Validate a request against replay attacks
    *
    * Performs three validations:
-   * 1. **Future check**: Rejects if createdAt is ahead of server time
+   * 1. **Future check**: Rejects if createdAt is ahead of server time by more than `maxClockSkewMs`
    * 2. **Staleness check**: Rejects if createdAt is more than 10 seconds old
    * 3. **Duplicate check**: Rejects if queryId was seen in the last 10 seconds
    *
@@ -176,13 +188,15 @@ module.exports = function () {
    *
    * The 10-second window provides:
    * - Tolerance for minor network latency
-   * - Tolerance for minor clock skew between client and server
+   * - Tolerance for a client clock that runs behind the server's
+   *
+   * and `maxClockSkewMs` (default 5 s) is the tolerance for one that runs ahead.
    * - Protection against replay attacks (attacker must replay within 10 seconds)
    * - Memory efficiency (limited tracking window)
    *
    * @param {string} queryId - Unique request identifier (hash of message content)
    * @param {number} createdAt - Timestamp when the request was created (client-side)
-   * @throws {Error} If request is from the future (clock skew)
+   * @throws {Error} If request is stamped more than `maxClockSkewMs` ahead of the server
    * @throws {Error} If request is too old (> 10 seconds)
    * @throws {Error} If request is a duplicate (same queryId within window)
    *
@@ -192,8 +206,8 @@ module.exports = function () {
    *
    * @example
    * // Future request (clock skew or tampering)
-   * checkReply('K7M3NP2Q', Date.now() + 5000)
-   * // Error: "createdAt ahead of server by 5 secs"
+   * checkReply('K7M3NP2Q', Date.now() + 8000)
+   * // Error: "createdAt ahead of server by 8 secs (...)"
    *
    * @example
    * // Stale request
@@ -214,17 +228,24 @@ module.exports = function () {
     const startTime = Date.now();
 
     /**
-     * Check 1: Reject requests from the future
+     * Check 1: Reject requests stamped too far ahead of the server's clock
      *
-     * This catches:
-     * - Client clock running ahead
+     * A small lead is normal (two clocks never agree to the millisecond), so up to
+     * `maxClockSkewMs` is accepted. This still catches:
+     * - A client clock running far ahead
      * - Timestamp manipulation attacks
-     * - Replay of pre-generated future requests
+     * - Pre-generated future requests (a longer replay window)
+     *
+     * Replay protection is unchanged: an accepted call's entry stays tracked until its
+     * `createdAt` is older than 10 seconds, which is also when the staleness check would
+     * refuse a replay of it.
      */
-    if (createdAt > startTime) {
+    if (createdAt > startTime + maxClockSkewMs) {
       const skewSeconds = (createdAt - startTime) / 1000;
       throw new Error(
-        `createdAt ahead of server by ${skewSeconds} secs. Request rejected.`,
+        `createdAt ahead of server by ${skewSeconds} secs (the server accepts up to ` +
+          `${maxClockSkewMs / 1000} secs: maxClockSkewMs). Request rejected. Fix the client's ` +
+          `clock, or use an api-ape client that reads the server's time from the connected frame.`,
       );
     }
 

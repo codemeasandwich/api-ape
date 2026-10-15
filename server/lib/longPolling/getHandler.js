@@ -312,7 +312,7 @@ function createGetHandler(streamClients, onConnect, options = {}) {
 
     // Send connection acknowledgment immediately
     // This is required for HTTP clients to know the stream is ready
-    send(null, "__connected__", { clientId, sessionId }, null);
+    send(null, "__connected__", { clientId, sessionId, serverTime: Date.now() }, null);
 
     // Call onConnect callback if provided
     /* istanbul ignore next 17 - onConnect callback handlers for long polling */

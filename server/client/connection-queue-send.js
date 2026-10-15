@@ -74,4 +74,19 @@ function queueOrSend(ctx, type, data) {
   });
 }
 
-module.exports = { queueOrSend, requireWebSocket };
+/**
+ * Send every call queued while disconnected through `send`, emptying the queue in place
+ * (`queueOrSend` pushes onto this same array).
+ *
+ * @param {Array<Object>} bufferedCalls - The queue shared with `queueOrSend`
+ * @param {function(string, *, number): Promise<*>} send - The RPC helper; the call's `createdAt` is passed on
+ * @returns {void}
+ */
+function flushBufferedCalls(bufferedCalls, send) {
+  bufferedCalls.splice(0).forEach(({ type, data, resolve, reject, createdAt, timer }) => {
+    clearTimeout(timer);
+    send(type, data, createdAt).then(resolve).catch(reject);
+  });
+}
+
+module.exports = { queueOrSend, requireWebSocket, flushBufferedCalls };

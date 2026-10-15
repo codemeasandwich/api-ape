@@ -216,6 +216,13 @@ export interface ApeServerOptionsBase {
      * separate HTTP PUTs and are not limited by this.
      */
     maxMessageBytes?: number
+    /**
+     * How far ahead of the server's clock (ms) a call's `createdAt` may be before the call is
+     * refused (default 5000). Calls older than 10 s are still refused, and a repeated call is
+     * still a replay. The bundled clients read the server's time from the `__connected__`
+     * frame (`serverTime`) and stamp calls in the server's clock.
+     */
+    maxClockSkewMs?: number
     /** Connection lifecycle hook */
     onConnect?: OnConnectCallback
     /**

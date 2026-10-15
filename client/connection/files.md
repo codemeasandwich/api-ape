@@ -44,7 +44,7 @@ Creates the Proxy-based API that allows `api.users.list()` syntax. Intercepts pr
 
 ### `sender.js`
 
-Handles message serialization and request/response correlation. A call that times out, or whose `send` throws, is removed from `waitingOn` (and its timer stopped); a reply that arrives for a call that is gone is dropped, never handed to the page as a push. Generates unique `queryId` for each request, tracks pending requests, manages timeouts, and resolves Promises when responses arrive. A keepalive frame (`this.keepalive()` on the server) restarts the call's timeout and does not settle it. `flushQueue` sends the calls queued while disconnected, emptying the queue in place.
+Handles message serialization and request/response correlation. A call that times out, or whose `send` throws, is removed from `waitingOn` (and its timer stopped); a reply that arrives for a call that is gone is dropped, never handed to the page as a push. Generates unique `queryId` for each request, tracks pending requests, manages timeouts, and resolves Promises when responses arrive. A keepalive frame (`this.keepalive()` on the server) restarts the call's timeout and does not settle it. `flushQueue` sends the calls queued while disconnected, emptying the queue in place. `createWsSend` takes a `getClockOffset` and stamps each call's `createdAt` in the server's clock (`new Date(createdAt + offset)`); its own timeout stays on the page's clock.
 
 ### `state.js`
 

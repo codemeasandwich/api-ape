@@ -14,6 +14,7 @@ Stories about the server's side of the call protocol, driven with a raw socket s
 call-contract/
 ├── README.md       # Overview
 ├── files.md        # This file
+├── clock-skew.test.js           # `maxClockSkewMs`, `serverTime` in `__connected__`, clients stamping in the server's clock
 ├── controllers-option.test.js   # `controllers` map instead of a folder: same naming rules, refusals, `this`
 ├── hostile-peer.test.js   # What a stranger's frames can make a server do
 ├── index.test.js   # The stories
@@ -28,6 +29,10 @@ call-contract/
 ### `index.test.js`
 
 The call-contract stories (keepalive, identical calls, replies, errors and what `errCode` / `errData` may carry, controller files, context from `onConnect`, options). Starts a harness server over `simulator/test-api-contract/` or over controller files written to a temp directory for the test, and talks to it with the raw client.
+
+### `clock-skew.test.js`
+
+Clock skew (4.5.1). A raw socket against a real server: a call stamped 1 ms to 4 s ahead is answered, one 8 s ahead is refused with an error frame (no data) naming the amount and `maxClockSkewMs`, and its controller never runs; `maxClockSkewMs` (30 s, 0, and start-up refusal of -1, a string, `NaN`, `Infinity`, `null`); the 10 s staleness window and the replay check are unchanged; `__connected__` (WebSocket and long-poll stream) carries `serverTime`. The real server-side client against a stand-in server: calls (including ones queued while connecting, in order) are stamped in a server clock that is a minute ahead or an hour behind; an older server with no `serverTime` (or a non-number) keeps the client's own clock; a server that never greets does not stall a queued call; a reconnect recomputes the offset; a refusal frame rejects the caller's promise with the server's message, also end to end through a proxy that lies about the time. Run against 4.5.0 the stories about the tolerance, `serverTime` and the stamping fail; the ones that pin behaviour that did not change (the 10 s window, a refusal rejecting the caller) pass.
 
 ### `controllers-option.test.js`
 

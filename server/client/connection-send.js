@@ -18,9 +18,11 @@
  * @param {Record<string, function>} deps.waitingOn - Mutable callbacks keyed by query id
  * @param {() => import("ws")|undefined} deps.getWs - Returns current WebSocket (or falsy while closed)
  * @param {number} deps.totalRequestTimeout - Max ms before rejecting outstanding RPC
+ * @param {function(): number} [deps.getClockOffset] - Server clock minus this process's clock (ms),
+ *   added to each call's `createdAt` on the wire; default `() => 0`
  * @returns {function(string, *, number=): Promise<*>}
  */
-function createSend({ jss, messageHash, waitingOn, getWs, totalRequestTimeout }) {
+function createSend({ jss, messageHash, waitingOn, getWs, totalRequestTimeout, getClockOffset = () => 0 }) {
   // Per-client counter sent as `nonce`: identical calls in the same millisecond must
   // not share a queryId (the server refuses a repeated queryId as a replay).
   let nonce = 0;
@@ -31,11 +33,12 @@ function createSend({ jss, messageHash, waitingOn, getWs, totalRequestTimeout })
    * @private
    * @param {string} type - Message type (API path)
    * @param {*} data - Request payload
-   * @param {number} [createdAt=Date.now()] - Epoch ms for diagnostics
+   * @param {number} [createdAt=Date.now()] - Epoch ms (this process's clock) the call was made; the
+   *   frame carries it shifted into the server's clock
    * @returns {Promise<*>} Resolves when the correlated response arrives
    */
   function send(type, data, createdAt = Date.now()) {
-    const message = jss.stringify({ type, data, createdAt, nonce: ++nonce });
+    const message = jss.stringify({ type, data, createdAt: createdAt + getClockOffset(), nonce: ++nonce });
     const queryId = messageHash(message);
 
     return new Promise((resolve, reject) => {

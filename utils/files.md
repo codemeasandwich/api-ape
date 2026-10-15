@@ -16,6 +16,8 @@ This module provides shared serialization and hashing utilities used by both cli
 ```
 utils/
 ├── apeLogger.js             # Centralized configurable framework logging (see configureApeLogging)
+├── clockOffset.js           # Offset to the server's clock from `__connected__.serverTime`, and the gate that holds queued calls until it arrives
+├── clockOffset.test.js      # clockOffset test suite
 ├── jss.js                   # JSS main entry point (encode/decode/stringify/parse)
 ├── jss.d.ts                 # Types for `api-ape/jss`
 ├── jss.test.js              # JSS test suite
@@ -33,6 +35,10 @@ utils/
 ### `apeLogger.js`
 
 Internal logging facade for api-ape on both browser and Node. Exports `configureApeLogging()`, `resetApeLoggingForTesting()`, and `apeLog` (log/warn/error/info/debug) so callers can silence or reroute diagnostics without patching `console`.
+
+### `clockOffset.js`
+
+The server's clock, as the bundled clients learn it (4.5.1). `clockOffsetFrom(connected, localNow?)` is `serverTime - localNow` from the `__connected__` frame's data (0 when the server sent no usable `serverTime`: an older server, or a string, `NaN` or `Infinity`); both clients add it to every call's `createdAt`. `createConnectedGate(onSettled, waitMs?)` holds the calls queued while connecting from socket open until `__connected__` arrives (`settle`), or `CONNECTED_WAIT_MS` (1 s) passes with none, so they too are stamped in the server's clock; `cancel` on close. Used by `client/connectSocket.js` and `server/client/connection.js`; no Node APIs, so it bundles for the browser.
 
 ### `wireError.js`
 

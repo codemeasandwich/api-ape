@@ -309,7 +309,7 @@ module.exports = function wiring(controllers, onConnect, fileTransfer, options =
   onConnect = onConnect || (() => {});
 
   // Extract auth framework and middleware from options
-  const { authFramework = null, authMiddleware = null, originPolicy, onSubscribe } = options;
+  const { authFramework = null, authMiddleware = null, originPolicy, onSubscribe, maxClockSkewMs } = options;
 
   /**
    * WebSocket connection handler
@@ -479,7 +479,7 @@ module.exports = function wiring(controllers, onConnect, fileTransfer, options =
          * This tracks recent queryIds and timestamps to prevent
          * duplicate or stale requests from being processed.
          */
-        const checkReply = replySecurity();
+        const checkReply = replySecurity({ maxClockSkewMs });
 
         /**
          * Create socket auth manager if auth framework is configured
@@ -561,7 +561,7 @@ module.exports = function wiring(controllers, onConnect, fileTransfer, options =
          * This allows WebSocket clients to know their clientId for use
          * in HTTP requests (e.g., binary file uploads via PUT).
          */
-        send(null, "__connected__", { clientId, sessionId }, null);
+        send(null, "__connected__", { clientId, sessionId, serverTime: Date.now() }, null);
 
         /**
          * Flush any messages that were buffered during setup

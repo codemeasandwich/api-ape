@@ -130,11 +130,12 @@ This enables server-side microservice patterns while keeping the familiar api-ap
 | `origin` | `object` | _Optional._ WebSocket Origin policy `{ mode, allowedOrigins, allowedHosts }` (see [Origin check](#origin-check)). Node default `root-domain` (unchanged), Bun default `exact`. |
 | `watch` | `boolean` \| `object` | _Optional, default off._ Hot-reload controllers on file change (see [Hot reload](#hot-reload)). |
 | `maxMessageBytes` | `number` | Most bytes one inbound WebSocket message, or one HTTP long-poll POST body, may hold. Default `16777216` (16 MiB, Bun's own default). Every inbound frame is parsed in full before anything checks who sent it, so this is what bounds the memory and CPU a stranger can spend. An oversize WebSocket message closes the socket with code 1009; an oversize POST gets HTTP 413. Uploads are separate HTTP PUTs and are not limited by it. On Bun `websocketOptions.maxPayloadLength` still overrides it. |
+| `maxClockSkewMs` | `number` | _Optional (4.5.1)._ How far **ahead of the server's clock** (ms) a call's `createdAt` may be before the call is refused. Default `5000`; `0` refuses any call stamped ahead (the 4.5.0 behaviour); anything that is not a number of 0 or more stops start-up. The 10 s staleness window and the replay check do not change. The bundled clients stamp calls in the server's clock, so this only matters for other programs and for clients older than 4.5.1. See [Clock skew](#clock-skew). |
 | `websocketOptions` | `object` | _Bun only._ `Bun.serve` websocket tuning: `idleTimeout`, `sendPings`, `maxPayloadLength`, `backpressureLimit`, `closeOnBackpressureLimit`, `perMessageDeflate`, `publishToSelf` (see [Keepalive and ping](#keepalive-and-ping)). |
 
 ### `apeBun(options)` (Bun)
 
-`require('api-ape/bun').apeBun(options)` returns `{ fetch, websocket, wss, close }` for `Bun.serve()`. It takes the same options as `ape()` (`where` or `controllers`, `urlPrefix`, `selector`, `onConnect`, `onSubscribe`, `fileTransferOptions`, `origin`, `watch`, `websocketOptions`, `maxMessageBytes`, `logging`). `fetch` answers the api-ape paths and returns `null` for anything else, so your own routes can follow.
+`require('api-ape/bun').apeBun(options)` returns `{ fetch, websocket, wss, close }` for `Bun.serve()`. It takes the same options as `ape()` (`where` or `controllers`, `urlPrefix`, `selector`, `onConnect`, `onSubscribe`, `fileTransferOptions`, `origin`, `watch`, `websocketOptions`, `maxMessageBytes`, `maxClockSkewMs`, `logging`). `fetch` answers the api-ape paths and returns `null` for anything else, so your own routes can follow.
 
 | Option | Type | Description |
 |--------|------|-------------|
@@ -388,6 +389,22 @@ Three separate mechanisms, often confused:
 1. **`this.keepalive()` in a controller** resets the *client's* per-call timer (10 s by default) for a slow call. It sends `{ queryId, _keepalive: true }`; the call is not resolved. Call it at least every few seconds from long work. It does **not** extend the server's own freshness check on the incoming call (the server refuses a call whose `createdAt` is more than 10 s old, in the future, or a repeated `queryId`; this is checked once, on arrival). A call buffered by the client across a sleep or disconnect of more than 10 s is therefore refused, and pending calls are rejected when the socket closes, so there is no exactly-once delivery: keep mutations idempotent or revision-guarded. The browser client treats the frame as "still working": it restarts that call's timer and keeps waiting for the real reply (before 4.4.0 the client took the first keepalive for the reply and resolved the call with `undefined`). Every call runs on its own context layered over the connection's, so two concurrent calls each keepalive on their own `queryId`. A side effect: `this.foo = x` inside a controller is private to that call; keep per-connection state in `onConnect`'s `embed`.
 2. **`GET /{prefix}/ape/ping`** is an HTTP reachability probe returning `{ ok, ts }`. The client uses it to detect captive portals (`walled`). It is not a WebSocket heartbeat.
 3. **WebSocket liveness** belongs to the runtime. api-ape sends no ping frames of its own. Under Bun, the runtime sends protocol pings (`sendPings`, default `true`) and closes a socket that has been silent for `idleTimeout` seconds (default 120); browsers answer pings automatically, so an idle tab stays connected. Tune it with `websocketOptions: { idleTimeout, sendPings }`. Bun enforces the timeout on a coarse timer: measured on Bun 1.3.14, an `idleTimeout` of 2 or 5 both closed a silent socket at about 8 s, so treat it as approximate. Verified by `integration/bun/security.ts` (pings keep an idle socket open; without pings it closes).
+
+### Clock skew
+
+Every call carries a `createdAt` stamp, and the server refuses a call whose stamp is **more than 10 s old** (a replay window) or **more than `maxClockSkewMs` ahead of the server's own clock** (default 5000 ms). Two machines never agree to the millisecond, so a lead of a few seconds is normal and is accepted. Before 4.5.1 any lead at all (even 1 ms) was refused, so a client whose clock ran a little fast had every call refused.
+
+```javascript
+ape(server, { where: 'api', maxClockSkewMs: 2000 })   // stricter: 2 s of lead
+```
+
+The bundled clients (browser and `server/client`) do not depend on the tolerance: the server sends its time in the `__connected__` frame (`serverTime`, epoch milliseconds), and each client works out the offset between its clock and the server's and stamps `createdAt` in **the server's clock**. A page whose clock is minutes off therefore still works, both ahead and behind. Notes:
+
+- The offset is computed on every `__connected__`, so a reconnect to another server never keeps the last one's offset. A server that sends no `serverTime` (4.5.0 and earlier) gives an offset of 0: the client stamps in its own clock, as before. A client older than 4.5.1 against a 4.5.1 server works too, and gains the tolerance.
+- Calls made while a client is still connecting wait for the greeting (at most about a second: a server that sends no `__connected__` does not stall them), so they are stamped in the server's clock as well.
+- A refused call is answered with an error frame (`{ err, queryId }`, no data) and the caller's promise **rejects** with the server's message, for example `createdAt ahead of server by 8 secs (the server accepts up to 5 secs: maxClockSkewMs)`. The controller does not run.
+- A program that speaks the [wire protocol](#wire-protocol) itself should stamp `createdAt` from `serverTime` the same way, or keep its clock within `maxClockSkewMs`.
+- The HTTP long-poll `POST` path does not check `createdAt`. The browser's reachability probe (`GET /{prefix}/ape/ping`, used to detect captive portals) still treats a page whose clock is more than 60 s off the server's as "walled".
 
 ## Pub/Sub Channels
 
@@ -1027,7 +1044,7 @@ import messageHash from 'api-ape/messageHash' // queryId of a message
 
 | Frame | Meaning |
 |-------|---------|
-| `{ type, data, createdAt, requestedAt, nonce }` | A call to endpoint `type` (a leading `/` is ignored). `createdAt` must not be in the future or older than 10 s. The `queryId` is **`messageHash(<the exact text sent>)`** and must not repeat within 10 s on one socket (a repeat is refused as a replay), so identical calls need something that differs: the clients add a counter `nonce`. |
+| `{ type, data, createdAt, requestedAt, nonce }` | A call to endpoint `type` (a leading `/` is ignored). `createdAt` must not be older than 10 s, nor more than `maxClockSkewMs` (default 5 s) ahead of the server's clock (see [Clock skew](#clock-skew)). The `queryId` is **`messageHash(<the exact text sent>)`** and must not repeat within 10 s on one socket (a repeat is refused as a replay), so identical calls need something that differs: the clients add a counter `nonce`. |
 | `{ subscribe: '/channel' }` | Receive everything published to `/channel`; a new subscriber gets the last published message at once. |
 | `{ unsubscribe: '/channel' }` | Stop. Also cancels a subscribe whose `onSubscribe` check is still pending. |
 
@@ -1035,7 +1052,7 @@ import messageHash from 'api-ape/messageHash' // queryId of a message
 
 | Frame | Meaning |
 |-------|---------|
-| `{ type: '__connected__', data: { clientId, sessionId } }` | First frame after the upgrade. Send `?resume=<clientId>` plus the `sessionId` cookie on a reconnect (see above). |
+| `{ type: '__connected__', data: { clientId, sessionId, serverTime } }` | First frame after the upgrade. Send `?resume=<clientId>` plus the `sessionId` cookie on a reconnect (see above). `serverTime` (4.5.1) is the server's `Date.now()`: stamp `createdAt` in that clock (see [Clock skew](#clock-skew)). Older servers send no `serverTime`. The HTTP long-poll stream's greeting carries it too. |
 | `{ queryId, data }` | The reply to the call with that `queryId`. A controller that returns nothing gives `data` as `undefined` (encoded `"data<!U>": 0`). |
 | `{ queryId, err, errCode?, errData? }` | The call failed. `err` is an `Error` (JSS keeps `name` and `message`; the stack is `"Name: message"` only; read with plain `JSON.parse` the key is `err<!E>` = `[name, message, stack]`); `errCode` / `errData` carry the `code` / `data` the controller attached, under the rules in [Errors](#errors) (a value thrown with no message, such as a plain object, arrives as itself without its own `stack`). Only the standard Error classes are rebuilt from an `err` tag; any other class name arrives as a plain `Error` carrying that name. The HTTP long-poll `POST` answers with this same frame (HTTP 500, or 404 for an unknown endpoint). |
 | `{ queryId, _keepalive: true }` | `this.keepalive()` was called: the call is still running. Not a reply; restart the call's timer and wait for the real one. |
@@ -1062,6 +1079,10 @@ Old clients keep working against a 4.4.0 server (upgrade the server first), with
 
 - **`controllers`**: a map of endpoint path to function in place of `where`, for `bun build --compile` executables. See [Compiled executables](#compiled-executables-controllers). One thing to know: `ape()` / `apeBun()` now throw if neither `where` nor `controllers` is given (a missing `where` used to fail with a TypeError from `path`).
 - **`onSubscribe`** and **`clearLastMessage`**: subscribe authorisation and a way to forget a channel's retained message. See [Authorising subscriptions](#authorising-subscriptions-onsubscribe). An old client against a server with `onSubscribe` is refused with a `__subscribe_refused__` frame it does not recognise: it simply never receives that channel (and cannot report why). Upgrade the clients to get `api.channel(callback, onError)`.
+
+## Upgrading to 4.5.1
+
+4.5.1 is a patch release with no breaking change. A server that sets nothing new now **accepts a call stamped up to 5 s ahead of its clock** (it refused any lead before), and sends `serverTime` in `__connected__`; the bundled clients use it. An application that relied on a client's calls being refused for being a second or two ahead would have to set `maxClockSkewMs: 0`. The publish workflow now uses npm Trusted Publishing (see the CHANGELOG).
 
 ## Troubleshooting & FAQ
 

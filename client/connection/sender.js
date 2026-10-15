@@ -87,6 +87,8 @@ const connectTimeout = 5000;
  * @param {function(): WebSocket} getSocket - Function that returns the current WebSocket instance
  * @param {Object.<string, function(Error|null, any, boolean=): void>} waitingOn - Map of query IDs to response
  *   callbacks; a third argument `true` means "keepalive frame: restart the timeout, do not settle"
+ * @param {function(): number} [getClockOffset] - Server clock minus the page's clock (ms), added to
+ *   each call's `createdAt` on the wire; default `() => 0` (the page's own clock)
  * @returns {function(string, any, number, boolean=): Promise<any>} Send function
  *
  * @example
@@ -105,7 +107,7 @@ const connectTimeout = 5000;
  * // Fire and forget (no await) - failure or timeout is swallowed
  * wsSend('/api/log', { event: 'pageview' }, Date.now())
  */
-export function createWsSend(getSocket, waitingOn) {
+export function createWsSend(getSocket, waitingOn, getClockOffset = () => 0) {
   // Per-client counter sent as `nonce`: two identical calls in the same millisecond
   // would otherwise serialize to the same message, hash to the same queryId, and the
   // server would refuse the second as a replay.
@@ -150,7 +152,9 @@ export function createWsSend(getSocket, waitingOn) {
     const payload = {
       type,
       data: processedData,
-      createdAt: new Date(createdAt),
+      // Stamped in the SERVER's clock (offset from `__connected__`); the timeout above
+      // and `createdAt` itself stay on the page's clock.
+      createdAt: new Date(createdAt + getClockOffset()),
       requestedAt: new Date(),
       nonce: ++nonce,
     };

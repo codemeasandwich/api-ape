@@ -288,11 +288,27 @@ describe('Internal Module Coverage Tests', () => {
                 expect(() => check('query1', now)).not.toThrow();
             });
 
-            test('rejects request from the future', () => {
+            test('accepts a request a little ahead of the server clock (maxClockSkewMs, default 5 s)', () => {
                 const check = createReplayCheck();
-                const futureTime = Date.now() + 5000; // 5 seconds in future
+
+                expect(() => check('query1', Date.now() + 1)).not.toThrow();
+                expect(() => check('query2', Date.now() + 4000)).not.toThrow();
+            });
+
+            test('rejects request from the future beyond the tolerance', () => {
+                const check = createReplayCheck();
+                const futureTime = Date.now() + 6000; // 6 seconds in future, tolerance 5
 
                 expect(() => check('query1', futureTime)).toThrow(/ahead of server/);
+            });
+
+            test('takes the tolerance from maxClockSkewMs', () => {
+                const strict = createReplayCheck({ maxClockSkewMs: 0 });
+                const loose = createReplayCheck({ maxClockSkewMs: 30000 });
+
+                expect(() => strict('query1', Date.now() + 200)).toThrow(/ahead of server/);
+                expect(() => loose('query1', Date.now() + 20000)).not.toThrow();
+                expect(() => loose('query2', Date.now() + 40000)).toThrow(/ahead of server/);
             });
 
             test('rejects stale request older than 10 seconds', () => {

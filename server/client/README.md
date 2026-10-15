@@ -53,7 +53,7 @@ See [Server README: Framework logging](../README.md#framework-logging) and [Brow
 
 Outbound connections mirror the browser contract:
 
-1. First successful attach — parse **`__connected__`** and retain **`clientId`** + **`sessionId`** for subsequent upgrades.
+1. First successful attach — parse **`__connected__`** and retain **`clientId`** + **`sessionId`** for subsequent upgrades, and the offset to the server's clock from **`serverTime`** (calls are stamped in the server's clock; queued calls wait for the greeting, at most about a second; see [Clock skew](../../server/README.md#clock-skew)).
 2. On auto-reconnect — append **`resume`** to the configured **`APE_SERVER`** / `ws://host:port/...` URL and send **`Cookie: sessionId=<value>`** (api-ape's server-side WebSocket implementation accepts handshake options including headers).
 3. Changing target host/port via **`connect(host, port)`** clears stored logical ids so you do not resume across unrelated servers.
 
