@@ -3,6 +3,61 @@
 All notable changes to api-ape. Versions follow semantic versioning; the
 GitHub release notes are generated from commit subjects by `npm run release`.
 
+## 4.5.1
+
+A patch release: a client whose clock is a little ahead of the server's is no longer refused,
+and publishing moves to npm Trusted Publishing. A server that sets nothing new now accepts
+a call stamped up to 5 s ahead of its clock (see "Changed"). Each fix was reproduced first
+with a story that fails on 4.5.0 (`simulator/scenarios/stories/call-contract/clock-skew.test.js`,
+and `integration/bun/client-clock-skew.ts` through the real browser client).
+
+### Fixed
+
+- **A call stamped even 1 ms ahead of the server's clock was refused.** The docs promised
+  "tolerance for minor clock skew", but `server/security/reply.js` accepted only calls up to
+  10 s old: any `createdAt` ahead of the server's `Date.now()` threw "createdAt ahead of server by
+  N secs", and the refusal frame (`{ err, queryId }`, no data) left a client whose clock ran
+  slightly fast with every call refused (in a browser, silently missed changes). Found in Nexus.
+  The server now accepts a lead of up to `maxClockSkewMs` (below). The 10 s staleness window and
+  the replay check are unchanged.
+- **Clients stamp calls in the server's clock.** The server sends its time in the `__connected__`
+  frame (`data.serverTime`, epoch ms; on the WebSocket and the HTTP long-poll stream). The
+  browser client and the server-side client compute the offset from it on every connection and
+  stamp `createdAt` in the server's clock, so a page whose clock is off by tens of seconds, ahead or
+  behind, is answered. Calls queued while a client is still connecting wait for the greeting (at
+  most about a second; a server that never sends `__connected__` does not stall them) so they are
+  stamped in the server's clock too. A server that sends no `serverTime` (4.5.0 and earlier)
+  gives an offset of 0: the old behaviour. A client older than 4.5.1 works against a 4.5.1 server
+  and gains the tolerance.
+- **Refusals reach the caller as a rejected promise with the server's message.** Checked, and
+  already so in both bundled clients (the error frame rejects the call); now pinned by stories
+  (a raw refusal, a stand-in server, and the real browser client against a real server).
+
+### Added
+
+- **`maxClockSkewMs` option** for `ape()` and `apeBun()`: how far ahead of the server's clock
+  (ms) a call's `createdAt` may be. Default `5000`; `0` keeps the 4.5.0 behaviour; a value that
+  is not a number of 0 or more stops start-up. The refusal message names the amount and the
+  option. Types in `index.d.ts`; see "Clock skew" in `server/README.md`.
+- **`api-ape/package.json` is exported** in the `exports` map (carried over from 4.5.0).
+
+### Changed
+
+- A server accepts a call stamped up to 5 s ahead of its clock where 4.5.0 refused any lead. An
+  application that relied on refusing those must set `maxClockSkewMs: 0`.
+- **Publishing uses npm Trusted Publishing** (`.github/workflows/publish.yml`): OIDC
+  (`id-token: write`), `npm publish --provenance --access public`, Node 24 with npm 11.5.1 or newer,
+  and no `NPM_TOKEN` (the secret was revoked). The trigger is unchanged (a published release). The
+  Bun clock-skew integration script runs in CI.
+
+### Known limits
+
+- The browser's reachability probe (`GET /{prefix}/ape/ping`, which detects captive portals)
+  still treats a page whose clock is more than 60 s off the server's as "walled", so such a page
+  never connects.
+- The HTTP long-poll `POST` path does not check `createdAt` at all (unchanged).
+- A call with no `createdAt` skips both timestamp checks (unchanged).
+
 ## 4.5.0
 
 **4.4.0 never reached npm** (the tag and the GitHub release exist, but its publish run failed
