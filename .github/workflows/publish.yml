@@ -131,6 +131,10 @@ jobs:
         if: matrix.runtime == 'bun'
         run: bun run integration/bun/client-errors.ts
 
+      - name: Run Bun browser-client clock skew integration
+        if: matrix.runtime == 'bun'
+        run: bun run integration/bun/client-clock-skew.ts
+
       - name: Run Bun apeBun options integration
         if: matrix.runtime == 'bun'
         run: bun run integration/bun/options.ts
@@ -185,13 +189,20 @@ jobs:
 
   # Publish to npm (only on release events, not workflow_dispatch)
   # workflow_dispatch is for testing the pipeline without publishing
+  #
+  # Authentication is npm Trusted Publishing (OIDC): there is no npm token. The package's
+  # trusted-publisher settings on npmjs.com name this repository and this workflow file
+  # (publish.yml, no environment); npm exchanges the job's OIDC identity (id-token: write)
+  # for a short-lived publish credential. It needs npm >= 11.5.1, which Node 22's bundled
+  # npm is not, hence Node 24 and the explicit npm check below. NODE_AUTH_TOKEN and
+  # NPM_TOKEN must stay unset: a token would take precedence over the OIDC exchange.
   publish:
     needs: [test, integration, framework-integration]
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write  # Required for npm provenance
+      id-token: write  # Required for npm Trusted Publishing (OIDC) and provenance
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -199,8 +210,20 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Use an npm that supports Trusted Publishing (11.5.1 or newer)
+        run: |
+          npm install -g npm@11
+          node -e "
+            const [major, minor, patch] = process.argv[1].split('.').map(Number);
+            if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) {
+              console.error('npm ' + process.argv[1] + ' is too old for Trusted Publishing (needs 11.5.1 or newer)');
+              process.exit(1);
+            }
+            console.log('npm ' + process.argv[1]);
+          " "$(npm --version)"
 
       - name: Install dependencies
         run: npm install
@@ -208,7 +231,5 @@ jobs:
       - name: Build browser bundle
         run: npx esbuild client/browser.js --bundle --minify --sourcemap --outfile=dist/ape.js
 
-      - name: Publish to npm with provenance
+      - name: Publish to npm with provenance (Trusted Publishing, no token)
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
